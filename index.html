@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ARB//RADAR — Monitor de Arbitraje Argentina</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #040508;
+  --surface: #090c12;
+  --surface2: #0e1220;
+  --border: #161d2e;
+  --border2: #1e2840;
+  --text: #c8d4e8;
+  --muted: #3d4f6b;
+  --accent: #00e5ff;
+  --accent2: #ff6b35;
+  --green: #00ff88;
+  --red: #ff3d5a;
+  --yellow: #ffd23f;
+  --purple: #a855f7;
+  --mono: 'Space Mono', monospace;
+  --sans: 'Syne', sans-serif;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* GRID BG */
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: 0;
+  background-image:
+    linear-gradient(rgba(0,229,255,0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,229,255,0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+
+/* SCAN LINE */
+body::after {
+  content: '';
+  position: fixed; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  z-index: 100;
+  animation: scan 4s linear infinite;
+  opacity: 0.4;
+}
+@keyframes scan { from { top: 0; } to { top: 100vh; } }
+
+/* HEADER */
+.header {
+  position: relative; z-index: 10;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 28px;
+  border-bottom: 1px solid var(--border2);
+  background: rgba(9,12,18,0.95);
+  backdrop-filter: blur(12px);
+}
+.logo {
+  display: flex; align-items: center; gap: 12px;
+}
+.logo-mark {
+  width: 36px; height: 36px;
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 0.65rem; color: var(--accent);
+  font-weight: 700;
+  position: relative;
+  animation: borderPulse 2s ease-in-out infinite;
+}
+@keyframes borderPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,229,255,0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(0,229,255,0); }
+}
+.logo-text h1 { font-size: 1.1rem; font-weight: 800; color: #fff; letter-spacing: 0.05em; }
+.logo-text p { font-size: 0.62rem; color: var(--muted); font-family: var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+
+.header-right { display: flex; align-items: center; gap: 14px; }
+.status-pill {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--surface2); border: 1px solid var(--border2);
+  padding: 5px 12px; border-radius: 20px; font-size: 0.65rem;
+  font-family: var(--mono); color: var(--muted);
+}
+.status-dot { width: 7px; height: 7px; border-radius: 50%; }
+.status-dot.live { background: var(--green); animation: blink 1.2s ease-in-out infinite; }
+.status-dot.loading { background: var(--yellow); animation: blink 0.6s ease-in-out infinite; }
+.status-dot.error { background: var(--red); }
+@keyframes blink { 0%,100%{opacity:1}50%{opacity:0.3} }
+
+.refresh-btn {
+  background: var(--surface2); border: 1px solid var(--border2);
+  color: var(--accent); padding: 6px 14px; border-radius: 8px;
+  font-size: 0.72rem; font-family: var(--mono); font-weight: 700;
+  cursor: pointer; letter-spacing: 0.08em;
+  transition: all 0.2s;
+}
+.refresh-btn:hover { background: rgba(0,229,255,0.1); border-color: var(--accent); }
+.refresh-btn:active { transform: scale(0.96); }
+.refresh-btn.spinning { animation: spin 0.8s linear infinite; }
+@keyframes spin { from{transform:rotate(0deg)}to{transform:rotate(360deg)} }
+
+/* MAIN */
+main { position: relative; z-index: 5; padding: 20px 28px; }
+
+/* SIGNAL BANNER */
+.signal-banner {
+  border-radius: 12px; padding: 16px 20px;
+  margin-bottom: 20px; border: 1px solid;
+  display: flex; align-items: flex-start; gap: 14px;
+  font-size: 0.82rem; line-height: 1.6;
+  transition: all 0.4s ease;
+  position: relative; overflow: hidden;
+}
+.signal-banner::before {
+  content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 4px;
+}
+.signal-banner.neutral { background: rgba(61,79,107,0.15); border-color: var(--border2); }
+.signal-banner.neutral::before { background: var(--muted); }
+.signal-banner.opp { background: rgba(0,255,136,0.07); border-color: rgba(0,255,136,0.3); }
+.signal-banner.opp::before { background: var(--green); }
+.signal-banner.warn { background: rgba(255,210,63,0.07); border-color: rgba(255,210,63,0.3); }
+.signal-banner.warn::before { background: var(--yellow); }
+.signal-banner.alert { background: rgba(255,61,90,0.07); border-color: rgba(255,61,90,0.3); }
+.signal-banner.alert::before { background: var(--red); }
+.signal-icon { font-size: 1.5rem; line-height: 1; flex-shrink: 0; }
+.signal-content h3 { font-size: 0.85rem; font-weight: 700; margin-bottom: 4px; }
+.signal-content p { font-size: 0.75rem; color: var(--muted); }
+.signal-content .signal-timestamp { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); margin-top: 6px; }
+
+/* GRID */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.kpi {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; padding: 16px 16px 14px;
+  position: relative; overflow: hidden;
+  transition: border-color 0.2s;
+}
+.kpi:hover { border-color: var(--border2); }
+.kpi::after {
+  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
+}
+.kpi.oficial::after { background: linear-gradient(90deg, var(--muted), transparent); }
+.kpi.mep::after { background: linear-gradient(90deg, var(--accent), transparent); }
+.kpi.ccl::after { background: linear-gradient(90deg, var(--yellow), transparent); }
+.kpi.blue::after { background: linear-gradient(90deg, var(--accent2), transparent); }
+
+.kpi-label { font-size: 0.6rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 8px; }
+.kpi-value { font-size: 1.6rem; font-weight: 800; font-family: var(--mono); line-height: 1; }
+.kpi-sub { font-size: 0.64rem; color: var(--muted); margin-top: 6px; font-family: var(--mono); }
+.kpi-change { display: inline-flex; align-items: center; gap: 3px; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-top: 4px; font-family: var(--mono); }
+.kpi-change.up { background: rgba(255,61,90,0.15); color: var(--red); }
+.kpi-change.down { background: rgba(0,255,136,0.1); color: var(--green); }
+.kpi-change.flat { background: rgba(61,79,107,0.3); color: var(--muted); }
+
+/* TWO COL */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+
+/* PANEL */
+.panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden;
+}
+.panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.panel-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.panel-title span { font-size: 0.9rem; }
+.panel-badge { font-size: 0.58rem; padding: 2px 8px; border-radius: 8px; font-family: var(--mono); font-weight: 700; }
+.panel-body { padding: 16px 18px; }
+
+/* ARBITRAJE CARDS */
+.arb-cards { display: flex; flex-direction: column; gap: 10px; }
+.arb-card {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 16px;
+  display: grid; grid-template-columns: 1fr auto;
+  align-items: center; gap: 12px;
+  transition: border-color 0.2s, background 0.2s;
+  cursor: default;
+}
+.arb-card:hover { border-color: var(--border2); background: rgba(30,40,64,0.8); }
+.arb-card.active-opp { border-color: rgba(0,255,136,0.4); background: rgba(0,255,136,0.04); }
+.arb-card.active-warn { border-color: rgba(255,210,63,0.4); background: rgba(255,210,63,0.04); }
+.arb-title { font-size: 0.78rem; font-weight: 700; color: #fff; margin-bottom: 3px; }
+.arb-desc { font-size: 0.68rem; color: var(--muted); line-height: 1.4; }
+.arb-value { text-align: right; }
+.arb-num { font-family: var(--mono); font-size: 1.1rem; font-weight: 700; }
+.arb-unit { font-size: 0.6rem; color: var(--muted); font-family: var(--mono); }
+
+/* GAUGE */
+.gauge-wrap { display: flex; flex-direction: column; gap: 12px; }
+.gauge-item { }
+.gauge-label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+.gauge-name { font-size: 0.7rem; color: var(--text); font-family: var(--mono); }
+.gauge-val { font-size: 0.72rem; font-weight: 700; font-family: var(--mono); }
+.gauge-track { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+.gauge-fill { height: 100%; border-radius: 4px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1); }
+
+/* IA ANALYSIS */
+.ia-section { margin-bottom: 20px; }
+.ia-panel {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden;
+}
+.ia-header {
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(168,85,247,0.1), var(--surface2));
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ia-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--purple); display: flex; align-items: center; gap: 8px; }
+.ia-body { padding: 20px 22px; }
+.ia-output {
+  font-size: 0.8rem; line-height: 1.75; color: var(--text);
+  min-height: 80px;
+}
+.ia-output.loading-text::after {
+  content: '▋';
+  animation: cursor-blink 0.8s step-end infinite;
+  color: var(--purple);
+}
+@keyframes cursor-blink { 0%,100%{opacity:1}50%{opacity:0} }
+
+.ia-btn {
+  margin-top: 14px;
+  background: linear-gradient(135deg, rgba(168,85,247,0.2), rgba(168,85,247,0.1));
+  border: 1px solid rgba(168,85,247,0.4);
+  color: var(--purple); padding: 9px 18px; border-radius: 8px;
+  font-size: 0.75rem; font-family: var(--mono); font-weight: 700;
+  cursor: pointer; letter-spacing: 0.08em;
+  transition: all 0.2s; width: 100%;
+}
+.ia-btn:hover { background: rgba(168,85,247,0.25); border-color: var(--purple); }
+.ia-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* TASAS TABLE */
+.rates-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+.rates-table th { padding: 8px 10px; text-align: left; color: var(--muted); font-size: 0.62rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid var(--border); font-weight: 400; }
+.rates-table td { padding: 10px 10px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 0.74rem; }
+.rates-table tr:last-child td { border-bottom: none; }
+.rates-table tr:hover td { background: var(--surface2); }
+.tag { display: inline-block; padding: 2px 7px; border-radius: 6px; font-size: 0.6rem; font-weight: 700; font-family: var(--mono); }
+.tag.buy { background: rgba(0,255,136,0.12); color: var(--green); border: 1px solid rgba(0,255,136,0.2); }
+.tag.sell { background: rgba(255,61,90,0.12); color: var(--red); border: 1px solid rgba(255,61,90,0.2); }
+.tag.hold { background: rgba(61,79,107,0.3); color: var(--muted); border: 1px solid var(--border); }
+.tag.watch { background: rgba(255,210,63,0.12); color: var(--yellow); border: 1px solid rgba(255,210,63,0.2); }
+
+/* FOOTER */
+.footer { position: relative; z-index: 5; padding: 14px 28px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.footer p { font-size: 0.62rem; color: var(--muted); font-family: var(--mono); }
+
+/* SKELETON */
+.skel { background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; }
+@keyframes shimmer { from{background-position:200% 0}to{background-position:-200% 0} }
+.skel-text { height: 14px; margin-bottom: 6px; }
+
+/* RESPONSIVE */
+@media(max-width:700px){
+  .kpi-grid { grid-template-columns: repeat(2,1fr); }
+  .two-col { grid-template-columns: 1fr; }
+  .header { padding: 12px 16px; }
+  main { padding: 14px 16px; }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-mark">ARB</div>
+    <div class="logo-text">
+      <h1>ARB//RADAR</h1>
+      <p>Monitor de Arbitraje · Argentina</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="status-pill" id="riesgoPaisPill" title="Riesgo País (EMBI Argentina)" style="cursor:default;">
+      <div class="status-dot loading" id="rpDot"></div>
+      <span style="font-size:0.58rem;color:var(--muted);margin-right:2px;">EMBI</span>
+      <span id="rpValue" style="font-weight:700;">···</span>
+      <span style="font-size:0.58rem;color:var(--muted);">bps</span>
+    </div>
+    <div class="status-pill">
+      <div class="status-dot loading" id="statusDot"></div>
+      <span id="statusText">Cargando...</span>
+    </div>
+    <button class="refresh-btn" id="refreshBtn" onclick="loadAll()">⟳ ACTUALIZAR</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- SIGNAL BANNER -->
+  <div class="signal-banner neutral" id="signalBanner">
+    <div class="signal-icon" id="signalIcon">📡</div>
+    <div class="signal-content">
+      <h3 id="signalTitle">Cargando señales de mercado...</h3>
+      <p id="signalDesc">Conectando con APIs públicas de datos financieros argentinos</p>
+      <div class="signal-timestamp" id="signalTime"></div>
+    </div>
+  </div>
+
+  <!-- KPIs DOLAR -->
+  <div class="kpi-grid">
+    <div class="kpi oficial">
+      <div class="kpi-label">// Dólar Oficial</div>
+      <div class="kpi-value" id="valOficial"><span class="skel skel-text" style="width:80px;display:block;height:28px;"></span></div>
+      <div class="kpi-sub" id="subOficial">BNA · Venta</div>
+    </div>
+    <div class="kpi mep">
+      <div class="kpi-label">// Dólar MEP</div>
+      <div class="kpi-value" id="valMep"><span class="skel skel-text" style="width:80px;display:block;height:28px;"></span></div>
+      <div class="kpi-sub" id="subMep">Bolsa · AL30</div>
+    </div>
+    <div class="kpi ccl">
+      <div class="kpi-label">// Dólar CCL</div>
+      <div class="kpi-value" id="valCcl"><span class="skel skel-text" style="width:80px;display:block;height:28px;"></span></div>
+      <div class="kpi-sub" id="subCcl">Contado con Liqui</div>
+    </div>
+    <div class="kpi blue">
+      <div class="kpi-label">// Dólar Blue</div>
+      <div class="kpi-value" id="valBlue"><span class="skel skel-text" style="width:80px;display:block;height:28px;"></span></div>
+      <div class="kpi-sub" id="subBlue">Informal</div>
+    </div>
+  </div>
+
+  <!-- DOS COLUMNAS: ARBITRAJE + GAUGES -->
+  <div class="two-col">
+
+    <!-- OPORTUNIDADES DE ARBITRAJE -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span>⚡</span> SEÑALES DE ARBITRAJE</div>
+        <span class="panel-badge" id="arbCount" style="background:rgba(61,79,107,0.3);color:var(--muted);">Calculando...</span>
+      </div>
+      <div class="panel-body">
+        <div class="arb-cards" id="arbCards">
+          <div class="arb-card">
+            <div><div class="arb-title skel skel-text" style="width:60%;height:14px;"></div><div class="arb-desc skel skel-text" style="width:90%;height:10px;margin-top:8px;"></div></div>
+          </div>
+          <div class="arb-card">
+            <div><div class="arb-title skel skel-text" style="width:50%;height:14px;"></div><div class="arb-desc skel skel-text" style="width:85%;height:10px;margin-top:8px;"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GAUGES TASAS -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title"><span>📊</span> COMPARATIVA DE TASAS</div>
+        <span class="panel-badge" style="background:rgba(0,229,255,0.1);color:var(--accent);">TEM mensual</span>
+      </div>
+      <div class="panel-body">
+        <div class="gauge-wrap" id="gaugeWrap">
+          <div style="height:120px;" class="skel" style="border-radius:8px;"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TABLA DE INSTRUMENTOS -->
+  <div class="panel" style="margin-bottom:20px;">
+    <div class="panel-header">
+      <div class="panel-title"><span>📋</span> INSTRUMENTOS MONITOREADOS</div>
+      <span class="panel-badge" style="background:rgba(0,229,255,0.1);color:var(--accent);" id="lastUpdate">--:--</span>
+    </div>
+    <div class="panel-body" style="padding:0;">
+      <table class="rates-table" id="ratesTable">
+        <thead>
+          <tr>
+            <th>Instrumento</th>
+            <th>TEM</th>
+            <th>TNA aprox.</th>
+            <th>Breakeven USD</th>
+            <th>Spread vs Caución</th>
+            <th>Señal</th>
+          </tr>
+        </thead>
+        <tbody id="ratesBody">
+          <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted);font-family:var(--mono);font-size:0.72rem;">Cargando instrumentos...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ANÁLISIS IA -->
+  <div class="ia-section">
+    <div class="ia-panel">
+      <div class="ia-header">
+        <div class="ia-title"><span>🤖</span> ANÁLISIS IA — Diagnóstico diario del mercado</div>
+        <span class="panel-badge" style="background:rgba(168,85,247,0.15);color:var(--purple);border:1px solid rgba(168,85,247,0.3);">Claude AI</span>
+      </div>
+      <div class="ia-body">
+        <div class="ia-output" id="iaOutput">Presioná el botón para que la IA analice las condiciones actuales del mercado y te diga qué hacer hoy.</div>
+        <button class="ia-btn" id="iaBtn" onclick="analizarConIA()">🤖 ANALIZAR MERCADO AHORA CON IA</button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<footer class="footer">
+  <p>⚠️ SOLO INFORMATIVO · No es asesoramiento financiero · Datos: dolarapi.com + cálculos propios</p>
+  <p id="footerTime" style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);"></p>
+</footer>
+
+<script>
+// ─── ESTADO GLOBAL ───────────────────────────────────────────
+const STATE = {
+  dolares: {},
+  cauciones: { tna: 23, tem: 1.92 }, // dato de hoy cargado manualmente (APIs BYMA no son públicas)
+  instrumentos: [
+    { ticker: 'S16M6', tipo: 'LECAP', vto: '16 Mar 2026', diasRestantes: 10, tem: 2.20, tna: 29.7 },
+    { ticker: 'S30A6', tipo: 'LECAP', vto: '30 Abr 2026', diasRestantes: 55, tem: 2.50, tna: 34.0 },
+    { ticker: 'S29Y6', tipo: 'LECAP', vto: '29 May 2026', diasRestantes: 84, tem: 2.60, tna: 35.2 },
+    { ticker: 'S30O6', tipo: 'LECAP', vto: '30 Oct 2026', diasRestantes: 207, tem: 2.75, tna: 37.4 },
+    { ticker: 'T30A7', tipo: 'BONCAP', vto: '30 Abr 2027', diasRestantes: 390, tem: 2.80, tna: 38.1 },
+    { ticker: 'T31Y7', tipo: 'BONCAP', vto: '31 May 2027', diasRestantes: 421, tem: 2.82, tna: 38.4 },
+  ],
+  loaded: false,
+  lastFetch: null
+};
+
+// ─── FORMATEAR ────────────────────────────────────────────────
+const fmt = n => isNaN(n) ? '--' : Math.round(n).toLocaleString('es-AR');
+const fmtP = (n, d=2) => isNaN(n) ? '--' : n.toFixed(d);
+const now = () => new Date().toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+const today = () => new Date().toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+
+// ─── FETCH DOLARES VÍA CLAUDE AI ─────────────────────────────
+async function fetchDolares() {
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 500,
+        tools: [{ type: "web_search_20250305", name: "web_search" }],
+        messages: [{
+          role: "user",
+          content: "Buscá el precio del dólar en Argentina hoy. Dame los valores actuales de dólar oficial BNA venta, dólar MEP venta, dólar CCL venta, dólar blue venta. Respondé ÚNICAMENTE con JSON válido sin ningún texto extra ni markdown, con exactamente este formato: {\"oficial\":{\"compra\":0,\"venta\":0},\"bolsa\":{\"compra\":0,\"venta\":0},\"contadoconliqui\":{\"compra\":0,\"venta\":0},\"blue\":{\"compra\":0,\"venta\":0}}"
+        }]
+      })
+    });
+    const data = await res.json();
+    const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+    const clean = text.replace(/```json|```/g, "").trim();
+    const json = JSON.parse(clean);
+    Object.entries(json).forEach(([casa, vals]) => {
+      STATE.dolares[casa] = { ...vals, casa };
+    });
+    return true;
+  } catch(e) {
+    console.warn("fetchDolares fallback:", e.message);
+    STATE.dolares = {
+      oficial:         { venta: 1048,  compra: 1008,  casa: "oficial" },
+      bolsa:           { venta: 1430,  compra: 1425,  casa: "bolsa" },
+      contadoconliqui: { venta: 1469,  compra: 1462,  casa: "contadoconliqui" },
+      blue:            { venta: 1400,  compra: 1380,  casa: "blue" },
+    };
+    return false;
+  }
+}
+
+// ─── RENDER KPIs ──────────────────────────────────────────────
+function renderKPIs() {
+  const d = STATE.dolares;
+  const oficial = d.oficial || d.Oficial || {};
+  const mep = d.bolsa || d.Bolsa || {};
+  const ccl = d.contadoconliqui || d['contadoconliqui'] || {};
+  const blue = d.blue || d.Blue || {};
+
+  const mepVenta = mep.venta || 1430;
+  const cclVenta = ccl.venta || 1469;
+  const ofVenta = oficial.venta || 1048;
+  const blueVenta = blue.venta || 1400;
+
+  const brechaOfiMep = ((mepVenta - ofVenta) / ofVenta * 100).toFixed(1);
+  const brechaMepCcl = ((cclVenta - mepVenta) / mepVenta * 100).toFixed(1);
+
+  document.getElementById('valOficial').innerHTML = `<span style="color:var(--muted);">$</span><span style="color:var(--text);">${fmt(ofVenta)}</span>`;
+  document.getElementById('subOficial').innerHTML = `BNA · Compra $${fmt(oficial.compra || ofVenta-40)}`;
+
+  document.getElementById('valMep').innerHTML = `<span style="color:var(--muted);">$</span><span style="color:var(--accent);">${fmt(mepVenta)}</span>`;
+  document.getElementById('subMep').innerHTML = `Brecha: <span style="color:${Math.abs(brechaOfiMep)<2?'var(--green)':'var(--yellow)'};">${brechaOfiMep}% vs oficial</span>`;
+
+  document.getElementById('valCcl').innerHTML = `<span style="color:var(--muted);">$</span><span style="color:var(--yellow);">${fmt(cclVenta)}</span>`;
+  document.getElementById('subCcl').innerHTML = `Spread MEP→CCL: <span style="color:var(--muted);">+${brechaMepCcl}%</span>`;
+
+  document.getElementById('valBlue').innerHTML = `<span style="color:var(--muted);">$</span><span style="color:var(--accent2);">${fmt(blueVenta)}</span>`;
+  document.getElementById('subBlue').innerHTML = `vs MEP: <span style="color:${blueVenta < mepVenta ? 'var(--green)':'var(--red)'};">${blueVenta < mepVenta ? '↓' : '↑'} ${Math.abs(((blueVenta-mepVenta)/mepVenta)*100).toFixed(1)}%</span>`;
+
+  // Guardar MEP para cálculos
+  STATE.mepActual = mepVenta;
+}
+
+// ─── RENDER GAUGES ────────────────────────────────────────────
+function renderGauges() {
+  const cau = STATE.cauciones;
+  const instr = STATE.instrumentos;
+  const maxTem = 4.5;
+
+  const items = [
+    { label: 'Caución 1 día', tem: cau.tem, color: 'var(--accent2)', tipo: 'corto' },
+    ...instr.map(i => ({ label: i.ticker, tem: i.tem, color: i.tipo === 'LECAP' ? 'var(--accent)' : 'var(--purple)', tipo: i.tipo }))
+  ];
+
+  document.getElementById('gaugeWrap').innerHTML = items.map(item => {
+    const pct = Math.min(100, (item.tem / maxTem) * 100);
+    const color = item.tem > cau.tem * 1.3 ? 'var(--green)' :
+                  item.tem > cau.tem ? 'var(--accent)' : 'var(--red)';
+    return `
+      <div class="gauge-item">
+        <div class="gauge-label-row">
+          <span class="gauge-name">${item.label}</span>
+          <span class="gauge-val" style="color:${color};">${fmtP(item.tem)}% TEM</span>
+        </div>
+        <div class="gauge-track">
+          <div class="gauge-fill" style="width:${pct}%;background:${color};"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ─── RENDER ARBITRAJE ─────────────────────────────────────────
+function renderArbitraje() {
+  const cau = STATE.cauciones;
+  const mep = STATE.mepActual || 1430;
+  const instr = STATE.instrumentos;
+
+  // Calcular spread promedio de los 2 BONCAPs largos vs caución
+  const largos = instr.filter(i => i.tipo === 'BONCAP');
+  const spreadLargo = largos.length ? (largos.reduce((s, i) => s + i.tem, 0) / largos.length - cau.tem).toFixed(2) : 0;
+
+  // Señal caución vs lecap corta
+  const lecapCorta = instr.find(i => i.ticker === 'S30A6');
+  const spreadCortaVsCau = lecapCorta ? (lecapCorta.tem - cau.tem).toFixed(2) : 0;
+
+  // Brecha MEP-CCL
+  const ccl = STATE.dolares?.contadoconliqui?.venta || 1469;
+  const brechaMepCcl = ((ccl - mep) / mep * 100).toFixed(1);
+
+  // Arbitraje caución vs BONCAP largo
+  const arbLargo = parseFloat(spreadLargo);
+  const tieneOpp = arbLargo > 0.6;
+
+  let oppCount = 0;
+  const cards = [
+    {
+      title: 'Arbitraje Curva: BONCAPs vs Caución',
+      desc: `BONCAPs largos pagan ${fmtP(largos[0]?.tem || 2.8)}% TEM vs caución en ${fmtP(cau.tem)}% TEM. Spread: +${spreadLargo}%`,
+      value: `+${spreadLargo}%`,
+      unit: 'spread TEM',
+      clase: arbLargo > 0.6 ? 'active-opp' : arbLargo > 0.3 ? 'active-warn' : '',
+      indicador: arbLargo > 0.6 ? '🟢' : arbLargo > 0.3 ? '🟡' : '🔴',
+      tag: arbLargo > 0.6 ? 'buy' : 'watch'
+    },
+    {
+      title: 'Arbitraje: Caución vs LECAP corta',
+      desc: parseFloat(spreadCortaVsCau) > 0
+        ? `LECAP S30A6 paga más que la caución. Conviene estar en LECAP, no en caución.`
+        : `La caución supera temporalmente la LECAP corta. Fenómeno transitorio — mirar si persiste.`,
+      value: `${parseFloat(spreadCortaVsCau) > 0 ? '+' : ''}${spreadCortaVsCau}%`,
+      unit: 'spread TEM',
+      clase: parseFloat(spreadCortaVsCau) > 0.3 ? 'active-opp' : '',
+      indicador: parseFloat(spreadCortaVsCau) > 0.3 ? '🟢' : '🟡',
+      tag: parseFloat(spreadCortaVsCau) > 0.3 ? 'buy' : 'hold'
+    },
+    {
+      title: 'Arbitraje Cambiario: MEP vs CCL',
+      desc: `Spread entre MEP ($${fmt(mep)}) y CCL ($${fmt(ccl)}) es de ${brechaMepCcl}%. Bajo → conveniente para carry en pesos.`,
+      value: `${brechaMepCcl}%`,
+      unit: 'brecha',
+      clase: parseFloat(brechaMepCcl) < 3 ? 'active-opp' : parseFloat(brechaMepCcl) < 5 ? '' : 'active-warn',
+      indicador: parseFloat(brechaMepCcl) < 3 ? '🟢' : '🟡',
+      tag: parseFloat(brechaMepCcl) < 3 ? 'buy' : 'watch'
+    }
+  ];
+
+  oppCount = cards.filter(c => c.clase === 'active-opp').length;
+
+  document.getElementById('arbCards').innerHTML = cards.map(c => `
+    <div class="arb-card ${c.clase}">
+      <div>
+        <div class="arb-title">${c.indicador} ${c.title}</div>
+        <div class="arb-desc">${c.desc}</div>
+      </div>
+      <div class="arb-value">
+        <div class="arb-num" style="color:${c.clase==='active-opp'?'var(--green)':c.clase==='active-warn'?'var(--yellow)':'var(--muted)'};">${c.value}</div>
+        <div class="arb-unit">${c.unit}</div>
+        <div style="margin-top:6px;"><span class="tag ${c.tag}">${c.tag.toUpperCase()}</span></div>
+      </div>
+    </div>`).join('');
+
+  // Badge contador
+  document.getElementById('arbCount').textContent = `${oppCount} oportunidad${oppCount !== 1 ? 'es' : ''}`;
+  document.getElementById('arbCount').style.background = oppCount > 0 ? 'rgba(0,255,136,0.12)' : 'rgba(61,79,107,0.3)';
+  document.getElementById('arbCount').style.color = oppCount > 0 ? 'var(--green)' : 'var(--muted)';
+
+  return { oppCount, arbLargo, tieneOpp };
+}
+
+// ─── RENDER TABLA INSTRUMENTOS ────────────────────────────────
+function renderTabla() {
+  const mep = STATE.mepActual || 1430;
+  const cau = STATE.cauciones;
+
+  const rows = STATE.instrumentos.map(i => {
+    const breakeven = (mep * (1 + i.tem / 100 * (i.diasRestantes / 30.44))).toFixed(0);
+    const spread = (i.tem - cau.tem).toFixed(2);
+    const spreadNum = parseFloat(spread);
+    let señal = 'hold', señalLabel = 'HOLD';
+    if (spreadNum > 0.7) { señal = 'buy'; señalLabel = 'COMPRAR ✦'; }
+    else if (spreadNum > 0.3) { señal = 'watch'; señalLabel = 'MONITOREAR'; }
+    else if (spreadNum < 0) { señal = 'sell'; señalLabel = 'ROTAR'; }
+
+    return `<tr>
+      <td>
+        <span style="font-weight:700;color:${i.tipo==='BONCAP'?'var(--purple)':'var(--accent)'};">${i.ticker}</span>
+        <span style="color:var(--muted);font-size:0.65rem;margin-left:6px;">${i.tipo} · ${i.vto}</span>
+      </td>
+      <td style="color:var(--green);font-weight:700;">${fmtP(i.tem, 2)}%</td>
+      <td style="color:var(--text);">~${fmtP(i.tna, 1)}% TNA</td>
+      <td style="color:var(--yellow);">$${fmt(parseFloat(breakeven))}</td>
+      <td style="color:${spreadNum > 0.5?'var(--green)':spreadNum > 0?'var(--accent)':'var(--red)'};">${spreadNum > 0 ? '+' : ''}${spread}%</td>
+      <td><span class="tag ${señal}">${señalLabel}</span></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('ratesBody').innerHTML = rows +
+    `<tr style="background:rgba(61,79,107,0.1);">
+      <td colspan="1" style="color:var(--muted);">CAUCIÓN (referencia)</td>
+      <td style="color:var(--accent2);">${fmtP(cau.tem)}%</td>
+      <td style="color:var(--muted);">${fmtP(cau.tna, 1)}% TNA</td>
+      <td style="color:var(--muted);">—</td>
+      <td style="color:var(--muted);">base</td>
+      <td><span class="tag hold">BASE</span></td>
+    </tr>`;
+}
+
+// ─── RENDER SIGNAL BANNER ─────────────────────────────────────
+function renderSignalBanner(arbData) {
+  const banner = document.getElementById('signalBanner');
+  const title = document.getElementById('signalTitle');
+  const desc = document.getElementById('signalDesc');
+  const icon = document.getElementById('signalIcon');
+  const timeEl = document.getElementById('signalTime');
+
+  const mep = STATE.mepActual || 1430;
+  const banda = 1614;
+  const margenBanda = ((banda - mep) / mep * 100).toFixed(1);
+
+  banner.className = 'signal-banner';
+  if (arbData.tieneOpp && parseFloat(margenBanda) > 10) {
+    banner.classList.add('opp');
+    icon.textContent = '🟢';
+    title.textContent = `OPORTUNIDAD ACTIVA: BONCAPs largos con +${fmtP(arbData.arbLargo, 2)}% sobre la caución`;
+    desc.textContent = `El spread de tasas es favorable y el dólar tiene ${margenBanda}% de margen hasta la banda superior ($${fmt(banda)}). Condiciones óptimas para carry en instrumentos de tasa fija.`;
+  } else if (parseFloat(margenBanda) < 8) {
+    banner.classList.add('warn');
+    icon.textContent = '⚠️';
+    title.textContent = `ALERTA: El dólar MEP a $${fmt(mep)} está cerca del techo de la banda ($${fmt(banda)})`;
+    desc.textContent = `Margen cambiario de solo ${margenBanda}%. Reducir duration y preferir tramos cortos o instrumentos CER.`;
+  } else {
+    banner.classList.add('neutral');
+    icon.textContent = '📊';
+    title.textContent = `Mercado estable — ${arbData.oppCount > 0 ? arbData.oppCount + ' señal(es) de arbitraje activa(s)' : 'Sin señales urgentes'}`;
+    desc.textContent = `Dólar MEP a $${fmt(mep)}, margen de ${margenBanda}% hasta banda. Monitorear licitación del Tesoro ~11 Mar.`;
+  }
+  timeEl.textContent = `Última actualización: ${today()} · ${now()}`;
+}
+
+// ─── ANÁLISIS IA ──────────────────────────────────────────────
+async function analizarConIA() {
+  const btn = document.getElementById('iaBtn');
+  const output = document.getElementById('iaOutput');
+  btn.disabled = true;
+  btn.textContent = '⏳ Analizando...';
+  output.className = 'ia-output loading-text';
+  output.textContent = '';
+
+  const mep = STATE.mepActual || 1430;
+  const ccl = STATE.dolares?.contadoconliqui?.venta || 1469;
+  const cau = STATE.cauciones;
+  const instr = STATE.instrumentos;
+  const instrStr = instr.map(i => `${i.ticker} (${i.tipo}, vto ${i.vto}, TEM ${i.tem}%)`).join(', ');
+
+  const prompt = `Sos un experto financiero en mercado de capitales argentino. Analizá las condiciones del mercado al ${today()} y dá un diagnóstico de qué hacer HOY con instrumentos de tasa fija en pesos.
+
+Datos actuales de mercado:
+- Dólar MEP: $${fmt(mep)}
+- Dólar CCL: $${fmt(ccl)}  
+- Caución bursátil: ${cau.tna}% TNA (${fmtP(cau.tem)}% TEM)
+- Banda superior BCRA: $1.614 (margen: ${((1614-mep)/mep*100).toFixed(1)}%)
+- Instrumentos monitoreados: ${instrStr}
+- Contexto: No hay elecciones nacionales hasta 2027. Última licitación del Tesoro fue exitosa (rollover 123%). Próxima licitación ~11 Mar 2026.
+
+Respondé en 4 puntos concisos:
+1. DIAGNÓSTICO: Condición general del mercado hoy para carry trade
+2. SEÑAL PRINCIPAL: El arbitraje/instrumento más atractivo en este momento exacto
+3. ACCIÓN CONCRETA: Qué comprar/vender/mantener hoy y por qué
+4. RIESGO: Cuál es el principal riesgo a monitorear esta semana
+
+Sé directo, concreto y usando datos reales. Máximo 150 palabras.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    const text = data.content?.map(c => c.text || '').join('') || 'Error al obtener análisis.';
+
+    output.className = 'ia-output';
+    // Renderizar con saltos de línea
+    output.innerHTML = text
+      .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff;">$1</strong>')
+      .replace(/^(\d+\. )/gm, '<br><span style="color:var(--purple);font-weight:700;">$1</span>')
+      .replace(/\n/g, '<br>');
+
+    btn.textContent = '🔄 VOLVER A ANALIZAR';
+  } catch(e) {
+    output.className = 'ia-output';
+    output.innerHTML = `<span style="color:var(--red);">Error al conectar con el modelo de IA.</span> Verificá tu conexión.`;
+    btn.textContent = '🤖 ANALIZAR MERCADO AHORA CON IA';
+  }
+  btn.disabled = false;
+}
+
+// ─── FETCH RIESGO PAÍS VÍA CLAUDE AI ─────────────────────────
+async function fetchRiesgoPais() {
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 100,
+        tools: [{ type: "web_search_20250305", name: "web_search" }],
+        messages: [{
+          role: "user",
+          content: "Buscá el riesgo país de Argentina (EMBI) hoy. Respondé ÚNICAMENTE con un número entero, sin texto, sin puntos, sin unidades. Solo el número. Ejemplo: 542"
+        }]
+      })
+    });
+    const data = await res.json();
+    const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+    const val = parseInt(text.replace(/[^0-9]/g, ''));
+    if (!isNaN(val) && val > 100 && val < 5000) return val;
+    return null;
+  } catch(e) {
+    return null;
+  }
+}
+
+function renderRiesgoPais(bps) {
+  const dot = document.getElementById('rpDot');
+  const val = document.getElementById('rpValue');
+  const pill = document.getElementById('riesgoPaisPill');
+  if (!bps) {
+    dot.className = 'status-dot'; dot.style.background = 'var(--muted)';
+    val.textContent = '···'; val.style.color = 'var(--muted)';
+    return;
+  }
+  val.textContent = bps.toLocaleString('es-AR');
+  if (bps < 500) {
+    dot.className = 'status-dot live'; dot.style.background = 'var(--green)';
+    val.style.color = 'var(--green)';
+    pill.title = `Riesgo País: ${bps} bps — ✅ Nivel favorable para carry trade`;
+  } else if (bps < 650) {
+    dot.className = 'status-dot loading'; dot.style.background = 'var(--yellow)'; dot.style.animationDuration = '2s';
+    val.style.color = 'var(--yellow)';
+    pill.title = `Riesgo País: ${bps} bps — ⚠️ Nivel de precaución`;
+  } else {
+    dot.className = 'status-dot live'; dot.style.background = 'var(--red)'; dot.style.animationDuration = '0.5s';
+    val.style.color = 'var(--red)';
+    pill.title = `Riesgo País: ${bps} bps — 🔴 Nivel de alerta, reducir exposición`;
+  }
+  STATE.riesgoPais = bps;
+}
+
+// ─── LOAD ALL ─────────────────────────────────────────────────
+async function loadAll() {
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const refreshBtn = document.getElementById('refreshBtn');
+
+  statusDot.className = 'status-dot loading';
+  statusText.textContent = 'Actualizando...';
+  refreshBtn.classList.add('spinning');
+
+  const ok = await fetchDolares();
+  fetchRiesgoPais().then(bps => renderRiesgoPais(bps)); // async no bloqueante
+
+  renderKPIs();
+  renderGauges();
+  const arbData = renderArbitraje();
+  renderTabla();
+  renderSignalBanner(arbData);
+
+  STATE.lastFetch = new Date();
+  document.getElementById('lastUpdate').textContent = now();
+  document.getElementById('footerTime').textContent = `Datos al: ${now()} · ${ok ? 'API en línea' : 'Usando datos de referencia'}`;
+
+  statusDot.className = `status-dot ${ok ? 'live' : 'error'}`;
+  statusText.textContent = ok ? 'En vivo' : 'Sin API — datos ref.';
+  refreshBtn.classList.remove('spinning');
+}
+
+// ─── INIT ─────────────────────────────────────────────────────
+loadAll();
+// Auto-refresh cada 5 minutos
+setInterval(loadAll, 5 * 60 * 1000);
+</script>
+</body>
+</html>
