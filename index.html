@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -273,9 +274,69 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
   .header { padding: 12px 16px; }
   main { padding: 14px 16px; }
 }
+
+/* ── API KEY MODAL ───────────────────────────────────────── */
+.key-overlay {
+  position: fixed; inset: 0; z-index: 999;
+  background: rgba(4,5,8,0.96);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px);
+}
+.key-modal {
+  background: #0d1117; border: 1px solid #1e2d3d;
+  border-radius: 16px; padding: 32px 36px; width: 420px; max-width: 92vw;
+  position: relative;
+}
+.key-modal::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+  background: linear-gradient(90deg, var(--accent), var(--purple));
+  border-radius: 16px 16px 0 0;
+}
+.key-modal h2 { font-size: 1rem; font-weight: 800; color: #fff; margin-bottom: 6px; }
+.key-modal p { font-size: 0.74rem; color: var(--muted); line-height: 1.6; margin-bottom: 18px; }
+.key-modal label { font-size: 0.65rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); display: block; margin-bottom: 6px; }
+.key-modal input {
+  width: 100%; background: #070a0f; border: 1px solid #1e2d3d;
+  color: var(--accent); padding: 10px 14px; border-radius: 8px;
+  font-family: var(--mono); font-size: 0.78rem; outline: none;
+  transition: border-color 0.2s; margin-bottom: 6px;
+}
+.key-modal input:focus { border-color: var(--accent); }
+.key-modal .key-hint { font-size: 0.64rem; color: var(--muted); margin-bottom: 16px; }
+.key-modal .key-hint a { color: var(--accent); text-decoration: none; }
+.key-modal .key-hint a:hover { text-decoration: underline; }
+.key-modal .key-remember { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; font-size: 0.7rem; color: var(--muted); cursor: pointer; }
+.key-modal .key-remember input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+.key-submit {
+  width: 100%; background: linear-gradient(135deg, #0e7490, #0891b2);
+  border: none; color: #fff; padding: 11px; border-radius: 8px;
+  font-family: var(--mono); font-size: 0.8rem; font-weight: 700;
+  cursor: pointer; letter-spacing: 0.08em; transition: opacity 0.2s;
+}
+.key-submit:hover { opacity: 0.85; }
+.key-error { font-size: 0.68rem; color: var(--red); margin-top: 8px; display: none; }
+
 </style>
 </head>
 <body>
+
+<!-- API KEY MODAL -->
+<div class="key-overlay" id="keyOverlay" style="display:none;">
+  <div class="key-modal">
+    <h2>🔑 Ingresá tu API Key</h2>
+    <p>Para traer datos en tiempo real, el dashboard necesita tu clave de Anthropic. Se guarda solo en tu navegador y nunca se envía a ningún servidor externo.</p>
+    <label>Anthropic API Key</label>
+    <input type="password" id="keyInput" placeholder="sk-ant-api03-..." autocomplete="off" onkeydown="if(event.key==='Enter') submitKey()">
+    <div class="key-hint">Obtené tu key en <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a> → API Keys → Create Key</div>
+    <label class="key-remember">
+      <input type="checkbox" id="keyRemember" checked>
+      Recordar en este navegador
+    </label>
+    <button class="key-submit" onclick="submitKey()">CONECTAR →</button>
+    <div class="key-error" id="keyError">Key inválida. Verificá que empiece con sk-ant-</div>
+  </div>
+</div>
+
 
 <!-- HEADER -->
 <header class="header">
@@ -420,6 +481,40 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
 </footer>
 
 <script>
+// ─── API KEY MANAGEMENT ──────────────────────────────────────
+function getApiKey() {
+  return sessionStorage.getItem('arb_key') || localStorage.getItem('arb_key') || '';
+}
+
+function saveApiKey(key, remember) {
+  sessionStorage.setItem('arb_key', key);
+  if (remember) localStorage.setItem('arb_key', key);
+  else localStorage.removeItem('arb_key');
+}
+
+function checkKey() {
+  const key = getApiKey();
+  if (!key || !key.startsWith('sk-ant-')) {
+    document.getElementById('keyOverlay').style.display = 'flex';
+    return false;
+  }
+  return true;
+}
+
+function submitKey() {
+  const input = document.getElementById('keyInput').value.trim();
+  const remember = document.getElementById('keyRemember').checked;
+  const errEl = document.getElementById('keyError');
+  if (!input.startsWith('sk-ant-')) {
+    errEl.style.display = 'block';
+    return;
+  }
+  errEl.style.display = 'none';
+  saveApiKey(input, remember);
+  document.getElementById('keyOverlay').style.display = 'none';
+  loadAll();
+}
+
 // ─── ESTADO GLOBAL ───────────────────────────────────────────
 const STATE = {
   dolares: {},
@@ -447,7 +542,10 @@ async function fetchDolares() {
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json",
+        "x-api-key": getApiKey(),
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true" },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 500,
@@ -753,7 +851,10 @@ async function fetchRiesgoPais() {
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json",
+        "x-api-key": getApiKey(),
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true" },
       body: JSON.stringify({
         model: "claude-sonnet-4-20250514",
         max_tokens: 100,
