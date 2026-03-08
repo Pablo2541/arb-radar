@@ -18,22 +18,39 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .logo-mark { width: 36px; height: 36px; border: 2px solid var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); color: var(--accent); font-weight: 700; }
 .status-pill { display: flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border2); padding: 5px 12px; border-radius: 20px; font-size: 0.65rem; font-family: var(--mono); color: var(--muted); }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; }
-.status-dot.live { background: var(--green); }
+.status-dot.live { background: var(--green); box-shadow: 0 0 8px var(--green); }
 main { padding: 20px 28px; max-width: 1200px; margin: 0 auto; }
+
+/* Banner de Señales */
+.signal-banner { border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; border: 1px solid var(--border2); display: flex; align-items: flex-start; gap: 14px; background: rgba(61,79,107,0.1); border-left: 4px solid var(--muted); }
+.signal-banner.opp { background: rgba(0,255,136,0.05); border-left-color: var(--green); border-color: rgba(0,255,136,0.2); }
+
+/* KPIs */
 .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
-.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; border-bottom: 2px solid var(--muted); }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; position: relative; }
+.kpi::after { content: ''; position: absolute; bottom: 0; left: 0; width: 100%; height: 2px; background: var(--border2); }
 .kpi-label { font-size: 0.6rem; font-family: var(--mono); text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-.kpi-value { font-size: 1.6rem; font-weight: 800; font-family: var(--mono); }
+.kpi-value { font-size: 1.5rem; font-weight: 800; font-family: var(--mono); }
+
+/* Paneles y Gauges */
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 20px; }
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
 .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--surface2); }
-.panel-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
+.panel-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
+.gauge-item { margin-bottom: 12px; }
+.gauge-track { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin-top: 5px; }
+.gauge-fill { height: 100%; transition: width 0.8s ease; }
+
+/* Tabla */
 .rates-table { width: 100%; border-collapse: collapse; }
-.rates-table td, .rates-table th { padding: 12px 15px; text-align: left; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 0.75rem; }
+.rates-table th { padding: 12px; text-align: left; color: var(--muted); font-size: 0.6rem; font-family: var(--mono); text-transform: uppercase; }
+.rates-table td { padding: 12px; border-top: 1px solid var(--border); font-family: var(--mono); font-size: 0.75rem; }
+
 .tag { padding: 2px 7px; border-radius: 6px; font-size: 0.6rem; font-weight: 700; }
 .tag.buy { background: rgba(0,255,136,0.1); color: var(--green); }
 .tag.hold { background: rgba(61,79,107,0.2); color: var(--muted); }
-input, select { background: var(--surface2); border: 1px solid var(--border2); color: var(--text); padding: 10px; border-radius: 8px; width: 100%; font-family: var(--mono); }
+
+input, select { background: var(--surface2); border: 1px solid var(--border2); color: var(--text); padding: 10px; border-radius: 8px; width: 100%; font-family: var(--mono); font-size: 0.8rem; }
 @media(max-width:700px){ .kpi-grid, .two-col { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -43,89 +60,99 @@ input, select { background: var(--surface2); border: 1px solid var(--border2); c
   <div style="display:flex; align-items:center; gap:12px;">
     <div class="logo-mark">ARB</div>
     <div>
-      <h1 style="font-size:1.1rem;">ARB//RADAR</h1>
-      <p style="font-size:0.6rem; color:var(--muted);">MONITOR DE ARBITRAJE PROFESIONAL</p>
+      <h1 style="font-size:1.1rem; letter-spacing:1px;">ARB//RADAR</h1>
+      <p style="font-size:0.55rem; color:var(--muted); font-family:var(--mono);">MONITOR DE ARBITRAJE ARGENTINA</p>
     </div>
   </div>
-  <div style="display:flex; gap:10px;">
-    <div class="status-pill">EMBI: <span id="rpValue" style="color:var(--yellow)">---</span></div>
-    <div class="status-pill"><div class="status-dot live"></div> <span id="statusText">CONECTADO</span></div>
+  <div style="display:flex; gap:12px;">
+    <div class="status-pill">RP: <span id="rpValue" style="color:var(--yellow); font-weight:700;">---</span></div>
+    <div class="status-pill"><div class="status-dot live"></div> <span id="statusText">LIVE</span></div>
+    <button onclick="loadData()" style="background:none; border:none; color:var(--accent); cursor:pointer; font-family:var(--mono); font-size:0.7rem;">⟳</button>
   </div>
 </header>
 
 <main>
+  <div id="signalBanner" class="signal-banner">
+    <div style="font-size:1.5rem;" id="signalIcon">📡</div>
+    <div>
+      <h3 id="signalTitle" style="font-size:0.85rem; color:#fff;">Sincronizando datos...</h3>
+      <p id="signalDesc" style="font-size:0.7rem; color:var(--muted);">Analizando brechas y tasas de interés en tiempo real.</p>
+    </div>
+  </div>
+
   <div class="kpi-grid">
-    <div class="kpi">
-      <div class="kpi-label">// Dólar MEP (AL30)</div>
+    <div class="kpi" style="border-bottom-color: var(--accent);">
+      <div class="kpi-label">// Dólar MEP</div>
       <div class="kpi-value" id="valMep" style="color:var(--accent)">$---</div>
     </div>
-    <div class="kpi">
+    <div class="kpi" style="border-bottom-color: var(--yellow);">
       <div class="kpi-label">// Dólar CCL</div>
       <div class="kpi-value" id="valCcl" style="color:var(--yellow)">$---</div>
     </div>
-    <div class="kpi">
-      <div class="kpi-label">// Caución (TEM)</div>
+    <div class="kpi" style="border-bottom-color: var(--accent2);">
+      <div class="kpi-label">// Caución 1D</div>
       <div class="kpi-value" id="valCau" style="color:var(--accent2)">---%</div>
     </div>
-    <div class="kpi">
+    <div class="kpi" style="border-bottom-color: var(--green);">
       <div class="kpi-label">// Spread Promedio</div>
       <div class="kpi-value" id="valSpread" style="color:var(--green)">---%</div>
     </div>
   </div>
 
-  <div class="panel" style="border: 1px solid var(--accent);">
-    <div class="panel-header" style="background: rgba(0,229,255,0.05);">
-      <div class="panel-title">💰 SIMULADOR DE RETORNO NETO (POST-COMISIÓN)</div>
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-header"><div class="panel-title">📊 COMPARATIVA DE TASAS (TEM)</div></div>
+      <div class="panel-body" id="gaugeWrap"></div>
     </div>
-    <div class="panel-body" style="padding:20px;">
-      <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:15px; margin-bottom:20px;">
-        <div>
-          <label style="font-size:0.6rem; color:var(--muted);">INVERSIÓN EN PESOS</label>
+
+    <div class="panel" style="border: 1px solid var(--accent);">
+      <div class="panel-header" style="background: rgba(0,229,255,0.05);"><div class="panel-title">💰 CALCULADORA DE RETORNO</div></div>
+      <div class="panel-body">
+        <div style="margin-bottom:15px;">
+          <label style="font-size:0.6rem; color:var(--muted); display:block; margin-bottom:5px;">CAPITAL INVERTIDO ($)</label>
           <input type="number" id="simMonto" value="1000000" oninput="updateSim()">
         </div>
-        <div>
-          <label style="font-size:0.6rem; color:var(--muted);">INSTRUMENTO</label>
+        <div style="margin-bottom:15px;">
+          <label style="font-size:0.6rem; color:var(--muted); display:block; margin-bottom:5px;">INSTRUMENTO</label>
           <select id="simTicker" onchange="updateSim()"></select>
         </div>
-        <div>
-          <label style="font-size:0.6rem; color:var(--muted);">DÓLAR "COMPRADO" A:</label>
-          <div id="simDolarImpl" style="font-size:1.2rem; font-weight:800; color:var(--yellow); padding-top:5px;">$---</div>
-        </div>
-      </div>
-      <div style="background:rgba(0,0,0,0.2); padding:15px; border-radius:10px; display:flex; justify-content:space-around; text-align:center;">
-        <div>
-          <div style="font-size:0.6rem; color:var(--muted);">GANANCIA NETA FINAL</div>
-          <div id="simGanancia" style="font-size:1.1rem; color:var(--green); font-weight:700;">$0</div>
-        </div>
-        <div>
-          <div style="font-size:0.6rem; color:var(--muted);">DÓLARES FINALES</div>
-          <div id="simTotalUSD" style="font-size:1.1rem; color:var(--accent); font-weight:700;">u$s 0</div>
+        <div style="background:rgba(0,0,0,0.3); padding:12px; border-radius:8px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <span style="font-size:0.65rem; color:var(--muted);">Dólar MEP Implícito:</span>
+            <span id="simDolarImpl" style="font-weight:700; color:var(--yellow);">$---</span>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span style="font-size:0.65rem; color:var(--muted);">Ganancia Neta Final:</span>
+            <span id="simGanancia" style="font-weight:700; color:var(--green);">$---</span>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
   <div class="panel">
-    <div class="panel-header"><div class="panel-title">📋 TABLA DE INSTRUMENTOS (DIFERENCIAL DE TASA)</div></div>
-    <table class="rates-table">
-      <thead>
-        <tr>
-          <th>TICKER</th>
-          <th>TEM NOMINAL</th>
-          <th>TEM NETA (-COM)</th>
-          <th>SPREAD VS CAU.</th>
-          <th>ESTADO</th>
-        </tr>
-      </thead>
-      <tbody id="ratesBody"></tbody>
-    </table>
+    <div class="panel-header"><div class="panel-title">📋 INSTRUMENTOS TASA FIJA</div></div>
+    <div style="overflow-x:auto;">
+      <table class="rates-table">
+        <thead>
+          <tr>
+            <th>TICKER</th>
+            <th>TEM NOM.</th>
+            <th>TEM NET (-COM)</th>
+            <th>SPREAD CAU.</th>
+            <th>ESTADO</th>
+          </tr>
+        </thead>
+        <tbody id="ratesBody"></tbody>
+      </table>
+    </div>
   </div>
 </main>
 
 <script>
 const STATE = {
   dolares: {},
-  cauciones: { tem: 2.63 }, // Benchmark
+  cauciones: { tem: 2.63 },
   comision: 0.5,
   instrumentos: [
     { ticker: 'S16M6', vto: '16 Mar', dias: 9, tem: 3.10 },
@@ -142,8 +169,7 @@ function calcTEMNeta(temNominal, dias) {
   const meses = dias / 30.44;
   const costoTotal = STATE.comision * 2;
   const rendimientoTotal = (temNominal / 100) * meses;
-  const rendimientoNeto = rendimientoTotal - (costoTotal / 100);
-  return (rendimientoNeto / meses) * 100;
+  return ((rendimientoTotal - (costoTotal / 100)) / meses) * 100;
 }
 
 async function loadData() {
@@ -160,35 +186,56 @@ async function loadData() {
     document.getElementById('rpValue').textContent = Math.round(r.valor);
     
     renderAll();
-  } catch (e) { console.error(e); }
+  } catch (e) { console.error("Error cargando datos", e); }
 }
 
 function renderAll() {
   const body = document.getElementById('ratesBody');
   const select = document.getElementById('simTicker');
+  const gaugeWrap = document.getElementById('gaugeWrap');
   
-  let rows = "";
-  let options = "";
+  let rows = ""; let options = ""; let gauges = "";
   let sumaSpreads = 0;
 
+  // Renderizar Gauges y Tabla
   STATE.instrumentos.forEach(i => {
     const neta = calcTEMNeta(i.tem, i.dias);
     const spread = (neta - STATE.cauciones.tem).toFixed(2);
     sumaSpreads += parseFloat(spread);
+    const pct = Math.min(100, (i.tem / 4.5) * 100);
     
+    gauges += `
+      <div class="gauge-item">
+        <div style="display:flex; justify-content:space-between; font-size:0.65rem;">
+          <span>${i.ticker}</span><span>${i.tem}%</span>
+        </div>
+        <div class="gauge-track"><div class="gauge-fill" style="width:${pct}%; background:var(--accent)"></div></div>
+      </div>`;
+
     rows += `<tr>
-      <td><b>${i.ticker}</b><br><small>${i.vto}</small></td>
+      <td><b>${i.ticker}</b><br><small style="color:var(--muted)">vto: ${i.vto}</small></td>
       <td>${i.tem}%</td>
       <td style="color:var(--accent)">${neta.toFixed(2)}%</td>
       <td style="color:${spread > 0 ? 'var(--green)' : 'var(--red)'}">${spread}%</td>
       <td><span class="tag ${spread > 0.4 ? 'buy' : 'hold'}">${spread > 0.4 ? 'COMPRAR' : 'HOLD'}</span></td>
     </tr>`;
-    options += `<option value="${i.ticker}">${i.ticker}</option>`;
+    options += `<option value="${i.ticker}">${i.ticker} (${i.dias} días)</option>`;
   });
 
   body.innerHTML = rows;
   select.innerHTML = options;
-  document.getElementById('valSpread').textContent = (sumaSpreads / STATE.instrumentos.length).toFixed(2) + "%";
+  gaugeWrap.innerHTML = gauges;
+  const avgSpread = (sumaSpreads / STATE.instrumentos.length).toFixed(2);
+  document.getElementById('valSpread').textContent = avgSpread + "%";
+
+  // Actualizar Banner
+  const banner = document.getElementById('signalBanner');
+  if(avgSpread > 0.5) {
+    banner.className = "signal-banner opp";
+    document.getElementById('signalTitle').textContent = "🟢 OPORTUNIDAD ACTIVA: Spread favorable vs Caución";
+    document.getElementById('signalDesc').textContent = "El rendimiento de las letras justifica salir de tasa diaria para capturar el premio actual.";
+  }
+
   updateSim();
 }
 
@@ -196,7 +243,6 @@ function updateSim() {
   const monto = parseFloat(document.getElementById('simMonto').value) || 0;
   const ticker = document.getElementById('simTicker').value;
   const instr = STATE.instrumentos.find(i => i.ticker === ticker);
-  
   if (!instr || !STATE.mepActual) return;
 
   const temNeta = calcTEMNeta(instr.tem, instr.dias);
@@ -204,7 +250,6 @@ function updateSim() {
   const totalPesos = monto * (1 + rindeTotal);
   
   document.getElementById('simGanancia').textContent = `$${fmt(totalPesos - monto)}`;
-  document.getElementById('simTotalUSD').textContent = `u$s ${fmt(totalPesos / STATE.mepActual)}`;
   document.getElementById('simDolarImpl').textContent = `$${(STATE.mepActual / (1 + rindeTotal)).toFixed(2)}`;
 }
 
