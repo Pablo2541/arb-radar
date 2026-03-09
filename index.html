@@ -371,9 +371,97 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
 .rotate-alert h4 { font-size: 0.82rem; font-weight: 700; color: var(--yellow); margin-bottom: 4px; }
 .rotate-alert p  { font-size: 0.72rem; color: var(--muted); line-height: 1.5; }
 
+
+/* ── MODAL EDICIÓN TASAS ─────────────────────────────────── */
+.edit-overlay {
+  position: fixed; inset: 0; z-index: 998;
+  background: rgba(4,5,8,0.94);
+  display: none; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px);
+}
+.edit-overlay.open { display: flex; }
+.edit-modal {
+  background: #0d1117; border: 1px solid #1e2d3d;
+  border-radius: 16px; padding: 28px 32px;
+  width: 520px; max-width: 96vw; max-height: 90vh; overflow-y: auto;
+  position: relative;
+}
+.edit-modal::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+  background: linear-gradient(90deg, var(--yellow), var(--accent));
+  border-radius: 16px 16px 0 0;
+}
+.edit-modal h2 { font-size:0.95rem; font-weight:800; color:#fff; margin-bottom:4px; }
+.edit-modal .edit-sub { font-size:0.7rem; color:var(--muted); margin-bottom:20px; }
+.edit-section { font-size:0.62rem; font-family:var(--mono); text-transform:uppercase;
+  letter-spacing:0.1em; color:var(--muted); margin: 16px 0 8px; border-bottom:1px solid #1e2d3d; padding-bottom:4px; }
+.edit-row { display:grid; grid-template-columns:1fr 90px 90px; gap:8px; align-items:center; margin-bottom:8px; }
+.edit-row label { font-size:0.72rem; color:var(--text); }
+.edit-row input {
+  background:#070a0f; border:1px solid #1e2d3d; color:var(--accent);
+  padding:7px 10px; border-radius:6px; font-family:var(--mono);
+  font-size:0.75rem; outline:none; width:100%; text-align:center;
+  transition: border-color 0.2s;
+}
+.edit-row input:focus { border-color: var(--accent); }
+.edit-row .edit-hint { font-size:0.62rem; color:var(--muted); text-align:center; }
+.edit-caution { display:grid; grid-template-columns:1fr 90px 90px; gap:8px; align-items:center; margin-bottom:16px; }
+.edit-caution label { font-size:0.72rem; color:var(--text); }
+.edit-caution input { background:#070a0f; border:1px solid #1e2d3d; color:var(--accent2);
+  padding:7px 10px; border-radius:6px; font-family:var(--mono); font-size:0.75rem; outline:none; width:100%; text-align:center; }
+.edit-actions { display:flex; gap:10px; margin-top:20px; }
+.edit-save {
+  flex:1; background:linear-gradient(135deg,#0e7490,#0891b2);
+  border:none; color:#fff; padding:10px; border-radius:8px;
+  font-family:var(--mono); font-size:0.8rem; font-weight:700; cursor:pointer;
+}
+.edit-cancel {
+  background:rgba(61,79,107,0.3); border:1px solid #1e2d3d; color:var(--muted);
+  padding:10px 20px; border-radius:8px; font-family:var(--mono); font-size:0.8rem; cursor:pointer;
+}
+.edit-remember { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:0.7rem; color:var(--muted); cursor:pointer; }
+.edit-remember input[type=checkbox] { accent-color:var(--accent); width:14px; height:14px; }
+
 </style>
 </head>
 <body>
+
+<!-- MODAL EDICIÓN TASAS -->
+<div class="edit-overlay" id="editOverlay">
+  <div class="edit-modal">
+    <h2>✏️ Actualizar Tasas del Mercado</h2>
+    <p class="edit-sub">Ingresá los valores actuales de A Cuánto Está. Los campos vacíos mantienen el valor anterior.</p>
+
+    <div class="edit-section">Caución bursátil</div>
+    <div class="edit-caution">
+      <label>Caución 1 día</label>
+      <input type="number" id="ed_cau_tna" placeholder="TNA %" step="0.01">
+      <input type="number" id="ed_cau_tem" placeholder="TEM %" step="0.01">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 90px 90px;gap:8px;margin-bottom:16px;">
+      <div></div>
+      <div style="font-size:0.62rem;color:var(--muted);text-align:center;">TNA %</div>
+      <div style="font-size:0.62rem;color:var(--muted);text-align:center;">TEM %</div>
+    </div>
+
+    <div class="edit-section">LECAPs</div>
+    <div id="editLecaps"></div>
+
+    <div class="edit-section">BONCAPs</div>
+    <div id="editBoncaps"></div>
+
+    <label class="edit-remember">
+      <input type="checkbox" id="editRemember" checked>
+      Recordar en este navegador hasta la próxima actualización
+    </label>
+
+    <div class="edit-actions">
+      <button class="edit-cancel" onclick="cerrarEditor()">CANCELAR</button>
+      <button class="edit-save" onclick="guardarTasas()">✅ GUARDAR Y ACTUALIZAR</button>
+    </div>
+  </div>
+</div>
+
 
 <!-- API KEY MODAL -->
 <div class="key-overlay" id="keyOverlay" style="display:none;">
@@ -414,6 +502,7 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
       <span id="statusText">Cargando...</span>
     </div>
     <button class="refresh-btn" id="refreshBtn" onclick="loadAll()">⟳ ACTUALIZAR</button>
+    <button class="refresh-btn" onclick="abrirEditor()" style="background:rgba(255,210,63,0.1);border-color:rgba(255,210,63,0.3);color:var(--yellow);margin-left:6px;">✏️ TASAS</button>
   </div>
 </header>
 
@@ -656,6 +745,91 @@ function submitKey() {
   saveApiKey(input, remember);
   document.getElementById('keyOverlay').style.display = 'none';
   loadAll();
+}
+
+
+// ─── EDITOR DE TASAS ─────────────────────────────────────────
+function abrirEditor() {
+  // Poblar campos con valores actuales
+  document.getElementById('ed_cau_tna').value = STATE.cauciones.tna;
+  document.getElementById('ed_cau_tem').value = STATE.cauciones.tem;
+
+  // Generar filas de LECAPs y BONCAPs
+  ['editLecaps','editBoncaps'].forEach(id => {
+    const tipo = id === 'editLecaps' ? 'LECAP' : 'BONCAP';
+    const instr = STATE.instrumentos.filter(i => i.tipo === tipo);
+    document.getElementById(id).innerHTML = instr.map(i => `
+      <div class="edit-row">
+        <label>${i.ticker} <span style="color:var(--muted);font-size:0.65rem;">· ${i.vto}</span></label>
+        <input type="number" id="ed_${i.ticker}_tem" value="${i.tem}" step="0.01" placeholder="TEM %">
+        <input type="number" id="ed_${i.ticker}_dias" value="${i.diasRestantes}" step="1" placeholder="Días">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 90px 90px;gap:8px;margin-bottom:8px;">
+        <div></div>
+        <div style="font-size:0.62rem;color:var(--muted);text-align:center;">TEM %</div>
+        <div style="font-size:0.62rem;color:var(--muted);text-align:center;">Días restantes</div>
+      </div>`).join('');
+  });
+
+  document.getElementById('editOverlay').classList.add('open');
+}
+
+function cerrarEditor() {
+  document.getElementById('editOverlay').classList.remove('open');
+}
+
+function guardarTasas() {
+  // Caución
+  const cauTna = parseFloat(document.getElementById('ed_cau_tna').value);
+  const cauTem = parseFloat(document.getElementById('ed_cau_tem').value);
+  if (!isNaN(cauTna)) STATE.cauciones.tna = cauTna;
+  if (!isNaN(cauTem)) STATE.cauciones.tem = cauTem;
+
+  // Instrumentos
+  STATE.instrumentos.forEach(i => {
+    const temEl  = document.getElementById('ed_' + i.ticker + '_tem');
+    const diasEl = document.getElementById('ed_' + i.ticker + '_dias');
+    if (temEl  && !isNaN(parseFloat(temEl.value)))  i.tem = parseFloat(temEl.value);
+    if (diasEl && !isNaN(parseInt(diasEl.value)))    i.diasRestantes = parseInt(diasEl.value);
+    // Recalcular TNA aproximada
+    i.tna = parseFloat(((Math.pow(1 + i.tem/100, 12) - 1) * 100).toFixed(2));
+  });
+
+  // Guardar en localStorage si está tildado
+  if (document.getElementById('editRemember').checked) {
+    localStorage.setItem('arb_tasas', JSON.stringify({
+      cauciones: STATE.cauciones,
+      instrumentos: STATE.instrumentos.map(i => ({
+        ticker: i.ticker, tem: i.tem, diasRestantes: i.diasRestantes, tna: i.tna
+      }))
+    }));
+  }
+
+  cerrarEditor();
+
+  // Re-renderizar todo con los nuevos valores
+  renderGauges();
+  const arbData = renderArbitraje();
+  renderTabla();
+  renderSignalBanner(arbData);
+  renderSalidas();
+  renderRotacion();
+}
+
+// Cargar tasas guardadas al iniciar
+function cargarTasasGuardadas() {
+  try {
+    const saved = localStorage.getItem('arb_tasas');
+    if (!saved) return;
+    const data = JSON.parse(saved);
+    if (data.cauciones) STATE.cauciones = data.cauciones;
+    if (data.instrumentos) {
+      data.instrumentos.forEach(saved => {
+        const instr = STATE.instrumentos.find(i => i.ticker === saved.ticker);
+        if (instr) { instr.tem = saved.tem; instr.diasRestantes = saved.diasRestantes; instr.tna = saved.tna; }
+      });
+    }
+  } catch(e) { console.warn('cargarTasasGuardadas error:', e); }
 }
 
 // ─── ESTADO GLOBAL ───────────────────────────────────────────
@@ -1349,9 +1523,11 @@ if (ON_GITHUB) {
   }
 }
 
+cargarTasasGuardadas();
 if (checkKey()) loadAll();
 // Auto-refresh cada 5 minutos
-setInterval(() => { if (checkKey()) loadAll(); }, 5 * 60 * 1000);
+setInterval(() => { cargarTasasGuardadas();
+if (checkKey()) loadAll(); }, 5 * 60 * 1000);
 </script>
 </body>
 </html>
