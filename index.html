@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -558,6 +557,9 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
       <div class="ia-body">
         <div class="ia-output" id="iaOutput">Presioná el botón para que la IA analice las condiciones actuales del mercado y te diga qué hacer hoy.</div>
         <button class="ia-btn" id="iaBtn" onclick="analizarConIA()">🤖 ANALIZAR MERCADO AHORA CON IA</button>
+        <p id="iaNota" style="font-size:0.65rem;color:var(--muted);margin-top:8px;text-align:center;display:none;">
+          ℹ️ El análisis IA requiere API key de Anthropic. <a href="https://claude.ai" target="_blank" style="color:var(--accent);">Abrí el dashboard en Claude.ai</a> para usarlo.
+        </p>
       </div>
     </div>
   </div>
@@ -582,6 +584,8 @@ function saveApiKey(key, remember) {
 }
 
 function checkKey() {
+  // En GitHub Pages no se necesita key — las APIs son públicas
+  if (window.location.hostname === "pablo2541.github.io") return true;
   const key = getApiKey();
   if (!key || !key.startsWith('sk-ant-')) {
     document.getElementById('keyOverlay').style.display = 'flex';
@@ -1232,9 +1236,24 @@ async function loadAll() {
 }
 
 // ─── INIT ─────────────────────────────────────────────────────
-loadAll();
+const ON_GITHUB = window.location.hostname === "pablo2541.github.io";
+
+// En GitHub: saltear modal de key, deshabilitar botón IA
+if (ON_GITHUB) {
+  document.getElementById('keyOverlay').style.display = 'none';
+  const nota = document.getElementById('iaNota');
+  if (nota) nota.style.display = 'block';
+  const btn = document.getElementById('iaBtn');
+  if (btn) {
+    btn.textContent = '🤖 Análisis IA — disponible en Claude.ai';
+    btn.style.opacity = '0.5';
+    btn.disabled = true;
+  }
+}
+
+if (checkKey()) loadAll();
 // Auto-refresh cada 5 minutos
-setInterval(loadAll, 5 * 60 * 1000);
+setInterval(() => { if (checkKey()) loadAll(); }, 5 * 60 * 1000);
 </script>
 </body>
 </html>
