@@ -1304,7 +1304,7 @@ async function loadAll() {
   const startTime = Date.now();
 
   const ok = await fetchDolares();
-  fetchRiesgoPais().then(bps => renderRiesgoPais(bps)); // async no bloqueante
+  fetchRiesgoPais().then(bps => { renderRiesgoPais(bps); renderSalidas(); }); // re-render salidas con RP real
 
   renderKPIs();
   renderGauges();
