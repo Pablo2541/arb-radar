@@ -1152,10 +1152,24 @@ Respondé en 4 puntos concisos:
 
 Sé directo, concreto y usando datos reales. Máximo 150 palabras.`;
 
+  const apiKey = getApiKey();
+  if (!apiKey || !apiKey.startsWith('sk-ant-')) {
+    output.className = 'ia-output';
+    output.innerHTML = `<span style="color:var(--yellow);">⚠️ Ingresá tu API key de Anthropic arriba para usar el análisis IA.</span>`;
+    btn.disabled = false;
+    btn.textContent = '🤖 ANALIZAR MERCADO AHORA CON IA';
+    return;
+  }
+
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
