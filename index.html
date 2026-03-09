@@ -556,10 +556,28 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
       </div>
       <div class="ia-body">
         <div class="ia-output" id="iaOutput">Presioná el botón para que la IA analice las condiciones actuales del mercado y te diga qué hacer hoy.</div>
+
+        <!-- Campo de key inline (visible solo en GitHub) -->
+        <div id="iaKeyRow" style="display:none;margin-bottom:12px;background:#070a0f;border:1px solid #1e2d3d;border-radius:8px;padding:12px 14px;">
+          <div style="font-size:0.62rem;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:6px;">
+            🔑 API Key de Anthropic — <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent);text-decoration:none;">Obtener en console.anthropic.com</a>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="password" id="iaKeyInput" placeholder="sk-ant-api03-..."
+              style="flex:1;background:#0a0c14;border:1px solid #1e2d3d;color:var(--accent);padding:8px 12px;border-radius:6px;font-family:var(--mono);font-size:0.75rem;outline:none;"
+              onkeydown="if(event.key==='Enter') guardarIaKey()">
+            <button onclick="guardarIaKey()"
+              style="background:rgba(168,85,247,0.2);border:1px solid rgba(168,85,247,0.4);color:var(--purple);padding:8px 14px;border-radius:6px;font-family:var(--mono);font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;">
+              GUARDAR
+            </button>
+            <button onclick="borrarIaKey()"
+              style="background:rgba(255,61,90,0.1);border:1px solid rgba(255,61,90,0.25);color:var(--red);padding:8px 10px;border-radius:6px;font-family:var(--mono);font-size:0.72rem;cursor:pointer;"
+              title="Borrar key guardada">✕</button>
+          </div>
+          <div id="iaKeyStatus" style="font-size:0.65rem;color:var(--muted);margin-top:5px;"></div>
+        </div>
+
         <button class="ia-btn" id="iaBtn" onclick="analizarConIA()">🤖 ANALIZAR MERCADO AHORA CON IA</button>
-        <p id="iaNota" style="font-size:0.65rem;color:var(--muted);margin-top:8px;text-align:center;display:none;">
-          ℹ️ El análisis IA requiere API key de Anthropic. <a href="https://claude.ai" target="_blank" style="color:var(--accent);">Abrí el dashboard en Claude.ai</a> para usarlo.
-        </p>
       </div>
     </div>
   </div>
@@ -574,6 +592,10 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
 <script>
 // ─── API KEY MANAGEMENT ──────────────────────────────────────
 function getApiKey() {
+  // En GitHub: usar la key de IA guardada específicamente
+  if (window.location.hostname === "pablo2541.github.io") {
+    return localStorage.getItem('arb_ia_key') || '';
+  }
   return sessionStorage.getItem('arb_key') || localStorage.getItem('arb_key') || '';
 }
 
@@ -583,8 +605,36 @@ function saveApiKey(key, remember) {
   else localStorage.removeItem('arb_key');
 }
 
+// Key de IA para GitHub (separada de la key del dashboard)
+function guardarIaKey() {
+  const input = document.getElementById('iaKeyInput').value.trim();
+  const status = document.getElementById('iaKeyStatus');
+  if (!input.startsWith('sk-ant-')) {
+    status.style.color = 'var(--red)';
+    status.textContent = '❌ Key inválida — debe empezar con sk-ant-';
+    return;
+  }
+  localStorage.setItem('arb_ia_key', input);
+  document.getElementById('iaKeyInput').value = '';
+  status.style.color = 'var(--green)';
+  status.textContent = '✅ Key guardada en este navegador';
+  document.getElementById('iaBtn').disabled = false;
+  document.getElementById('iaBtn').style.opacity = '1';
+  document.getElementById('iaBtn').textContent = '🤖 ANALIZAR MERCADO AHORA CON IA';
+}
+
+function borrarIaKey() {
+  localStorage.removeItem('arb_ia_key');
+  const status = document.getElementById('iaKeyStatus');
+  status.style.color = 'var(--muted)';
+  status.textContent = 'Key borrada.';
+  document.getElementById('iaBtn').disabled = true;
+  document.getElementById('iaBtn').style.opacity = '0.5';
+  document.getElementById('iaBtn').textContent = '🤖 Análisis IA — ingresá tu key arriba';
+}
+
 function checkKey() {
-  // En GitHub Pages no se necesita key — las APIs son públicas
+  // En GitHub Pages no se necesita key para los datos — solo para el análisis IA
   if (window.location.hostname === "pablo2541.github.io") return true;
   const key = getApiKey();
   if (!key || !key.startsWith('sk-ant-')) {
@@ -1238,16 +1288,20 @@ async function loadAll() {
 // ─── INIT ─────────────────────────────────────────────────────
 const ON_GITHUB = window.location.hostname === "pablo2541.github.io";
 
-// En GitHub: saltear modal de key, deshabilitar botón IA
+// En GitHub: saltear modal de key del dashboard, mostrar campo de key IA
 if (ON_GITHUB) {
   document.getElementById('keyOverlay').style.display = 'none';
-  const nota = document.getElementById('iaNota');
-  if (nota) nota.style.display = 'block';
+  // Mostrar el campo de key inline en el panel IA
+  const iaKeyRow = document.getElementById('iaKeyRow');
+  if (iaKeyRow) iaKeyRow.style.display = 'block';
+  // Verificar si ya tiene key guardada
+  const iaKeySaved = localStorage.getItem('arb_ia_key');
   const btn = document.getElementById('iaBtn');
-  if (btn) {
-    btn.textContent = '🤖 Análisis IA — disponible en Claude.ai';
-    btn.style.opacity = '0.5';
-    btn.disabled = true;
+  const status = document.getElementById('iaKeyStatus');
+  if (iaKeySaved) {
+    if (status) { status.style.color = 'var(--green)'; status.textContent = '✅ Key guardada — listo para analizar'; }
+  } else {
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; btn.textContent = '🤖 Análisis IA — ingresá tu key arriba'; }
   }
 }
 
