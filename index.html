@@ -1212,33 +1212,18 @@ Sé directo, concreto y usando datos reales. Máximo 150 palabras.`;
 
 // ─── FETCH RIESGO PAÍS — cascada de fuentes ──────────────────
 async function fetchRiesgoPais() {
-  // Fuente 1: CriptoYa — actualización cada 5 minutos, siempre disponible
+  // Fuente 1: Cloudflare Worker propio (proxy sin CORS) → ArgentinaDatos
   try {
-    const res = await fetch("https://criptoya.com/api/riesgopais");
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    // Respuesta esperada: { "valor": 593, ... } o simplemente el número
-    const val = parseInt(typeof data === 'number' ? data : (data.valor || data.value || data));
-    if (!isNaN(val) && val > 100 && val < 10000) {
-      console.log("fetchRiesgoPais [criptoya]:", val);
-      return val;
-    }
-  } catch(e) {
-    console.warn("fetchRiesgoPais [criptoya] fallback:", e.message);
-  }
-
-  // Fuente 2: ArgentinaDatos — se actualiza al cierre de rueda
-  try {
-    const res = await fetch("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo");
+    const res = await fetch("https://winter-paper-ea1epabsimeon.pabsimeon.workers.dev");
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     const val = parseInt(data.valor);
     if (!isNaN(val) && val > 100 && val < 10000) {
-      console.log("fetchRiesgoPais [argentinadatos]:", val);
+      console.log("fetchRiesgoPais [worker]:", val);
       return val;
     }
   } catch(e) {
-    console.warn("fetchRiesgoPais [argentinadatos] fallback:", e.message);
+    console.warn("fetchRiesgoPais [worker] fallback:", e.message);
   }
 
   // Fuente 3: API Anthropic con web search (Claude.ai)
@@ -1276,8 +1261,8 @@ async function fetchRiesgoPais() {
   }
 
   // Fallback final: último valor conocido
-  console.warn("fetchRiesgoPais: usando fallback manual 593 bps (10/03/2026)");
-  return 593;
+  console.warn("fetchRiesgoPais: usando fallback manual 575 bps (06/03/2026)");
+  return 575;
 }
 
 function renderRiesgoPais(bps) {
