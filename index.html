@@ -1210,52 +1210,74 @@ Sé directo, concreto y usando datos reales. Máximo 150 palabras.`;
   btn.disabled = false;
 }
 
-// ─── FETCH RIESGO PAÍS — auto-detección de entorno ───────────
+// ─── FETCH RIESGO PAÍS — cascada de fuentes ──────────────────
 async function fetchRiesgoPais() {
-  // GitHub Pages → argentinadatos.com directo
-  if (IS_GITHUB) {
-    try {
-      const res = await fetch("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo");
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const data = await res.json();
-      const val = parseInt(data.valor);
-      if (!isNaN(val) && val > 100 && val < 10000) return val;
-    } catch(e) {
-      console.warn("fetchRiesgoPais [github] fallback:", e.message);
+  // Fuente 1: CriptoYa — actualización cada 5 minutos, siempre disponible
+  try {
+    const res = await fetch("https://criptoya.com/api/riesgopais");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    // Respuesta esperada: { "valor": 593, ... } o simplemente el número
+    const val = parseInt(typeof data === 'number' ? data : (data.valor || data.value || data));
+    if (!isNaN(val) && val > 100 && val < 10000) {
+      console.log("fetchRiesgoPais [criptoya]:", val);
+      return val;
     }
+  } catch(e) {
+    console.warn("fetchRiesgoPais [criptoya] fallback:", e.message);
   }
 
-  // Claude.ai u otro entorno → API Anthropic con web search
+  // Fuente 2: ArgentinaDatos — se actualiza al cierre de rueda
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": getApiKey(),
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 50,
-        tools: [{ type: "web_search_20250305", name: "web_search" }],
-        messages: [{
-          role: "user",
-          content: "Buscá el riesgo país de Argentina EMBI hoy. Respondé ÚNICAMENTE con el número entero, sin texto ni unidades. Ejemplo: 542"
-        }]
-      })
-    });
+    const res = await fetch("https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo");
+    if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
-    const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
-    const val = parseInt(text.replace(/[^0-9]/g, ""));
-    if (!isNaN(val) && val > 100 && val < 10000) return val;
+    const val = parseInt(data.valor);
+    if (!isNaN(val) && val > 100 && val < 10000) {
+      console.log("fetchRiesgoPais [argentinadatos]:", val);
+      return val;
+    }
+  } catch(e) {
+    console.warn("fetchRiesgoPais [argentinadatos] fallback:", e.message);
+  }
+
+  // Fuente 3: API Anthropic con web search (Claude.ai)
+  try {
+    const key = getApiKey();
+    if (key && key.startsWith('sk-ant-')) {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 50,
+          tools: [{ type: "web_search_20250305", name: "web_search" }],
+          messages: [{
+            role: "user",
+            content: "Buscá el riesgo país de Argentina EMBI ahora. Respondé ÚNICAMENTE con el número entero, sin texto ni unidades. Ejemplo: 593"
+          }]
+        })
+      });
+      const data = await res.json();
+      const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+      const val = parseInt(text.replace(/[^0-9]/g, ""));
+      if (!isNaN(val) && val > 100 && val < 10000) {
+        console.log("fetchRiesgoPais [anthropic]:", val);
+        return val;
+      }
+    }
   } catch(e) {
     console.warn("fetchRiesgoPais [anthropic] fallback:", e.message);
   }
 
-  // Fallback final: último valor conocido (actualizar manualmente si es necesario)
-  console.warn("fetchRiesgoPais: usando fallback manual — 575 bps (cierre 06/03/2026)");
-  return 575;
+  // Fallback final: último valor conocido
+  console.warn("fetchRiesgoPais: usando fallback manual 593 bps (10/03/2026)");
+  return 593;
 }
 
 function renderRiesgoPais(bps) {
