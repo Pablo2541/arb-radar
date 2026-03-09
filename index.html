@@ -1253,7 +1253,9 @@ async function fetchRiesgoPais() {
     console.warn("fetchRiesgoPais [anthropic] fallback:", e.message);
   }
 
-  return null;
+  // Fallback final: último valor conocido (actualizar manualmente si es necesario)
+  console.warn("fetchRiesgoPais: usando fallback manual — 575 bps (cierre 06/03/2026)");
+  return 575;
 }
 
 function renderRiesgoPais(bps) {
@@ -1292,6 +1294,8 @@ async function loadAll() {
   statusText.textContent = 'Actualizando...';
   refreshBtn.classList.add('spinning');
 
+  const startTime = Date.now();
+
   const ok = await fetchDolares();
   fetchRiesgoPais().then(bps => renderRiesgoPais(bps)); // async no bloqueante
 
@@ -1311,6 +1315,10 @@ async function loadAll() {
   statusDot.className = `status-dot ${ok ? 'live' : 'error'}`;
   const fuente = ok ? (IS_GITHUB ? 'En vivo · dolarapi' : 'En vivo · IA') : 'Datos ref.';
   statusText.textContent = fuente;
+
+  // Spinner visible mínimo 800ms
+  const elapsed = Date.now() - startTime;
+  if (elapsed < 800) await new Promise(r => setTimeout(r, 800 - elapsed));
   refreshBtn.classList.remove('spinning');
 }
 
