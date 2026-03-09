@@ -1177,10 +1177,25 @@ Sé directo, concreto y usando datos reales. Máximo 150 palabras.`;
       })
     });
     const data = await res.json();
-    const text = data.content?.map(c => c.text || '').join('') || 'Error al obtener análisis.';
+
+    // Si la API devolvió un error, mostrarlo claramente
+    if (data.error) {
+      output.className = 'ia-output';
+      output.innerHTML = '<span style="color:var(--red);">❌ Error API (' + data.error.type + '):</span><br><span style="color:var(--yellow);">' + data.error.message + '</span>';
+      btn.textContent = '🤖 ANALIZAR MERCADO AHORA CON IA';
+      btn.disabled = false;
+      return;
+    }
+
+    const text = (data.content || []).map(c => c.text || '').join('');
+    if (!text) {
+      output.innerHTML = '<span style="color:var(--red);">Respuesta vacía.</span><br><pre style="font-size:0.6rem;color:var(--muted);white-space:pre-wrap;">' + JSON.stringify(data, null, 2) + '</pre>';
+      btn.textContent = '🤖 ANALIZAR MERCADO AHORA CON IA';
+      btn.disabled = false;
+      return;
+    }
 
     output.className = 'ia-output';
-    // Renderizar con saltos de línea
     output.innerHTML = text
       .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff;">$1</strong>')
       .replace(/^(\d+\. )/gm, '<br><span style="color:var(--purple);font-weight:700;">$1</span>')
@@ -1189,7 +1204,7 @@ Sé directo, concreto y usando datos reales. Máximo 150 palabras.`;
     btn.textContent = '🔄 VOLVER A ANALIZAR';
   } catch(e) {
     output.className = 'ia-output';
-    output.innerHTML = `<span style="color:var(--red);">Error al conectar con el modelo de IA.</span> Verificá tu conexión.`;
+    output.innerHTML = '<span style="color:var(--red);">❌ Error de red: </span>' + e.message;
     btn.textContent = '🤖 ANALIZAR MERCADO AHORA CON IA';
   }
   btn.disabled = false;
