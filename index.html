@@ -7,75 +7,38 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #040508;
-  --surface: #090c12;
-  --surface2: #0e1220;
-  --border: #161d2e;
-  --border2: #1e2840;
-  --text: #c8d4e8;
-  --muted: #7a90b0;
-  --accent: #00e5ff;
-  --accent2: #ff6b35;
-  --green: #00ff88;
-  --red: #ff3d5a;
-  --yellow: #ffd23f;
-  --purple: #a855f7;
-  --mono: 'Space Mono', monospace;
-  --sans: 'Syne', sans-serif;
+--bg: #040508; --surface: #090c12; --surface2: #0e1220;
+--border: #161d2e; --border2: #1e2840;
+--text: #c8d4e8; --muted: #7a90b0;
+--accent: #00e5ff; --accent2: #ff6b35;
+--green: #00ff88; --red: #ff3d5a; --yellow: #ffd23f; --purple: #a855f7;
+--mono: 'Space Mono', monospace; --sans: 'Syne', sans-serif;
 }
-
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
-body {
-  font-family: var(--sans);
-  background: var(--bg);
-  color: var(--text);
-  min-height: 100vh;
-  overflow-x: hidden;
-}
-
-/* GRID BG */
+body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
 body::before {
-  content: '';
-  position: fixed; inset: 0; z-index: 0;
-  background-image:
-    linear-gradient(rgba(0,229,255,0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,229,255,0.025) 1px, transparent 1px);
-  background-size: 40px 40px;
-  pointer-events: none;
+  content: ''; position: fixed; inset: 0; z-index: 0;
+  background-image: linear-gradient(rgba(0,229,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(0,229,255,0.025) 1px, transparent 1px);
+  background-size: 40px 40px; pointer-events: none;
 }
-
-/* SCAN LINE */
 body::after {
-  content: '';
-  position: fixed; top: 0; left: 0; right: 0; height: 2px;
+  content: ''; position: fixed; top: 0; left: 0; right: 0; height: 2px;
   background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  z-index: 100;
-  animation: scan 4s linear infinite;
-  opacity: 0.4;
+  z-index: 100; animation: scan 4s linear infinite; opacity: 0.4;
 }
 @keyframes scan { from { top: 0; } to { top: 100vh; } }
-
-/* HEADER */
 .header {
   position: relative; z-index: 10;
   display: flex; align-items: center; justify-content: space-between;
-  padding: 18px 28px;
-  border-bottom: 1px solid var(--border2);
-  background: rgba(9,12,18,0.95);
-  backdrop-filter: blur(12px);
+  padding: 18px 28px; border-bottom: 1px solid var(--border2);
+  background: rgba(9,12,18,0.95); backdrop-filter: blur(12px);
 }
-.logo {
-  display: flex; align-items: center; gap: 12px;
-}
+.logo { display: flex; align-items: center; gap: 12px; }
 .logo-mark {
-  width: 36px; height: 36px;
-  border: 2px solid var(--accent);
-  border-radius: 8px;
+  width: 36px; height: 36px; border: 2px solid var(--accent); border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--mono); font-size: 0.65rem; color: var(--accent);
-  font-weight: 700;
-  position: relative;
+  font-family: var(--mono); font-size: 0.65rem; color: var(--accent); font-weight: 700;
   animation: borderPulse 2s ease-in-out infinite;
 }
 @keyframes borderPulse {
@@ -84,8 +47,7 @@ body::after {
 }
 .logo-text h1 { font-size: 1.1rem; font-weight: 800; color: #fff; letter-spacing: 0.05em; }
 .logo-text p { font-size: 0.62rem; color: var(--muted); font-family: var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
-
-.header-right { display: flex; align-items: center; gap: 14px; }
+.header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .status-pill {
   display: flex; align-items: center; gap: 6px;
   background: var(--surface2); border: 1px solid var(--border2);
@@ -97,99 +59,62 @@ body::after {
 .status-dot.loading { background: var(--yellow); animation: blink 0.6s ease-in-out infinite; }
 .status-dot.error { background: var(--red); }
 @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.3} }
-
 .refresh-btn {
   background: var(--surface2); border: 1px solid var(--border2);
   color: var(--accent); padding: 6px 14px; border-radius: 8px;
   font-size: 0.72rem; font-family: var(--mono); font-weight: 700;
-  cursor: pointer; letter-spacing: 0.08em;
-  transition: all 0.2s;
+  cursor: pointer; letter-spacing: 0.08em; transition: all 0.2s;
 }
 .refresh-btn:hover { background: rgba(0,229,255,0.1); border-color: var(--accent); }
 .refresh-btn:active { transform: scale(0.96); }
 .refresh-btn.spinning { animation: spin 0.8s linear infinite; }
 @keyframes spin { from{transform:rotate(0deg)}to{transform:rotate(360deg)} }
-
-/* MAIN */
 main { position: relative; z-index: 5; padding: 20px 28px; }
-
-/* SIGNAL BANNER */
 .signal-banner {
-  border-radius: 12px; padding: 16px 20px;
-  margin-bottom: 20px; border: 1px solid;
-  display: flex; align-items: flex-start; gap: 14px;
-  font-size: 0.82rem; line-height: 1.6;
-  transition: all 0.4s ease;
-  position: relative; overflow: hidden;
+  border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; border: 1px solid;
+  display: flex; align-items: flex-start; gap: 14px; font-size: 0.82rem; line-height: 1.6;
+  transition: all 0.4s ease; position: relative; overflow: hidden;
 }
-.signal-banner::before {
-  content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 4px;
-}
+.signal-banner::before { content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 4px; }
 .signal-banner.neutral { background: rgba(61,79,107,0.15); border-color: var(--border2); }
 .signal-banner.neutral::before { background: var(--muted); }
 .signal-banner.opp { background: rgba(0,255,136,0.07); border-color: rgba(0,255,136,0.3); }
 .signal-banner.opp::before { background: var(--green); }
 .signal-banner.warn { background: rgba(255,210,63,0.07); border-color: rgba(255,210,63,0.3); }
 .signal-banner.warn::before { background: var(--yellow); }
-.signal-banner.alert { background: rgba(255,61,90,0.07); border-color: rgba(255,61,90,0.3); }
-.signal-banner.alert::before { background: var(--red); }
 .signal-icon { font-size: 1.5rem; line-height: 1; flex-shrink: 0; }
 .signal-content h3 { font-size: 0.85rem; font-weight: 700; margin-bottom: 4px; }
 .signal-content p { font-size: 0.75rem; color: var(--muted); }
 .signal-content .signal-timestamp { font-family: var(--mono); font-size: 0.62rem; color: var(--muted); margin-top: 6px; }
-
-/* GRID */
 .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
 .kpi {
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 12px; padding: 16px 16px 14px;
-  position: relative; overflow: hidden;
-  transition: border-color 0.2s;
+  border-radius: 12px; padding: 16px 16px 14px; position: relative; overflow: hidden; transition: border-color 0.2s;
 }
 .kpi:hover { border-color: var(--border2); }
-.kpi::after {
-  content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px;
-}
+.kpi::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; }
 .kpi.oficial::after { background: linear-gradient(90deg, var(--muted), transparent); }
 .kpi.mep::after { background: linear-gradient(90deg, var(--accent), transparent); }
 .kpi.ccl::after { background: linear-gradient(90deg, var(--yellow), transparent); }
 .kpi.blue::after { background: linear-gradient(90deg, var(--accent2), transparent); }
-
 .kpi-label { font-size: 0.6rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 8px; }
 .kpi-value { font-size: 1.6rem; font-weight: 800; font-family: var(--mono); line-height: 1; }
 .kpi-sub { font-size: 0.64rem; color: var(--muted); margin-top: 6px; font-family: var(--mono); }
-.kpi-change { display: inline-flex; align-items: center; gap: 3px; font-size: 0.65rem; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin-top: 4px; font-family: var(--mono); }
-.kpi-change.up { background: rgba(255,61,90,0.15); color: var(--red); }
-.kpi-change.down { background: rgba(0,255,136,0.1); color: var(--green); }
-.kpi-change.flat { background: rgba(61,79,107,0.3); color: var(--muted); }
-
-/* TWO COL */
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-
-/* PANEL */
-.panel {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 14px; overflow: hidden;
-}
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
 .panel-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 18px; border-bottom: 1px solid var(--border);
-  background: var(--surface2);
+  padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--surface2);
 }
 .panel-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text); display: flex; align-items: center; gap: 8px; }
 .panel-title span { font-size: 0.9rem; }
 .panel-badge { font-size: 0.58rem; padding: 2px 8px; border-radius: 8px; font-family: var(--mono); font-weight: 700; }
 .panel-body { padding: 16px 18px; }
-
-/* ARBITRAJE CARDS */
 .arb-cards { display: flex; flex-direction: column; gap: 10px; }
 .arb-card {
-  background: var(--surface2); border: 1px solid var(--border);
-  border-radius: 10px; padding: 14px 16px;
-  display: grid; grid-template-columns: 1fr auto;
-  align-items: center; gap: 12px;
-  transition: border-color 0.2s, background 0.2s;
-  cursor: default;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px;
+  transition: border-color 0.2s, background 0.2s; cursor: default;
 }
 .arb-card:hover { border-color: var(--border2); background: rgba(30,40,64,0.8); }
 .arb-card.active-opp { border-color: rgba(0,255,136,0.4); background: rgba(0,255,136,0.04); }
@@ -199,53 +124,29 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
 .arb-value { text-align: right; }
 .arb-num { font-family: var(--mono); font-size: 1.1rem; font-weight: 700; }
 .arb-unit { font-size: 0.6rem; color: var(--muted); font-family: var(--mono); }
-
-/* GAUGE */
 .gauge-wrap { display: flex; flex-direction: column; gap: 12px; }
-.gauge-item { }
 .gauge-label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
 .gauge-name { font-size: 0.7rem; color: var(--text); font-family: var(--mono); }
 .gauge-val { font-size: 0.72rem; font-weight: 700; font-family: var(--mono); }
 .gauge-track { height: 8px; background: var(--surface2); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
 .gauge-fill { height: 100%; border-radius: 4px; transition: width 0.8s cubic-bezier(0.4,0,0.2,1); }
-
-/* IA ANALYSIS */
 .ia-section { margin-bottom: 20px; }
-.ia-panel {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 14px; overflow: hidden;
-}
+.ia-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
 .ia-header {
   padding: 14px 18px; border-bottom: 1px solid var(--border);
-  background: linear-gradient(135deg, rgba(168,85,247,0.1), var(--surface2));
+  background: linear-gradient(135deg, rgba(0,229,255,0.1), var(--surface2));
   display: flex; align-items: center; justify-content: space-between;
 }
-.ia-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--purple); display: flex; align-items: center; gap: 8px; }
+.ia-title { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); display: flex; align-items: center; gap: 8px; }
 .ia-body { padding: 20px 22px; }
-.ia-output {
-  font-size: 0.8rem; line-height: 1.75; color: var(--text);
-  min-height: 80px;
-}
-.ia-output.loading-text::after {
-  content: '▋';
-  animation: cursor-blink 0.8s step-end infinite;
-  color: var(--purple);
-}
-@keyframes cursor-blink { 0%,100%{opacity:1}50%{opacity:0} }
-
+.ia-output { font-size: 0.8rem; line-height: 1.75; color: var(--text); min-height: 80px; }
 .ia-btn {
-  margin-top: 14px;
-  background: linear-gradient(135deg, rgba(168,85,247,0.2), rgba(168,85,247,0.1));
-  border: 1px solid rgba(168,85,247,0.4);
-  color: var(--purple); padding: 9px 18px; border-radius: 8px;
+  margin-top: 14px; background: linear-gradient(135deg, rgba(0,229,255,0.2), rgba(0,229,255,0.1));
+  border: 1px solid rgba(0,229,255,0.4); color: var(--accent); padding: 9px 18px; border-radius: 8px;
   font-size: 0.75rem; font-family: var(--mono); font-weight: 700;
-  cursor: pointer; letter-spacing: 0.08em;
-  transition: all 0.2s; width: 100%;
+  cursor: pointer; letter-spacing: 0.08em; transition: all 0.2s; width: 100%;
 }
-.ia-btn:hover { background: rgba(168,85,247,0.25); border-color: var(--purple); }
-.ia-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
-/* TASAS TABLE */
+.ia-btn:hover { background: rgba(0,229,255,0.25); border-color: var(--accent); }
 .rates-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
 .rates-table th { padding: 8px 10px; text-align: left; color: var(--muted); font-size: 0.62rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; border-bottom: 1px solid var(--border); font-weight: 400; }
 .rates-table td { padding: 10px 10px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 0.74rem; }
@@ -256,76 +157,23 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
 .tag.sell { background: rgba(255,61,90,0.12); color: var(--red); border: 1px solid rgba(255,61,90,0.2); }
 .tag.hold { background: rgba(61,79,107,0.3); color: var(--muted); border: 1px solid var(--border); }
 .tag.watch { background: rgba(255,210,63,0.12); color: var(--yellow); border: 1px solid rgba(255,210,63,0.2); }
-
-/* FOOTER */
-.footer { position: relative; z-index: 5; padding: 14px 28px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.footer {
+  position: relative; z-index: 5; padding: 14px 28px; border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+}
 .footer p { font-size: 0.62rem; color: var(--muted); font-family: var(--mono); }
-
-/* SKELETON */
 .skel { background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; }
 @keyframes shimmer { from{background-position:200% 0}to{background-position:-200% 0} }
-.skel-text { height: 14px; margin-bottom: 6px; }
-
-/* RESPONSIVE */
 @media(max-width:700px){
   .kpi-grid { grid-template-columns: repeat(2,1fr); }
   .two-col { grid-template-columns: 1fr; }
-  .header { padding: 12px 16px; }
+  .header { padding: 12px 16px; flex-wrap: wrap; gap: 10px; }
   main { padding: 14px 16px; }
 }
-
-/* ── API KEY MODAL ───────────────────────────────────────── */
-.key-overlay {
-  position: fixed; inset: 0; z-index: 999;
-  background: rgba(4,5,8,0.96);
-  display: flex; align-items: center; justify-content: center;
-  backdrop-filter: blur(8px);
-}
-.key-modal {
-  background: #0d1117; border: 1px solid #1e2d3d;
-  border-radius: 16px; padding: 32px 36px; width: 420px; max-width: 92vw;
-  position: relative;
-}
-.key-modal::before {
-  content:''; position:absolute; top:0; left:0; right:0; height:3px;
-  background: linear-gradient(90deg, var(--accent), var(--purple));
-  border-radius: 16px 16px 0 0;
-}
-.key-modal h2 { font-size: 1rem; font-weight: 800; color: #fff; margin-bottom: 6px; }
-.key-modal p { font-size: 0.74rem; color: var(--muted); line-height: 1.6; margin-bottom: 18px; }
-.key-modal label { font-size: 0.65rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); display: block; margin-bottom: 6px; }
-.key-modal input {
-  width: 100%; background: #070a0f; border: 1px solid #1e2d3d;
-  color: var(--accent); padding: 10px 14px; border-radius: 8px;
-  font-family: var(--mono); font-size: 0.78rem; outline: none;
-  transition: border-color 0.2s; margin-bottom: 6px;
-}
-.key-modal input:focus { border-color: var(--accent); }
-.key-modal .key-hint { font-size: 0.64rem; color: var(--muted); margin-bottom: 16px; }
-.key-modal .key-hint a { color: var(--accent); text-decoration: none; }
-.key-modal .key-hint a:hover { text-decoration: underline; }
-.key-modal .key-remember { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; font-size: 0.7rem; color: var(--muted); cursor: pointer; }
-.key-modal .key-remember input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
-.key-submit {
-  width: 100%; background: linear-gradient(135deg, #0e7490, #0891b2);
-  border: none; color: #fff; padding: 11px; border-radius: 8px;
-  font-family: var(--mono); font-size: 0.8rem; font-weight: 700;
-  cursor: pointer; letter-spacing: 0.08em; transition: opacity 0.2s;
-}
-.key-submit:hover { opacity: 0.85; }
-.key-error { font-size: 0.68rem; color: var(--red); margin-top: 8px; display: none; }
-
-
-/* ── SEÑALES DE SALIDA ───────────────────────────────────── */
-.exit-panel {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 14px; overflow: hidden; margin-bottom: 20px;
-}
+/* ── EXIT PANEL ─────────────────────────────────────────────── */
+.exit-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 20px; }
 .exit-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
-.exit-card {
-  padding: 14px 16px; border-right: 1px solid var(--border);
-  position: relative; transition: background 0.2s;
-}
+.exit-card { padding: 14px 16px; border-right: 1px solid var(--border); position: relative; transition: background 0.2s; }
 .exit-card:last-child { border-right: none; }
 .exit-card.triggered { background: rgba(255,61,90,0.06); }
 .exit-card.warning  { background: rgba(255,210,63,0.05); }
@@ -333,58 +181,43 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
 .exit-label { font-size: 0.62rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 6px; }
 .exit-val   { font-size: 1.05rem; font-weight: 800; font-family: var(--mono); margin-bottom: 4px; }
 .exit-threshold { font-size: 0.65rem; color: var(--muted); }
-.exit-action {
-  margin-top: 8px; font-size: 0.68rem; font-weight: 700;
-  padding: 3px 8px; border-radius: 6px; display: inline-block;
-}
-.exit-action.sell  { background: rgba(255,61,90,0.15);  color: var(--red);    border:1px solid rgba(255,61,90,0.3); }
-.exit-action.warn  { background: rgba(255,210,63,0.12); color: var(--yellow); border:1px solid rgba(255,210,63,0.25); }
-.exit-action.ok    { background: rgba(0,255,136,0.08);  color: var(--green);  border:1px solid rgba(0,255,136,0.2); }
-
-/* ── CONTADOR LICITACIÓN ─────────────────────────────────── */
+.exit-action { margin-top: 8px; font-size: 0.68rem; font-weight: 700; padding: 3px 8px; border-radius: 6px; display: inline-block; }
+.exit-action.sell { background: rgba(255,61,90,0.15);  color: var(--red);    border:1px solid rgba(255,61,90,0.3); }
+.exit-action.warn { background: rgba(255,210,63,0.12); color: var(--yellow); border:1px solid rgba(255,210,63,0.25); }
+.exit-action.ok   { background: rgba(0,255,136,0.08);  color: var(--green);  border:1px solid rgba(0,255,136,0.2); }
+/* ── LICIT BANNER ────────────────────────────────────────────── */
 .licit-banner {
   border-radius: 10px; padding: 12px 18px; margin-bottom: 20px;
-  display: flex; align-items: center; justify-content: space-between;
-  border: 1px solid; flex-wrap: wrap; gap: 8px;
+  display: flex; align-items: center; justify-content: space-between; border: 1px solid; flex-wrap: wrap; gap: 8px;
 }
-.licit-banner.entry  { background: rgba(0,229,255,0.06); border-color: rgba(0,229,255,0.25); }
-.licit-banner.now    { background: rgba(168,85,247,0.08); border-color: rgba(168,85,247,0.35); }
-.licit-banner.after  { background: rgba(255,210,63,0.06); border-color: rgba(255,210,63,0.25); }
-.licit-banner.wait   { background: rgba(61,79,107,0.2);   border-color: var(--border); }
+.licit-banner.entry { background: rgba(0,229,255,0.06); border-color: rgba(0,229,255,0.25); }
+.licit-banner.now   { background: rgba(168,85,247,0.08); border-color: rgba(168,85,247,0.35); }
+.licit-banner.after { background: rgba(255,210,63,0.06); border-color: rgba(255,210,63,0.25); }
+.licit-banner.wait  { background: rgba(61,79,107,0.2);   border-color: var(--border); }
 .licit-left { display: flex; align-items: center; gap: 10px; }
 .licit-icon { font-size: 1.3rem; }
 .licit-text h4 { font-size: 0.8rem; font-weight: 700; margin-bottom: 2px; }
 .licit-text p  { font-size: 0.7rem; color: var(--muted); }
-.licit-days {
-  font-family: var(--mono); font-size: 1.4rem; font-weight: 900;
-  padding: 6px 14px; border-radius: 8px; text-align: center;
-}
-
-/* ── ROTACIÓN ────────────────────────────────────────────── */
+.licit-days { font-family: var(--mono); font-size: 1.4rem; font-weight: 900; padding: 6px 14px; border-radius: 8px; text-align: center; }
+/* ── ROTATE ALERT ────────────────────────────────────────────── */
 .rotate-alert {
   display: none; margin-bottom: 20px;
   background: rgba(255,210,63,0.07); border: 1px solid rgba(255,210,63,0.35);
-  border-left: 4px solid var(--yellow); border-radius: 10px;
-  padding: 14px 18px;
+  border-left: 4px solid var(--yellow); border-radius: 10px; padding: 14px 18px;
 }
 .rotate-alert.visible { display: flex; gap: 12px; align-items: flex-start; }
 .rotate-alert h4 { font-size: 0.82rem; font-weight: 700; color: var(--yellow); margin-bottom: 4px; }
 .rotate-alert p  { font-size: 0.72rem; color: var(--muted); line-height: 1.5; }
-
-
-/* ── MODAL EDICIÓN TASAS ─────────────────────────────────── */
+/* ── MODAL EDICIÓN ───────────────────────────────────────────── */
 .edit-overlay {
   position: fixed; inset: 0; z-index: 998;
-  background: rgba(4,5,8,0.94);
-  display: none; align-items: center; justify-content: center;
+  background: rgba(4,5,8,0.94); display: none; align-items: center; justify-content: center;
   backdrop-filter: blur(8px);
 }
 .edit-overlay.open { display: flex; }
 .edit-modal {
-  background: #0d1117; border: 1px solid #1e2d3d;
-  border-radius: 16px; padding: 28px 32px;
-  width: 520px; max-width: 96vw; max-height: 90vh; overflow-y: auto;
-  position: relative;
+  background: #0d1117; border: 1px solid #1e2d3d; border-radius: 16px; padding: 28px 32px;
+  width: 560px; max-width: 96vw; max-height: 90vh; overflow-y: auto; position: relative;
 }
 .edit-modal::before {
   content:''; position:absolute; top:0; left:0; right:0; height:3px;
@@ -392,24 +225,81 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
   border-radius: 16px 16px 0 0;
 }
 .edit-modal h2 { font-size:0.95rem; font-weight:800; color:#fff; margin-bottom:4px; }
-.edit-modal .edit-sub { font-size:0.7rem; color:var(--muted); margin-bottom:20px; }
-.edit-section { font-size:0.62rem; font-family:var(--mono); text-transform:uppercase;
-  letter-spacing:0.1em; color:var(--muted); margin: 16px 0 8px; border-bottom:1px solid #1e2d3d; padding-bottom:4px; }
-.edit-row { display:grid; grid-template-columns:1fr 90px 90px; gap:8px; align-items:center; margin-bottom:8px; }
-.edit-row label { font-size:0.72rem; color:var(--text); }
-.edit-row input {
+.edit-sub { font-size:0.7rem; color:var(--muted); margin-bottom:20px; line-height: 1.5; }
+.edit-section {
+  font-size:0.62rem; font-family:var(--mono); text-transform:uppercase;
+  letter-spacing:0.1em; color:var(--muted); margin: 16px 0 10px;
+  border-bottom:1px solid #1e2d3d; padding-bottom:5px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.edit-caution { display:grid; grid-template-columns:1fr 90px 90px; gap:8px; align-items:center; margin-bottom:6px; }
+.edit-caution label { font-size:0.72rem; color:var(--text); }
+.edit-caution input {
+  background:#070a0f; border:1px solid #1e2d3d; color:var(--accent2);
+  padding:7px 10px; border-radius:6px; font-family:var(--mono); font-size:0.75rem;
+  outline:none; width:100%; text-align:center;
+}
+/* ── FILAS DE INSTRUMENTO ────────────────────────────────────── */
+.instr-row {
+  display: grid; grid-template-columns: 1fr 85px 34px;
+  gap: 8px; align-items: center; margin-bottom: 7px;
+}
+.instr-label { display:flex; align-items:center; gap:7px; }
+.ticker-badge {
+  font-family:var(--mono); font-size:0.68rem; font-weight:700;
+  padding:2px 8px; border-radius:5px; white-space:nowrap;
+}
+.ticker-badge.lecap  { color:var(--accent);  background:rgba(0,229,255,0.1); }
+.ticker-badge.boncap { color:var(--purple);  background:rgba(168,85,247,0.1); }
+.instr-tem-input {
   background:#070a0f; border:1px solid #1e2d3d; color:var(--accent);
   padding:7px 10px; border-radius:6px; font-family:var(--mono);
   font-size:0.75rem; outline:none; width:100%; text-align:center;
   transition: border-color 0.2s;
 }
-.edit-row input:focus { border-color: var(--accent); }
-.edit-row .edit-hint { font-size:0.62rem; color:var(--muted); text-align:center; }
-.edit-caution { display:grid; grid-template-columns:1fr 90px 90px; gap:8px; align-items:center; margin-bottom:16px; }
-.edit-caution label { font-size:0.72rem; color:var(--text); }
-.edit-caution input { background:#070a0f; border:1px solid #1e2d3d; color:var(--accent2);
-  padding:7px 10px; border-radius:6px; font-family:var(--mono); font-size:0.75rem; outline:none; width:100%; text-align:center; }
-.edit-actions { display:flex; gap:10px; margin-top:20px; }
+.instr-tem-input:focus { border-color: var(--accent); }
+.btn-del {
+  background: rgba(255,61,90,0.08); border: 1px solid rgba(255,61,90,0.2);
+  color: var(--red); border-radius: 6px; width:32px; height:32px;
+  font-size:0.85rem; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  transition: background 0.15s; flex-shrink:0;
+}
+.btn-del:hover { background: rgba(255,61,90,0.22); }
+.instr-vto-hint { font-size:0.6rem; color:var(--muted); margin-bottom:10px; margin-left: 2px; }
+/* ── FORMULARIO AGREGAR ──────────────────────────────────────── */
+.add-form {
+  background: rgba(0,229,255,0.04); border: 1px dashed rgba(0,229,255,0.2);
+  border-radius: 10px; padding: 14px 16px; margin-top: 14px;
+}
+.add-form-title { font-size:0.65rem; font-family:var(--mono); text-transform:uppercase; letter-spacing:0.1em; color:var(--accent); margin-bottom:10px; }
+.add-form-grid { display:grid; grid-template-columns:85px 85px 1fr 75px; gap:8px; margin-bottom:5px; }
+.add-form-grid input, .add-form-grid select {
+  background:#070a0f; border:1px solid #1e2d3d; padding:7px 8px;
+  border-radius:6px; font-family:var(--mono); font-size:0.72rem; outline:none; width:100%;
+}
+.add-form-grid input { color:var(--text); }
+.add-form-grid select { color:var(--accent); }
+.add-form-grid input::placeholder { color:#3a4a6a; }
+.add-form-labels { display:grid; grid-template-columns:85px 85px 1fr 75px; gap:8px; margin-bottom:10px; }
+.add-form-labels div { font-size:0.6rem; color:var(--muted); text-align:center; }
+.btn-add {
+  width:100%; background:rgba(0,229,255,0.07); border:1px solid rgba(0,229,255,0.22);
+  color:var(--accent); padding:8px; border-radius:7px; font-family:var(--mono);
+  font-size:0.75rem; font-weight:700; cursor:pointer; transition: background 0.15s;
+}
+.btn-add:hover { background: rgba(0,229,255,0.16); }
+.add-hint { font-size:0.62rem; color:var(--muted); margin-top:8px; line-height:1.5; }
+/* ── ACCIONES MODAL ──────────────────────────────────────────── */
+.edit-row-rp { display:grid; grid-template-columns:1fr 90px; gap:8px; align-items:center; margin-bottom:4px; }
+.edit-row-rp label { font-size:0.72rem; color:var(--text); }
+.edit-row-rp input {
+  background:#070a0f; border:1px solid #1e2d3d; color:var(--accent);
+  padding:7px 10px; border-radius:6px; font-family:var(--mono);
+  font-size:0.75rem; outline:none; width:100%; text-align:center;
+}
+.edit-remember { display:flex; align-items:center; gap:8px; margin-top:14px; font-size:0.7rem; color:var(--muted); cursor:pointer; }
+.edit-remember input[type=checkbox] { accent-color:var(--accent); width:14px; height:14px; }
+.edit-actions { display:flex; gap:10px; margin-top:16px; }
 .edit-save {
   flex:1; background:linear-gradient(135deg,#0e7490,#0891b2);
   border:none; color:#fff; padding:10px; border-radius:8px;
@@ -419,69 +309,347 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
   background:rgba(61,79,107,0.3); border:1px solid #1e2d3d; color:var(--muted);
   padding:10px 20px; border-radius:8px; font-family:var(--mono); font-size:0.8rem; cursor:pointer;
 }
-.edit-remember { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:0.7rem; color:var(--muted); cursor:pointer; }
-.edit-remember input[type=checkbox] { accent-color:var(--accent); width:14px; height:14px; }
+.empty-instr { font-size:0.72rem; color:var(--muted); padding:8px 2px; font-style:italic; }
+
+/* ── ARBITRAJE ENTRE PARES ───────────────────────────────────── */
+.arb-pares-panel { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; margin-bottom:20px; }
+.arb-pares-grid  { display:flex; flex-direction:column; gap:0; }
+.par-row {
+  display:grid; grid-template-columns:1fr 1fr 110px 110px;
+  gap:0; border-bottom:1px solid var(--border);
+  transition:background 0.2s;
+}
+.par-row:last-child { border-bottom:none; }
+.par-row:hover { background:rgba(30,40,64,0.5); }
+.par-row.conviene  { border-left:3px solid var(--green);  background:rgba(0,255,136,0.03); }
+.par-row.marginal  { border-left:3px solid var(--yellow); background:rgba(255,210,63,0.03); }
+.par-row.no-conviene { border-left:3px solid var(--border2); }
+.par-cell { padding:12px 16px; }
+.par-desde { display:flex; flex-direction:column; gap:4px; }
+.par-desde .par-ticker { font-family:var(--mono); font-size:0.82rem; font-weight:700; }
+.par-desde .par-meta   { font-size:0.62rem; color:var(--muted); }
+.par-desde .par-precio { font-size:0.65rem; color:var(--yellow); font-family:var(--mono); }
+.par-arrow { display:flex; align-items:center; justify-content:center; font-size:1rem; color:var(--muted); padding:0 6px; }
+.par-hacia { display:flex; flex-direction:column; gap:4px; }
+.par-numeros { display:flex; flex-direction:column; justify-content:center; gap:3px; }
+.par-numeros .par-diferencial { font-family:var(--mono); font-size:0.88rem; font-weight:700; }
+.par-numeros .par-sub { font-size:0.6rem; color:var(--muted); }
+.par-accion { display:flex; flex-direction:column; align-items:flex-end; justify-content:center; gap:5px; }
+.par-tag { font-size:0.62rem; font-weight:700; font-family:var(--mono); padding:3px 9px; border-radius:6px; text-align:center; }
+.par-tag.rotar   { background:rgba(0,255,136,0.12); color:var(--green);  border:1px solid rgba(0,255,136,0.25); }
+.par-tag.evaluar { background:rgba(255,210,63,0.12); color:var(--yellow); border:1px solid rgba(255,210,63,0.25); }
+.par-tag.mantener{ background:rgba(61,79,107,0.25);  color:var(--muted);  border:1px solid var(--border); }
+.par-payback { font-size:0.6rem; color:var(--muted); font-family:var(--mono); }
+.no-pares { padding:18px; text-align:center; font-size:0.75rem; color:var(--muted); font-family:var(--mono); }
+/* ── PRECIO en tabla instrumentos ────────────────────────────── */
+.precio-input-cell { position:relative; }
+.precio-inline {
+  background:transparent; border:none; border-bottom:1px dashed rgba(0,229,255,0.3);
+  color:var(--yellow); font-family:var(--mono); font-size:0.74rem;
+  width:80px; text-align:center; outline:none; padding:2px 4px;
+  transition:border-color 0.2s;
+}
+.precio-inline:focus { border-bottom-color:var(--accent); color:var(--accent); }
+.precio-inline::placeholder { color:#3a4a6a; }
+
+
+/* ── ESTRATEGIA ACTIVA BANNER ─────────────────────────────────── */
+.estrategia-banner {
+  background: linear-gradient(135deg, rgba(0,229,255,0.06), rgba(168,85,247,0.06));
+  border: 1px solid rgba(0,229,255,0.2); border-radius:14px;
+  padding:20px 24px; margin-bottom:20px;
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  flex-wrap:wrap; position:relative; overflow:hidden;
+}
+.estrategia-banner::before {
+  content:''; position:absolute; inset:0;
+  background: linear-gradient(90deg, transparent 0%, rgba(0,229,255,0.03) 50%, transparent 100%);
+  animation: shimmer 3s ease-in-out infinite;
+}
+@keyframes shimmer { 0%,100%{opacity:0} 50%{opacity:1} }
+.est-left { display:flex; flex-direction:column; gap:6px; }
+.est-badge { font-size:0.58rem; font-family:var(--mono); font-weight:700; letter-spacing:0.15em;
+  color:var(--accent); background:rgba(0,229,255,0.1); border:1px solid rgba(0,229,255,0.25);
+  padding:3px 10px; border-radius:20px; width:fit-content; }
+.est-titulo { font-size:1.05rem; font-weight:800; color:#fff; }
+.est-sub { font-size:0.72rem; color:var(--muted); font-family:var(--mono); }
+.est-right { display:flex; gap:16px; flex-wrap:wrap; }
+.est-kpi { display:flex; flex-direction:column; align-items:center; gap:2px;
+  background:rgba(9,12,18,0.6); border:1px solid var(--border2);
+  border-radius:10px; padding:10px 16px; min-width:90px; }
+.est-kpi-val { font-family:var(--mono); font-size:1rem; font-weight:700; }
+.est-kpi-lbl { font-size:0.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.1em; }
+
+/* ── RANKING TABLE ────────────────────────────────────────────── */
+.ranking-panel { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; margin-bottom:20px; }
+.ranking-table { width:100%; border-collapse:collapse; font-size:0.78rem; }
+.ranking-table th {
+  background:rgba(14,18,32,0.9); color:var(--muted); font-family:var(--mono);
+  font-size:0.6rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase;
+  padding:10px 12px; text-align:center; border-bottom:1px solid var(--border2);
+}
+.ranking-table th.left { text-align:left; }
+.ranking-table td { padding:11px 12px; border-bottom:1px solid var(--border); text-align:center; vertical-align:middle; }
+.ranking-table tr:last-child td { border-bottom:none; }
+.ranking-table tr:hover td { background:rgba(30,40,64,0.4); }
+.ranking-table tr.top-rank td { background:rgba(0,255,136,0.03); }
+.rank-num { width:28px; height:28px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
+  font-family:var(--mono); font-size:0.72rem; font-weight:700; }
+.rank-1 { background:rgba(255,210,63,0.15); color:var(--yellow); border:1px solid rgba(255,210,63,0.3); }
+.rank-2 { background:rgba(0,229,255,0.1); color:var(--accent); border:1px solid rgba(0,229,255,0.2); }
+.rank-n { background:rgba(61,79,107,0.2); color:var(--muted); border:1px solid var(--border); }
+.gdneta-bar { display:flex; flex-direction:column; gap:3px; align-items:center; }
+.gdneta-val { font-family:var(--mono); font-size:0.82rem; font-weight:700; }
+.gdneta-track { width:70px; height:4px; background:var(--border2); border-radius:2px; }
+.gdneta-fill  { height:100%; border-radius:2px; transition:width 0.4s; }
+.rae-cell { display:flex; flex-direction:column; gap:2px; align-items:center; }
+.rae-val  { font-family:var(--mono); font-size:0.85rem; font-weight:700; }
+.rae-hold { font-size:0.6rem; color:var(--muted); }
+.ventana-tag { font-size:0.62rem; font-weight:700; font-family:var(--mono);
+  padding:3px 8px; border-radius:6px; }
+.ventana-entrar  { background:rgba(0,255,136,0.12); color:var(--green);  border:1px solid rgba(0,255,136,0.3); }
+.ventana-salida  { background:rgba(255,61,90,0.12);  color:var(--red);   border:1px solid rgba(255,61,90,0.3); }
+.ventana-ambar   { background:rgba(255,210,63,0.12); color:var(--yellow);border:1px solid rgba(255,210,63,0.3); }
+.ventana-hold    { background:rgba(61,79,107,0.2);   color:var(--muted); border:1px solid var(--border); }
+
+/* ── SIMULADOR ────────────────────────────────────────────────── */
+.sim-panel { background:var(--surface); border:1px solid var(--border); border-radius:14px; overflow:hidden; margin-bottom:20px; }
+.sim-body  { padding:20px 24px; }
+.sim-grid  { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-bottom:20px; }
+@media(max-width:700px){ .sim-grid { grid-template-columns:1fr; } }
+.sim-field { display:flex; flex-direction:column; gap:8px; }
+.sim-label { font-size:0.62rem; font-family:var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:0.1em; }
+.sim-select, .sim-input {
+  background:rgba(14,18,32,0.8); border:1px solid var(--border2); color:var(--accent);
+  font-family:var(--mono); font-size:0.82rem; padding:8px 12px; border-radius:8px;
+  outline:none; width:100%; transition:border-color 0.2s;
+}
+.sim-select:focus, .sim-input:focus { border-color:var(--accent); }
+.sim-slider-wrap { display:flex; flex-direction:column; gap:4px; }
+.sim-slider { width:100%; accent-color:var(--accent); cursor:pointer; }
+.sim-slider-val { font-family:var(--mono); font-size:0.78rem; color:var(--accent); text-align:center; font-weight:700; }
+.sim-resultado {
+  background: linear-gradient(135deg, rgba(0,229,255,0.05), rgba(168,85,247,0.05));
+  border:1px solid var(--border2); border-radius:12px; padding:18px 20px;
+  display:grid; grid-template-columns:repeat(4,1fr); gap:12px;
+}
+@media(max-width:600px){ .sim-resultado { grid-template-columns:1fr 1fr; } }
+.sim-res-item { display:flex; flex-direction:column; gap:4px; align-items:center; }
+.sim-res-val { font-family:var(--mono); font-size:1rem; font-weight:700; }
+.sim-res-lbl { font-size:0.58rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; text-align:center; }
+.sim-veredicto {
+  margin-top:14px; padding:12px 16px; border-radius:8px;
+  font-family:var(--mono); font-size:0.78rem; font-weight:700; text-align:center;
+  border:1px solid; transition:all 0.3s;
+}
+.sim-v-go   { background:rgba(0,255,136,0.08); color:var(--green);  border-color:rgba(0,255,136,0.25); }
+.sim-v-wait { background:rgba(255,210,63,0.08); color:var(--yellow); border-color:rgba(255,210,63,0.25); }
+.sim-v-no   { background:rgba(255,61,90,0.08);  color:var(--red);   border-color:rgba(255,61,90,0.25); }
+
+/* ── BONUS ESTRATEGIA ─────────────────────────────────────────── */
+.bonus-panel { background:var(--surface); border:1px solid rgba(168,85,247,0.25); border-radius:14px; overflow:hidden; margin-bottom:20px; }
+.bonus-step { display:flex; align-items:flex-start; gap:14px; padding:14px 20px; border-bottom:1px solid var(--border); }
+.bonus-step:last-child { border-bottom:none; }
+.bonus-num { width:28px; height:28px; min-width:28px; border-radius:50%;
+  background:rgba(168,85,247,0.15); border:1px solid rgba(168,85,247,0.3);
+  color:var(--purple); font-family:var(--mono); font-size:0.72rem; font-weight:700;
+  display:flex; align-items:center; justify-content:center; }
+.bonus-content { flex:1; }
+.bonus-titulo  { font-size:0.78rem; font-weight:700; color:var(--text); margin-bottom:3px; }
+.bonus-desc    { font-size:0.68rem; color:var(--muted); line-height:1.5; }
+.bonus-status  { font-size:0.68rem; font-family:var(--mono); font-weight:700; padding:2px 8px; border-radius:4px; white-space:nowrap; margin-top:4px; display:inline-block; }
+.bonus-ok   { background:rgba(0,255,136,0.1);  color:var(--green); }
+.bonus-warn { background:rgba(255,210,63,0.1); color:var(--yellow); }
+.bonus-fail { background:rgba(255,61,90,0.1);  color:var(--red); }
+
+
+/* ── MI CARTERA ──────────────────────────────────────────────── */
+.cartera-panel { background:var(--surface); border:1px solid rgba(0,229,255,0.2); border-radius:14px; overflow:hidden; margin-bottom:20px; }
+.cartera-empty { padding:20px; text-align:center; font-size:0.75rem; color:var(--muted); font-family:var(--mono); }
+.cartera-grid  { display:flex; flex-direction:column; }
+.cartera-row {
+  display:grid; grid-template-columns: 140px 90px 80px 80px 80px 90px 100px 44px;
+  gap:0; border-bottom:1px solid var(--border); align-items:center;
+  padding:10px 16px; transition:background 0.2s;
+}
+.cartera-row:hover { background:rgba(30,40,64,0.4); }
+.cartera-row:last-child { border-bottom:none; }
+.cartera-row.rotar-urgente { border-left:3px solid var(--red);   background:rgba(255,61,90,0.04); }
+.cartera-row.rotar-posible { border-left:3px solid var(--yellow);background:rgba(255,210,63,0.03); }
+.cartera-row.ok            { border-left:3px solid var(--green); background:rgba(0,255,136,0.02); }
+.cartera-hdr {
+  display:grid; grid-template-columns: 140px 90px 80px 80px 80px 90px 100px 44px;
+  gap:0; padding:8px 16px; background:rgba(14,18,32,0.9);
+  border-bottom:1px solid var(--border2);
+}
+.cartera-hdr span { font-size:0.58rem; font-family:var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; }
+.gan-pos { color:var(--green); font-family:var(--mono); font-size:0.82rem; font-weight:700; }
+.gan-neg { color:var(--red);   font-family:var(--mono); font-size:0.82rem; font-weight:700; }
+.cartera-accion { font-size:0.62rem; font-weight:700; font-family:var(--mono);
+  padding:3px 7px; border-radius:6px; white-space:nowrap; }
+.ca-rotar  { background:rgba(255,61,90,0.12); color:var(--red);   border:1px solid rgba(255,61,90,0.3); }
+.ca-evaluar{ background:rgba(255,210,63,0.12);color:var(--yellow);border:1px solid rgba(255,210,63,0.3);}
+.ca-ok     { background:rgba(0,255,136,0.1);  color:var(--green); border:1px solid rgba(0,255,136,0.25);}
+.btn-sell  { background:rgba(255,61,90,0.12); border:1px solid rgba(255,61,90,0.3);
+  color:var(--red); font-family:var(--mono); font-size:0.65rem; font-weight:700;
+  padding:5px 8px; border-radius:6px; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
+.btn-sell:hover { background:rgba(255,61,90,0.25); }
+
+/* ── ALERTA ROTACIÓN CARTERA (banner) ────────────────────────── */
+.cartera-alerta {
+  display:none; border-radius:12px; padding:14px 18px; margin-bottom:16px;
+  border:1px solid; font-family:var(--mono); font-size:0.78rem;
+  animation: pulseAlert 2s ease-in-out infinite;
+}
+@keyframes pulseAlert { 0%,100%{opacity:1} 50%{opacity:0.7} }
+.cartera-alerta.urgente { background:rgba(255,61,90,0.08); border-color:rgba(255,61,90,0.3); color:var(--red); }
+.cartera-alerta.posible { background:rgba(255,210,63,0.08);border-color:rgba(255,210,63,0.3);color:var(--yellow); }
+.cartera-alerta-inner { display:flex; align-items:center; gap:12px; }
+
+/* ── BOTÓN COMPRAR en tabla ───────────────────────────────────── */
+.btn-comprar { background:rgba(0,229,255,0.08); border:1px solid rgba(0,229,255,0.2);
+  color:var(--accent); font-family:var(--mono); font-size:0.6rem; font-weight:700;
+  padding:4px 8px; border-radius:6px; cursor:pointer; transition:all 0.2s; white-space:nowrap; }
+.btn-comprar:hover  { background:rgba(0,229,255,0.18); }
+.btn-comprar.en-cartera { background:rgba(0,255,136,0.1); border-color:rgba(0,255,136,0.3); color:var(--green); }
+tr.en-cartera-row td { background:rgba(0,255,136,0.03) !important; }
+tr.en-cartera-row td:first-child { border-left:3px solid var(--green); }
+
+/* ── MODAL COMPRA ─────────────────────────────────────────────── */
+.compra-overlay {
+  display:none; position:fixed; inset:0; z-index:200;
+  background:rgba(4,5,8,0.92); backdrop-filter:blur(8px);
+  align-items:center; justify-content:center;
+}
+.compra-overlay.open { display:flex; }
+.compra-modal {
+  background:#0d1117; border:1px solid var(--border2); border-radius:16px;
+  padding:28px 32px; width:400px; max-width:94vw; position:relative;
+}
+.compra-modal h3 { font-size:0.95rem; font-weight:800; color:#fff; margin-bottom:4px; }
+.compra-modal p  { font-size:0.7rem; color:var(--muted); margin-bottom:20px; }
+.compra-field { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+.compra-field label { font-size:0.62rem; font-family:var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; }
+.compra-field input { background:rgba(14,18,32,0.9); border:1px solid var(--border2);
+  color:var(--accent); font-family:var(--mono); font-size:0.85rem;
+  padding:9px 12px; border-radius:8px; outline:none; width:100%; }
+.compra-field input:focus { border-color:var(--accent); }
+.compra-actions { display:flex; gap:10px; margin-top:20px; }
+.compra-cancel { flex:1; background:rgba(61,79,107,0.2); border:1px solid var(--border2);
+  color:var(--muted); padding:10px; border-radius:8px; font-family:var(--mono);
+  font-size:0.78rem; cursor:pointer; }
+.compra-confirm { flex:2; background:linear-gradient(135deg,#0e7490,#0891b2);
+  border:none; color:#fff; padding:10px; border-radius:8px;
+  font-family:var(--mono); font-size:0.78rem; font-weight:700; cursor:pointer; }
 
 </style>
 </head>
 <body>
 
-<!-- MODAL EDICIÓN TASAS -->
+<!-- ═══ MODAL COMPRA ═══════════════════════════════════════════ -->
+<div class="compra-overlay" id="compraOverlay">
+  <div class="compra-modal">
+    <div style="height:3px;background:linear-gradient(90deg,var(--accent),var(--green));border-radius:14px 14px 0 0;position:absolute;top:0;left:0;right:0;"></div>
+    <h3>🛒 Registrar Compra</h3>
+    <p id="compraSubtitulo">Ingresá los datos de tu operación</p>
+    <input type="hidden" id="compraTicker">
+    <div class="compra-field">
+      <label>Precio de entrada (por VN)</label>
+      <input type="number" id="compraPrecio" step="0.0001" placeholder="ej: 1.0680">
+    </div>
+    <div class="compra-field">
+      <label>Cantidad VN comprada</label>
+      <input type="number" id="compraVN" step="1" placeholder="ej: 1000">
+    </div>
+    <div class="compra-field">
+      <label>Fecha de compra</label>
+      <input type="date" id="compraFecha">
+    </div>
+    <div class="compra-actions">
+      <button class="compra-cancel" onclick="cerrarModalCompra()">CANCELAR</button>
+      <button class="compra-confirm" onclick="confirmarCompra()">✅ REGISTRAR COMPRA</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL EDICIÓN ═══════════════════════════════════════════ -->
 <div class="edit-overlay" id="editOverlay">
-  <div class="edit-modal">
-    <h2>✏️ Actualizar Tasas del Mercado</h2>
-    <p class="edit-sub">Ingresá los valores actuales de A Cuánto Está. Los campos vacíos mantienen el valor anterior.</p>
+<div class="edit-modal">
+  <h2>✏️ Actualizar Tasas del Mercado</h2>
+  <p class="edit-sub">Editá las tasas, agregá instrumentos nuevos o eliminá los que vencieron. Los cambios se guardan en este navegador.</p>
 
-    <div class="edit-section">Caución bursátil</div>
-    <div class="edit-caution">
-      <label>Caución 1 día</label>
-      <input type="number" id="ed_cau_tna" placeholder="TNA %" step="0.01">
-      <input type="number" id="ed_cau_tem" placeholder="TEM %" step="0.01">
+  <div class="edit-section">Caución bursátil</div>
+  <div class="edit-caution">
+    <label>Caución 1 día</label>
+    <input type="number" id="ed_cau_tna" placeholder="TNA %" step="0.01">
+    <input type="number" id="ed_cau_tem" placeholder="TEM %" step="0.01">
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 90px 90px;gap:8px;margin-bottom:14px;">
+    <div></div>
+    <div style="font-size:0.6rem;color:var(--muted);text-align:center;">TNA %</div>
+    <div style="font-size:0.6rem;color:var(--muted);text-align:center;">TEM %</div>
+  </div>
+
+  <div class="edit-section">
+    <span>LECAPs <span style="color:var(--accent);font-size:0.58rem;">(tasa fija peso)</span></span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 80px 80px 34px;gap:8px;margin-bottom:6px;padding:0 2px;">
+    <div></div>
+    <div style="font-size:0.6rem;color:var(--muted);text-align:center;">TEM %</div>
+    <div style="font-size:0.6rem;color:var(--yellow);text-align:center;">Precio</div>
+    <div></div>
+  </div>
+  <div id="editLecaps"></div>
+
+  <div class="edit-section">
+    <span>BONCAPs <span style="color:var(--purple);font-size:0.58rem;">(bono tasa fija)</span></span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 80px 80px 34px;gap:8px;margin-bottom:6px;padding:0 2px;">
+    <div></div>
+    <div style="font-size:0.6rem;color:var(--muted);text-align:center;">TEM %</div>
+    <div style="font-size:0.6rem;color:var(--yellow);text-align:center;">Precio</div>
+    <div></div>
+  </div>
+  <div id="editBoncaps"></div>
+
+  <!-- Formulario agregar -->
+  <div class="add-form">
+    <div class="add-form-title">➕ Agregar instrumento</div>
+    <div class="add-form-grid">
+      <input type="text" id="new_ticker" placeholder="Ticker" oninput="this.value=this.value.toUpperCase()" maxlength="8">
+      <select id="new_tipo">
+        <option value="LECAP">LECAP</option>
+        <option value="BONCAP">BONCAP</option>
+      </select>
+      <input type="date" id="new_vto" style="color:var(--text);">
+      <input type="number" id="new_tem" placeholder="TEM %" step="0.01" min="0" max="25">
     </div>
-    <div style="display:grid;grid-template-columns:1fr 90px 90px;gap:8px;margin-bottom:16px;">
-      <div></div>
-      <div style="font-size:0.62rem;color:var(--muted);text-align:center;">TNA %</div>
-      <div style="font-size:0.62rem;color:var(--muted);text-align:center;">TEM %</div>
+    <div class="add-form-labels">
+      <div>Ticker</div><div>Tipo</div><div>Vencimiento</div><div>TEM %</div>
     </div>
+    <button class="btn-add" id="btnAgregar" onclick="agregarInstrumento()">➕ AGREGAR A LA LISTA</button>
+    <div class="add-hint">Ticker libre (ej: S16J6, T15O7). La fecha calcula días y breakeven automáticamente.</div>
+  </div>
 
-    <div class="edit-section">LECAPs</div>
-    <div id="editLecaps"></div>
+  <div class="edit-section" style="margin-top:16px;">Riesgo País (EMBI)</div>
+  <div class="edit-row-rp">
+    <label>EMBI Argentina</label>
+    <input type="number" id="ed_riesgo_pais" placeholder="bps" step="1">
+  </div>
+  <div style="font-size:0.61rem;color:var(--muted);margin-bottom:4px;">bps · Fuente: a3mercados.com.ar</div>
 
-    <div class="edit-section">BONCAPs</div>
-    <div id="editBoncaps"></div>
-
-    <label class="edit-remember">
-      <input type="checkbox" id="editRemember" checked>
-      Recordar en este navegador hasta la próxima actualización
-    </label>
-
-    <div class="edit-actions">
-      <button class="edit-cancel" onclick="cerrarEditor()">CANCELAR</button>
-      <button class="edit-save" onclick="guardarTasas()">✅ GUARDAR Y ACTUALIZAR</button>
-    </div>
+  <label class="edit-remember">
+    <input type="checkbox" id="editRemember" checked>
+    Recordar en este navegador hasta la próxima sesión
+  </label>
+  <div class="edit-actions">
+    <button class="edit-cancel" onclick="cerrarEditor()">CANCELAR</button>
+    <button class="edit-save" onclick="guardarTasas()">✅ GUARDAR Y ACTUALIZAR</button>
   </div>
 </div>
-
-
-<!-- API KEY MODAL -->
-<div class="key-overlay" id="keyOverlay" style="display:none;">
-  <div class="key-modal">
-    <h2>🔑 Ingresá tu API Key</h2>
-    <p>Para traer datos en tiempo real, el dashboard necesita tu clave de Anthropic. Se guarda solo en tu navegador y nunca se envía a ningún servidor externo.</p>
-    <label>Anthropic API Key</label>
-    <input type="password" id="keyInput" placeholder="sk-ant-api03-..." autocomplete="off" onkeydown="if(event.key==='Enter') submitKey()">
-    <div class="key-hint">Obtené tu key en <a href="https://console.anthropic.com/settings/keys" target="_blank">console.anthropic.com</a> → API Keys → Create Key</div>
-    <label class="key-remember">
-      <input type="checkbox" id="keyRemember" checked>
-      Recordar en este navegador
-    </label>
-    <button class="key-submit" onclick="submitKey()">CONECTAR →</button>
-    <div class="key-error" id="keyError">Key inválida. Verificá que empiece con sk-ant-</div>
-  </div>
 </div>
 
-
-<!-- HEADER -->
+<!-- ═══ HEADER ══════════════════════════════════════════════════ -->
 <header class="header">
   <div class="logo">
     <div class="logo-mark">ARB</div>
@@ -491,7 +659,7 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
     </div>
   </div>
   <div class="header-right">
-    <div class="status-pill" id="riesgoPaisPill" title="Riesgo País (EMBI Argentina)" style="cursor:default;">
+    <div class="status-pill" id="riesgoPaisPill" title="Riesgo País EMBI">
       <div class="status-dot loading" id="rpDot"></div>
       <span style="font-size:0.58rem;color:var(--muted);margin-right:2px;">EMBI</span>
       <span id="rpValue" style="font-weight:700;">···</span>
@@ -502,275 +670,410 @@ main { position: relative; z-index: 5; padding: 20px 28px; }
       <span id="statusText">Cargando...</span>
     </div>
     <button class="refresh-btn" id="refreshBtn" onclick="loadAll()">⟳ ACTUALIZAR</button>
-    <button class="refresh-btn" onclick="abrirEditor()" style="background:rgba(255,210,63,0.1);border-color:rgba(255,210,63,0.3);color:var(--yellow);margin-left:6px;">✏️ TASAS</button>
+    <button class="refresh-btn" onclick="abrirEditor()" style="background:rgba(255,210,63,0.1);border-color:rgba(255,210,63,0.3);color:var(--yellow);">✏️ TASAS</button>
+    <button class="refresh-btn" onclick="exportarCSV()" style="background:rgba(0,229,255,0.1);border-color:rgba(0,229,255,0.3);color:var(--accent);">📥 CSV</button>
   </div>
 </header>
 
+<!-- ═══ MAIN ═════════════════════════════════════════════════════ -->
 <main>
 
-  <!-- SIGNAL BANNER -->
-  <div class="signal-banner neutral" id="signalBanner">
-    <div class="signal-icon" id="signalIcon">📡</div>
-    <div class="signal-content">
-      <h3 id="signalTitle">Cargando señales de mercado...</h3>
-      <p id="signalDesc">Conectando con APIs públicas de datos financieros argentinos</p>
-      <div class="signal-timestamp" id="signalTime"></div>
+<!-- Signal banner -->
+<div class="signal-banner neutral" id="signalBanner">
+  <div class="signal-icon" id="signalIcon">📡</div>
+  <div class="signal-content">
+    <h3 id="signalTitle">Cargando señales de mercado...</h3>
+    <p id="signalDesc">Conectando con APIs de datos financieros</p>
+    <div class="signal-timestamp" id="signalTime"></div>
+  </div>
+</div>
+
+<!-- KPIs Dólares -->
+<div class="kpi-grid">
+  <div class="kpi oficial">
+    <div class="kpi-label">// Dólar Oficial</div>
+    <div class="kpi-value" id="valOficial"><span class="skel" style="width:80px;display:block;height:28px;"></span></div>
+    <div class="kpi-sub" id="subOficial">BNA · Venta</div>
+  </div>
+  <div class="kpi mep">
+    <div class="kpi-label">// Dólar MEP</div>
+    <div class="kpi-value" id="valMep"><span class="skel" style="width:80px;display:block;height:28px;"></span></div>
+    <div class="kpi-sub" id="subMep">Bolsa · AL30</div>
+  </div>
+  <div class="kpi ccl">
+    <div class="kpi-label">// Dólar CCL</div>
+    <div class="kpi-value" id="valCcl"><span class="skel" style="width:80px;display:block;height:28px;"></span></div>
+    <div class="kpi-sub" id="subCcl">Contado con Liqui</div>
+  </div>
+  <div class="kpi blue">
+    <div class="kpi-label">// Dólar Blue</div>
+    <div class="kpi-value" id="valBlue"><span class="skel" style="width:80px;display:block;height:28px;"></span></div>
+    <div class="kpi-sub" id="subBlue">Informal</div>
+  </div>
+</div>
+
+<!-- Licitación -->
+<div class="licit-banner wait" id="licitBanner">
+  <div class="licit-left">
+    <div class="licit-icon" id="licitIcon">📋</div>
+    <div class="licit-text">
+      <h4 id="licitTitle">Calculando próxima licitación...</h4>
+      <p id="licitDesc">Licitaciones quincenales del Tesoro Nacional</p>
     </div>
   </div>
+  <div class="licit-days" id="licitDays" style="color:var(--muted);background:var(--surface2);">···</div>
+</div>
 
-  <!-- KPIs DOLAR -->
-  <div class="kpi-grid">
-    <div class="kpi oficial">
-      <div class="kpi-label">// Dólar Oficial</div>
-      <div class="kpi-value" id="valOficial"><span class="skel skel-text" style="width:80px;display:block;height:28px;"></span></div>
-      <div class="kpi-sub" id="subOficial">BNA · Venta</div>
-    </div>
-    <div class="kpi mep">
-      <div class="kpi-label">// Dólar MEP</div>
-      <div class="kpi-value" id="valMep"><span class="skel skel-text" style="width:80px;display:block;height:28px;"></span></div>
-      <div class="kpi-sub" id="subMep">Bolsa · AL30</div>
-    </div>
-    <div class="kpi ccl">
-      <div class="kpi-label">// Dólar CCL</div>
-      <div class="kpi-value" id="valCcl"><span class="skel skel-text" style="width:80px;display:block;height:28px;"></span></div>
-      <div class="kpi-sub" id="subCcl">Contado con Liqui</div>
-    </div>
-    <div class="kpi blue">
-      <div class="kpi-label">// Dólar Blue</div>
-      <div class="kpi-value" id="valBlue"><span class="skel skel-text" style="width:80px;display:block;height:28px;"></span></div>
-      <div class="kpi-sub" id="subBlue">Informal</div>
-    </div>
-  </div>
+<!-- Rotación -->
+<div class="rotate-alert" id="rotateAlert">
+  <div style="font-size:1.4rem;">🔄</div>
+  <div><h4 id="rotateTitle">SEÑAL DE ROTACIÓN</h4><p id="rotateDesc"></p></div>
+</div>
 
-
-  <!-- CONTADOR LICITACIÓN -->
-  <div class="licit-banner wait" id="licitBanner">
-    <div class="licit-left">
-      <div class="licit-icon" id="licitIcon">📋</div>
-      <div class="licit-text">
-        <h4 id="licitTitle">Calculando próxima licitación...</h4>
-        <p id="licitDesc">Licitaciones quincenales del Tesoro Nacional</p>
-      </div>
-    </div>
-    <div class="licit-days" id="licitDays" style="color:var(--muted);background:var(--surface2);">···</div>
-  </div>
-
-  <!-- ALERTA DE ROTACIÓN -->
-  <div class="rotate-alert" id="rotateAlert">
-    <div style="font-size:1.4rem;">🔄</div>
+<!-- Alerta rotación cartera -->
+<div class="cartera-alerta" id="cartAlerta">
+  <div class="cartera-alerta-inner">
+    <span style="font-size:1.4rem;">⚡</span>
     <div>
-      <h4 id="rotateTitle">SEÑAL DE ROTACIÓN</h4>
-      <p id="rotateDesc"></p>
+      <div style="font-weight:800;font-size:0.82rem;" id="cartAlertaTitulo"></div>
+      <div style="font-size:0.7rem;opacity:0.8;margin-top:2px;" id="cartAlertaDesc"></div>
     </div>
   </div>
+</div>
 
-  <!-- SEÑALES DE SALIDA -->
-  <div class="exit-panel">
+<!-- Mi Cartera -->
+<div class="cartera-panel" id="carteraPanel">
+  <div class="panel-header">
+    <div class="panel-title"><span>💼</span> MI CARTERA</div>
+    <span class="panel-badge" id="carteraBadge" style="background:rgba(61,79,107,0.3);color:var(--muted);">Sin posiciones</span>
+  </div>
+  <div id="carteraBody">
+    <div class="cartera-empty">No tenés posiciones registradas. Usá el botón 🛒 en la tabla de instrumentos para registrar una compra.</div>
+  </div>
+</div>
+
+<!-- Señales de salida -->
+<div class="exit-panel">
+  <div class="panel-header">
+    <div class="panel-title"><span>🚨</span> SEÑALES DE SALIDA</div>
+    <span class="panel-badge" id="exitBadge" style="background:rgba(0,255,136,0.1);color:var(--green);">Todo en orden</span>
+  </div>
+  <div class="exit-grid" id="exitGrid"></div>
+</div>
+
+<!-- Arbitraje entre pares -->
+<div class="arb-pares-panel" id="arbParesPanel">
+  <div class="panel-header">
+    <div class="panel-title"><span>🔀</span> SEÑALES DE ROTACIÓN ENTRE INSTRUMENTOS</div>
+    <span class="panel-badge" id="arbParesBadge" style="background:rgba(61,79,107,0.3);color:var(--muted);">Calculando...</span>
+  </div>
+  <div class="arb-pares-grid" id="arbParesGrid">
+    <div class="no-pares">Cargando señales...</div>
+  </div>
+</div>
+
+<!-- ══ ESTRATEGIA ACTIVA BANNER ══════════════════════════════════ -->
+<div class="estrategia-banner" id="estrategiaBanner">
+  <div class="est-left">
+    <div class="est-badge">🎯 ESTRATEGIA ACTIVA — ARB RATE TRADE</div>
+    <div class="est-titulo" id="estTitulo">Calculando instrumento óptimo...</div>
+    <div class="est-sub" id="estSub">Horizonte: mixto · Comisión RT: 0.30%</div>
+  </div>
+  <div class="est-right">
+    <div class="est-kpi">
+      <div class="est-kpi-val" id="estRae" style="color:var(--green);">—</div>
+      <div class="est-kpi-lbl">RAE hold</div>
+    </div>
+    <div class="est-kpi">
+      <div class="est-kpi-val" id="estGDiaria" style="color:var(--accent);">—</div>
+      <div class="est-kpi-lbl">G/día neta</div>
+    </div>
+    <div class="est-kpi">
+      <div class="est-kpi-val" id="estSpread" style="color:var(--yellow);">—</div>
+      <div class="est-kpi-lbl">vs caución</div>
+    </div>
+    <div class="est-kpi">
+      <div class="est-kpi-val" id="estAccion" style="color:var(--green);">—</div>
+      <div class="est-kpi-lbl">acción</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ RANKING POR GANANCIA DIARIA NETA ═══════════════════════════ -->
+<div class="ranking-panel">
+  <div class="panel-header">
+    <div class="panel-title"><span>🏆</span> RANKING — GANANCIA DIARIA NETA</div>
+    <span class="panel-badge" style="background:rgba(255,210,63,0.1);color:var(--yellow);">ordenado por G/día</span>
+  </div>
+  <table class="ranking-table">
+    <thead>
+      <tr>
+        <th style="width:36px;">#</th>
+        <th class="left">Instrumento</th>
+        <th>Precio</th>
+        <th>TEM</th>
+        <th>RAE hold<br><span style="font-size:0.55rem;color:#3a4a6a;">anualizado</span></th>
+        <th>G/día neta<br><span style="font-size:0.55rem;color:#3a4a6a;">% por día</span></th>
+        <th>Spread vs<br>mejor</th>
+        <th>Ventana</th>
+      </tr>
+    </thead>
+    <tbody id="rankingBody"></tbody>
+  </table>
+</div>
+
+<!-- ══ SIMULADOR DE SALIDA ANTICIPADA ═════════════════════════════ -->
+<div class="sim-panel">
+  <div class="panel-header">
+    <div class="panel-title"><span>🔬</span> SIMULADOR DE SALIDA ANTICIPADA</div>
+    <span class="panel-badge" style="background:rgba(168,85,247,0.1);color:var(--purple);">escenarios what-if</span>
+  </div>
+  <div class="sim-body">
+    <div class="sim-grid">
+      <div class="sim-field">
+        <label class="sim-label">Instrumento</label>
+        <select class="sim-select" id="simTicker" onchange="calcularSimulador()"></select>
+      </div>
+      <div class="sim-field">
+        <label class="sim-label">Días de holding</label>
+        <div class="sim-slider-wrap">
+          <input type="range" class="sim-slider" id="simDias" min="1" max="180" value="15" oninput="simDiasVal.textContent=this.value+'d'; calcularSimulador()">
+          <div class="sim-slider-val" id="simDiasVal">15d</div>
+        </div>
+      </div>
+      <div class="sim-field">
+        <label class="sim-label">Compresión TEM (bps)</label>
+        <div class="sim-slider-wrap">
+          <input type="range" class="sim-slider" id="simBps" min="-30" max="30" value="-10" step="1" oninput="simBpsVal.textContent=(this.value>0?'+':'')+this.value+' bps'; calcularSimulador()" style="accent-color:var(--yellow);">
+          <div class="sim-slider-val" id="simBpsVal" style="color:var(--yellow);">-10 bps</div>
+        </div>
+      </div>
+    </div>
+    <div class="sim-field" style="margin-bottom:16px;">
+      <label class="sim-label">Precio objetivo de salida (opcional — sobreescribe el calculado)</label>
+      <input type="number" class="sim-input" id="simPrecioObj" step="0.0001" placeholder="Calculado automáticamente" oninput="calcularSimulador()">
+    </div>
+    <div class="sim-resultado" id="simResultado">
+      <div class="sim-res-item"><div class="sim-res-val" id="srPrecioSalida" style="color:var(--yellow);">—</div><div class="sim-res-lbl">Precio salida</div></div>
+      <div class="sim-res-item"><div class="sim-res-val" id="srGanBruta" style="color:var(--text);">—</div><div class="sim-res-lbl">Gan. bruta</div></div>
+      <div class="sim-res-item"><div class="sim-res-val" id="srGanNeta" style="color:var(--green);">—</div><div class="sim-res-lbl">Gan. neta</div></div>
+      <div class="sim-res-item"><div class="sim-res-val" id="srRaeEfectivo" style="color:var(--accent);">—</div><div class="sim-res-lbl">RAE efectivo</div></div>
+      <div class="sim-res-item"><div class="sim-res-val" id="srEnUsd" style="color:var(--accent2);">—</div><div class="sim-res-lbl">En USD (MEP)</div></div>
+      <div class="sim-res-item"><div class="sim-res-val" id="srGDiaria" style="color:var(--purple);">—</div><div class="sim-res-lbl">G/día efectiva</div></div>
+      <div class="sim-res-item"><div class="sim-res-val" id="srBreakeven" style="color:var(--muted);">—</div><div class="sim-res-lbl">Break-even días</div></div>
+      <div class="sim-res-item"><div class="sim-res-val" id="srVsCaucion" style="color:var(--accent);">—</div><div class="sim-res-lbl">vs caución</div></div>
+    </div>
+    <div class="sim-veredicto sim-v-wait" id="simVeredicto">Ajustá los parámetros para ver el veredicto</div>
+  </div>
+</div>
+
+<!-- ══ BONUS: ESTRATEGIA DE ARBITRAJE ═════════════════════════════ -->
+<div class="bonus-panel">
+  <div class="panel-header">
+    <div class="panel-title"><span>⚙️</span> ESTRATEGIA DE ARBITRAJE — REGLAS ACTIVAS</div>
+    <span class="panel-badge" id="bonusBadge" style="background:rgba(168,85,247,0.1);color:var(--purple);">Calculando...</span>
+  </div>
+  <div id="bonusSteps"></div>
+</div>
+
+<!-- 2 columnas -->
+<div class="two-col">
+  <div class="panel">
     <div class="panel-header">
-      <div class="panel-title"><span>🚨</span> SEÑALES DE SALIDA</div>
-      <span class="panel-badge" id="exitBadge" style="background:rgba(0,255,136,0.1);color:var(--green);">Todo en orden</span>
+      <div class="panel-title"><span>⚡</span> SEÑALES DE ARBITRAJE</div>
+      <span class="panel-badge" id="arbCount" style="background:rgba(61,79,107,0.3);color:var(--muted);">Calculando...</span>
     </div>
-    <div class="exit-grid" id="exitGrid">
-      <!-- renderizado por JS -->
+    <div class="panel-body">
+      <div class="arb-cards" id="arbCards">
+        <div class="arb-card"><div><div class="skel" style="width:60%;height:14px;margin-bottom:8px;"></div><div class="skel" style="width:90%;height:10px;"></div></div></div>
+      </div>
     </div>
   </div>
-
-  <!-- DOS COLUMNAS: ARBITRAJE + GAUGES -->
-  <div class="two-col">
-
-    <!-- OPORTUNIDADES DE ARBITRAJE -->
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-title"><span>⚡</span> SEÑALES DE ARBITRAJE</div>
-        <span class="panel-badge" id="arbCount" style="background:rgba(61,79,107,0.3);color:var(--muted);">Calculando...</span>
-      </div>
-      <div class="panel-body">
-        <div class="arb-cards" id="arbCards">
-          <div class="arb-card">
-            <div><div class="arb-title skel skel-text" style="width:60%;height:14px;"></div><div class="arb-desc skel skel-text" style="width:90%;height:10px;margin-top:8px;"></div></div>
-          </div>
-          <div class="arb-card">
-            <div><div class="arb-title skel skel-text" style="width:50%;height:14px;"></div><div class="arb-desc skel skel-text" style="width:85%;height:10px;margin-top:8px;"></div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- GAUGES TASAS -->
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-title"><span>📊</span> COMPARATIVA DE TASAS</div>
-        <span class="panel-badge" style="background:rgba(0,229,255,0.1);color:var(--accent);">TEM mensual</span>
-      </div>
-      <div class="panel-body">
-        <div class="gauge-wrap" id="gaugeWrap">
-          <div style="height:120px;" class="skel" style="border-radius:8px;"></div>
-        </div>
-      </div>
-    </div>
-
-  </div>
-
-  <!-- TABLA DE INSTRUMENTOS -->
-  <div class="panel" style="margin-bottom:20px;">
+  <div class="panel">
     <div class="panel-header">
-      <div class="panel-title"><span>📋</span> INSTRUMENTOS MONITOREADOS</div>
-      <span class="panel-badge" style="background:rgba(0,229,255,0.1);color:var(--accent);" id="lastUpdate">--:--</span>
+      <div class="panel-title"><span>📊</span> COMPARATIVA DE TASAS</div>
+      <span class="panel-badge" style="background:rgba(0,229,255,0.1);color:var(--accent);">TEM mensual</span>
     </div>
-    <div class="panel-body" style="padding:0;">
-      <table class="rates-table" id="ratesTable">
-        <thead>
-          <tr>
-            <th>Instrumento</th>
-            <th>TEM</th>
-            <th>TNA aprox.</th>
-            <th>Breakeven USD</th>
-            <th>Spread vs Caución</th>
-            <th>Señal</th>
-          </tr>
-        </thead>
-        <tbody id="ratesBody">
-          <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted);font-family:var(--mono);font-size:0.72rem;">Cargando instrumentos...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- ANÁLISIS IA -->
-  <div class="ia-section">
-    <div class="ia-panel">
-      <div class="ia-header">
-        <div class="ia-title"><span>🤖</span> ANÁLISIS IA — Diagnóstico diario del mercado</div>
-        <span class="panel-badge" style="background:rgba(168,85,247,0.15);color:var(--purple);border:1px solid rgba(168,85,247,0.3);">Claude AI</span>
-      </div>
-      <div class="ia-body">
-        <div class="ia-output" id="iaOutput">Presioná el botón para que la IA analice las condiciones actuales del mercado y te diga qué hacer hoy.</div>
-
-        <!-- Campo de key inline (visible solo en GitHub) -->
-        <div id="iaKeyRow" style="display:none;margin-bottom:12px;background:#070a0f;border:1px solid #1e2d3d;border-radius:8px;padding:12px 14px;">
-          <div style="font-size:0.62rem;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:6px;">
-            🔑 API Key de Anthropic — <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent);text-decoration:none;">Obtener en console.anthropic.com</a>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <input type="password" id="iaKeyInput" placeholder="sk-ant-api03-..."
-              style="flex:1;background:#0a0c14;border:1px solid #1e2d3d;color:var(--accent);padding:8px 12px;border-radius:6px;font-family:var(--mono);font-size:0.75rem;outline:none;"
-              onkeydown="if(event.key==='Enter') guardarIaKey()">
-            <button onclick="guardarIaKey()"
-              style="background:rgba(168,85,247,0.2);border:1px solid rgba(168,85,247,0.4);color:var(--purple);padding:8px 14px;border-radius:6px;font-family:var(--mono);font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;">
-              GUARDAR
-            </button>
-            <button onclick="borrarIaKey()"
-              style="background:rgba(255,61,90,0.1);border:1px solid rgba(255,61,90,0.25);color:var(--red);padding:8px 10px;border-radius:6px;font-family:var(--mono);font-size:0.72rem;cursor:pointer;"
-              title="Borrar key guardada">✕</button>
-          </div>
-          <div id="iaKeyStatus" style="font-size:0.65rem;color:var(--muted);margin-top:5px;"></div>
-        </div>
-
-        <button class="ia-btn" id="iaBtn" onclick="analizarConIA()">🤖 ANALIZAR MERCADO AHORA CON IA</button>
+    <div class="panel-body">
+      <div class="gauge-wrap" id="gaugeWrap">
+        <div class="skel" style="height:120px;border-radius:8px;"></div>
       </div>
     </div>
   </div>
+</div>
+
+<!-- Tabla instrumentos -->
+<div class="panel" style="margin-bottom:20px;">
+  <div class="panel-header">
+    <div class="panel-title"><span>📋</span> INSTRUMENTOS MONITOREADOS</div>
+    <span class="panel-badge" style="background:rgba(0,229,255,0.1);color:var(--accent);" id="lastUpdate">--:--</span>
+  </div>
+  <div class="panel-body" style="padding:0;">
+    <table class="rates-table">
+      <thead>
+        <tr>
+          <th>Instrumento</th><th>Precio actual</th><th>TEM</th><th>TNA aprox.</th>
+          <th>Breakeven USD</th><th>Spread vs Caución</th><th>Señal</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="ratesBody">
+        <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--muted);font-family:var(--mono);font-size:0.72rem;">Cargando...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Diagnóstico -->
+<div class="ia-section">
+  <div class="ia-panel">
+    <div class="ia-header">
+      <div class="ia-title"><span>🤖</span> DIAGNÓSTICO AUTOMÁTICO — Reglas del mercado</div>
+      <span class="panel-badge" style="background:rgba(0,229,255,0.15);color:var(--accent);border:1px solid rgba(0,229,255,0.3);">100% GRATIS</span>
+    </div>
+    <div class="ia-body">
+      <div class="ia-output" id="iaOutput">Presioná el botón para generar un diagnóstico basado en las condiciones actuales del mercado.</div>
+      <button class="ia-btn" onclick="generarDiagnostico()">🔄 GENERAR DIAGNÓSTICO AUTOMÁTICO</button>
+    </div>
+  </div>
+</div>
 
 </main>
 
 <footer class="footer">
-  <p>⚠️ SOLO INFORMATIVO · No es asesoramiento financiero · Datos: dolarapi.com + argentinadatos.com · Comisión A Cuánto Está: 0.15% (round trip 0.30%)</p>
-  <p id="footerTime" style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);"></p>
+  <p>⚠️ SOLO INFORMATIVO · No es asesoramiento financiero · Dólares: dolarapi.com · Comisión A Cuánto Está: 0.15% (round trip 0.30%)</p>
+  <p id="footerTime"></p>
 </footer>
 
 <script>
-// ─── API KEY MANAGEMENT ──────────────────────────────────────
-function getApiKey() {
-  // En GitHub: usar la key de IA guardada específicamente
-  if (window.location.hostname === "pablo2541.github.io") {
-    return localStorage.getItem('arb_ia_key') || '';
-  }
-  return sessionStorage.getItem('arb_key') || localStorage.getItem('arb_key') || '';
+// ═══════════════════════════════════════════════════════════════
+// UTILIDADES
+// ═══════════════════════════════════════════════════════════════
+const fmt  = n => isNaN(n) ? '--' : Math.round(n).toLocaleString('es-AR');
+const fmtP = (n, d=2) => isNaN(n) ? '--' : n.toFixed(d);
+const now  = () => new Date().toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+const today = () => new Date().toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+
+const MESES_STR = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+function calcularDiasRestantes(fechaVtoStr) {
+  if (!fechaVtoStr || fechaVtoStr === '—') return 30;
+  // Formato "DD Mes YYYY"
+  const mesesMap = {Ene:0,Feb:1,Mar:2,Abr:3,May:4,Jun:5,Jul:6,Ago:7,Sep:8,Oct:9,Nov:10,Dic:11};
+  try {
+    const p = fechaVtoStr.trim().split(' ');
+    if (p.length === 3) {
+      const d = parseInt(p[0]), m = mesesMap[p[1]], y = parseInt(p[2]);
+      if (!isNaN(d) && m !== undefined && !isNaN(y)) {
+        const vto = new Date(y, m, d);
+        const hoy = new Date(); hoy.setHours(0,0,0,0);
+        return Math.max(1, Math.ceil((vto - hoy) / 86400000));
+      }
+    }
+  } catch(e) {}
+  return 30;
 }
 
-function saveApiKey(key, remember) {
-  sessionStorage.setItem('arb_key', key);
-  if (remember) localStorage.setItem('arb_key', key);
-  else localStorage.removeItem('arb_key');
+function tnaDesdetem(tem) {
+  return parseFloat(((Math.pow(1 + tem/100, 12) - 1) * 100).toFixed(2));
 }
 
-// Key de IA para GitHub (separada de la key del dashboard)
-function guardarIaKey() {
-  const input = document.getElementById('iaKeyInput').value.trim();
-  const status = document.getElementById('iaKeyStatus');
-  if (!input.startsWith('sk-ant-')) {
-    status.style.color = 'var(--red)';
-    status.textContent = '❌ Key inválida — debe empezar con sk-ant-';
+// ═══════════════════════════════════════════════════════════════
+// ESTADO GLOBAL
+// ═══════════════════════════════════════════════════════════════
+const INSTRUMENTOS_DEFAULT = [
+  { ticker:'S16M6', tipo:'LECAP',  vto:'16 Mar 2026', tem:2.20, precio:null },
+  { ticker:'S30A6', tipo:'LECAP',  vto:'30 Abr 2026', tem:2.50, precio:null },
+  { ticker:'S29Y6', tipo:'LECAP',  vto:'29 May 2026', tem:2.60, precio:null },
+  { ticker:'S30O6', tipo:'LECAP',  vto:'30 Oct 2026', tem:2.75, precio:null },
+  { ticker:'T30A7', tipo:'BONCAP', vto:'30 Abr 2027', tem:2.80, precio:null },
+  { ticker:'T31Y7', tipo:'BONCAP', vto:'31 May 2027', tem:2.82, precio:null },
+];
+
+const STATE = {
+  dolares: {},
+  cauciones: { tna: 22.25, tem: 1.85 },
+  comision: 0.15,
+  instrumentos: INSTRUMENTOS_DEFAULT.map(i => ({ ...i, tna: tnaDesdetem(i.tem), diasRestantes: calcularDiasRestantes(i.vto), precio: null })),
+  mepActual: 1437,
+  riesgoPais: 575,
+  lastFetch: null,
+};
+
+// ═══════════════════════════════════════════════════════════════
+// PERSISTENCIA
+// ═══════════════════════════════════════════════════════════════
+function guardarEnStorage() {
+  const recuadro = document.getElementById('editRemember');
+  if (recuadro && !recuadro.checked) return;
+  try {
+    localStorage.setItem('arb_cartera_v3', JSON.stringify(STATE.cartera || []));
+  localStorage.setItem('arb_tasas_v3', JSON.stringify({
+      cauciones:    STATE.cauciones,
+      instrumentos: (STATE.instrumentos||[]).map(i => ({ ticker:i.ticker, tipo:i.tipo, vto:i.vto, tem:i.tem, tna:i.tna, precio:i.precio??null })),
+      riesgoPais:   STATE.riesgoPais,
+    }));
+  } catch(e) { console.warn('guardarEnStorage:', e); }
+}
+
+function cargarTasasGuardadas() {
+  try {
+    const raw = localStorage.getItem('arb_tasas_v3');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (data.cauciones)    STATE.cauciones  = data.cauciones;
+    if (data.riesgoPais)   STATE.riesgoPais = data.riesgoPais;
+    if (data.instrumentos && data.instrumentos.length > 0) {
+      STATE.instrumentos = data.instrumentos.map(i => ({
+        ...i,
+        tna:          i.tna  || tnaDesdetem(i.tem),
+        diasRestantes: calcularDiasRestantes(i.vto),
+        precio:       i.precio ?? null,
+      }));
+    }
+  } catch(e) { console.warn('cargarTasasGuardadas:', e); }
+  // Cargar cartera
+  try {
+    const c = localStorage.getItem('arb_cartera_v3');
+    if (c) STATE.cartera = JSON.parse(c);
+  } catch(e) {}
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODAL — EDITOR
+// ═══════════════════════════════════════════════════════════════
+function renderInstrRows(tipo) {
+  const containerId = tipo === 'LECAP' ? 'editLecaps' : 'editBoncaps';
+  const instr = STATE.instrumentos.filter(i => i.tipo === tipo);
+  const el = document.getElementById(containerId);
+  if (!instr.length) {
+    el.innerHTML = '<div class="empty-instr">Sin instrumentos. Usá el formulario de abajo para agregar ↓</div>';
     return;
   }
-  localStorage.setItem('arb_ia_key', input);
-  document.getElementById('iaKeyInput').value = '';
-  status.style.color = 'var(--green)';
-  status.textContent = '✅ Key guardada en este navegador';
-  document.getElementById('iaBtn').disabled = false;
-  document.getElementById('iaBtn').style.opacity = '1';
-  document.getElementById('iaBtn').textContent = '🤖 ANALIZAR MERCADO AHORA CON IA';
-}
-
-function borrarIaKey() {
-  localStorage.removeItem('arb_ia_key');
-  const status = document.getElementById('iaKeyStatus');
-  status.style.color = 'var(--muted)';
-  status.textContent = 'Key borrada.';
-  document.getElementById('iaBtn').disabled = true;
-  document.getElementById('iaBtn').style.opacity = '0.5';
-  document.getElementById('iaBtn').textContent = '🤖 Análisis IA — ingresá tu key arriba';
-}
-
-function checkKey() {
-  // En GitHub Pages no se necesita key para los datos — solo para el análisis IA
-  if (window.location.hostname === "pablo2541.github.io") return true;
-  const key = getApiKey();
-  if (!key || !key.startsWith('sk-ant-')) {
-    document.getElementById('keyOverlay').style.display = 'flex';
-    return false;
-  }
-  return true;
-}
-
-function submitKey() {
-  const input = document.getElementById('keyInput').value.trim();
-  const remember = document.getElementById('keyRemember').checked;
-  const errEl = document.getElementById('keyError');
-  if (!input.startsWith('sk-ant-')) {
-    errEl.style.display = 'block';
-    return;
-  }
-  errEl.style.display = 'none';
-  saveApiKey(input, remember);
-  document.getElementById('keyOverlay').style.display = 'none';
-  loadAll();
-}
-
-
-// ─── EDITOR DE TASAS ─────────────────────────────────────────
-function abrirEditor() {
-  // Poblar campos con valores actuales
-  document.getElementById('ed_cau_tna').value = STATE.cauciones.tna;
-  document.getElementById('ed_cau_tem').value = STATE.cauciones.tem;
-
-  // Generar filas de LECAPs y BONCAPs
-  ['editLecaps','editBoncaps'].forEach(id => {
-    const tipo = id === 'editLecaps' ? 'LECAP' : 'BONCAP';
-    const instr = STATE.instrumentos.filter(i => i.tipo === tipo);
-    document.getElementById(id).innerHTML = instr.map(i => `
-      <div class="edit-row">
-        <label>${i.ticker} <span style="color:var(--muted);font-size:0.65rem;">· ${i.vto}</span></label>
-        <input type="number" id="ed_${i.ticker}_tem" value="${i.tem}" step="0.01" placeholder="TEM %">
-        <input type="number" id="ed_${i.ticker}_dias" value="${i.diasRestantes}" step="1" placeholder="Días">
+  el.innerHTML = instr.map(i => {
+    const dias = calcularDiasRestantes(i.vto);
+    const tipoClass = tipo === 'LECAP' ? 'lecap' : 'boncap';
+    return `
+    <div class="instr-row" id="row_${i.ticker}" style="grid-template-columns:1fr 80px 80px 34px;">
+      <div class="instr-label">
+        <span class="ticker-badge ${tipoClass}">${i.ticker}</span>
+        <span style="font-size:0.63rem;color:var(--muted);">${i.vto} · ${dias}d</span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 90px 90px;gap:8px;margin-bottom:8px;">
-        <div></div>
-        <div style="font-size:0.62rem;color:var(--muted);text-align:center;">TEM %</div>
-        <div style="font-size:0.62rem;color:var(--muted);text-align:center;">Días restantes</div>
-      </div>`).join('');
-  });
+      <input class="instr-tem-input" type="number" id="ed_${i.ticker}_tem" value="${i.tem}" step="0.01" placeholder="TEM %">
+      <input class="instr-tem-input" type="number" id="ed_${i.ticker}_precio" value="${i.precio??''}" step="0.0001" placeholder="Precio" style="color:var(--yellow);">
+      <button class="btn-del" onclick="eliminarInstrumento('${i.ticker}')" title="Eliminar ${i.ticker}">🗑</button>
+    </div>`;
+  }).join('');
+}
 
+function abrirEditor() {
+  document.getElementById('ed_cau_tna').value   = STATE.cauciones.tna;
+  document.getElementById('ed_cau_tem').value   = STATE.cauciones.tem;
+  document.getElementById('ed_riesgo_pais').value = STATE.riesgoPais;
+  document.getElementById('new_ticker').value   = '';
+  document.getElementById('new_tem').value      = '';
+  document.getElementById('new_vto').value      = '';
+  renderInstrRows('LECAP');
+  renderInstrRows('BONCAP');
   document.getElementById('editOverlay').classList.add('open');
 }
 
@@ -778,418 +1081,280 @@ function cerrarEditor() {
   document.getElementById('editOverlay').classList.remove('open');
 }
 
+function eliminarInstrumento(ticker) {
+  if (!confirm(`¿Eliminar ${ticker} de la lista de monitoreo?`)) return;
+  STATE.instrumentos = STATE.instrumentos.filter(i => i.ticker !== ticker);
+  renderInstrRows('LECAP');
+  renderInstrRows('BONCAP');
+  guardarEnStorage();
+}
+
+function agregarInstrumento() {
+  const ticker = document.getElementById('new_ticker').value.trim().toUpperCase();
+  const tipo   = document.getElementById('new_tipo').value;
+  const vtoRaw = document.getElementById('new_vto').value;  // YYYY-MM-DD
+  const tem    = parseFloat(document.getElementById('new_tem').value);
+
+  if (!ticker)                      { alert('⚠️ Ingresá el ticker'); return; }
+  if (STATE.instrumentos.find(i => i.ticker === ticker)) {
+    alert(`⚠️ ${ticker} ya está en la lista. Eliminalo primero si cambió.`); return;
+  }
+  if (isNaN(tem) || tem <= 0 || tem > 25) { alert('⚠️ TEM inválida (0.01 – 25%)'); return; }
+  if (!vtoRaw)                      { alert('⚠️ Ingresá la fecha de vencimiento'); return; }
+
+  const [y, m, d] = vtoRaw.split('-');
+  const vto = `${parseInt(d)} ${MESES_STR[parseInt(m)-1]} ${y}`;
+  const diasRestantes = calcularDiasRestantes(vto);
+  const tna = tnaDesdetem(tem);
+  const nuevo = { ticker, tipo, vto, tem, tna, diasRestantes, precio: null };
+
+  // Insertar ordenado por plazo
+  const idx = STATE.instrumentos.findIndex(i => calcularDiasRestantes(i.vto) > diasRestantes);
+  if (idx === -1) STATE.instrumentos.push(nuevo);
+  else STATE.instrumentos.splice(idx, 0, nuevo);
+
+  // Limpiar form
+  document.getElementById('new_ticker').value = '';
+  document.getElementById('new_tem').value    = '';
+  document.getElementById('new_vto').value    = '';
+
+  // Re-render listas
+  renderInstrRows('LECAP');
+  renderInstrRows('BONCAP');
+
+  // Feedback
+  const btn = document.getElementById('btnAgregar');
+  btn.textContent = `✅ ${ticker} agregado`;
+  setTimeout(() => { btn.textContent = '➕ AGREGAR A LA LISTA'; }, 1800);
+  guardarEnStorage();
+}
+
+function validarTasa(v, tipo) {
+  const L = { tna:{min:0,max:300}, tem:{min:0,max:25}, rp:{min:100,max:5000} };
+  const l = L[tipo] || L.tem;
+  return !isNaN(v) && v >= l.min && v <= l.max;
+}
+
 function guardarTasas() {
-  // Caución
   const cauTna = parseFloat(document.getElementById('ed_cau_tna').value);
   const cauTem = parseFloat(document.getElementById('ed_cau_tem').value);
-  if (!isNaN(cauTna)) STATE.cauciones.tna = cauTna;
-  if (!isNaN(cauTem)) STATE.cauciones.tem = cauTem;
+  const rp     = parseInt(document.getElementById('ed_riesgo_pais').value);
 
-  // Instrumentos
+  if (!validarTasa(cauTna, 'tna')) { alert('⚠️ TNA inválida (0-300%)'); return; }
+  if (!validarTasa(cauTem, 'tem')) { alert('⚠️ TEM inválida (0-25%)');  return; }
+  if (!isNaN(rp) && !validarTasa(rp, 'rp')) { alert('⚠️ Riesgo País inválido (100-5000 bps)'); return; }
+
+  STATE.cauciones.tna = cauTna;
+  STATE.cauciones.tem = cauTem;
+  if (!isNaN(rp)) STATE.riesgoPais = rp;
+
   STATE.instrumentos.forEach(i => {
-    const temEl  = document.getElementById('ed_' + i.ticker + '_tem');
-    const diasEl = document.getElementById('ed_' + i.ticker + '_dias');
-    if (temEl  && !isNaN(parseFloat(temEl.value)))  i.tem = parseFloat(temEl.value);
-    if (diasEl && !isNaN(parseInt(diasEl.value)))    i.diasRestantes = parseInt(diasEl.value);
-    // Recalcular TNA aproximada
-    i.tna = parseFloat(((Math.pow(1 + i.tem/100, 12) - 1) * 100).toFixed(2));
+    const elTem    = document.getElementById('ed_' + i.ticker + '_tem');
+    const elPrecio = document.getElementById('ed_' + i.ticker + '_precio');
+    if (elTem) {
+      const v = parseFloat(elTem.value);
+      if (!isNaN(v) && v > 0 && v <= 25) { i.tem = v; i.tna = tnaDesdetem(v); }
+    }
+    if (elPrecio) {
+      const p = parseFloat(elPrecio.value);
+      i.precio = (!isNaN(p) && p > 0) ? p : null;
+    }
   });
 
-  // Guardar en localStorage si está tildado
-  if (document.getElementById('editRemember').checked) {
-    localStorage.setItem('arb_tasas', JSON.stringify({
-      cauciones: STATE.cauciones,
-      instrumentos: STATE.instrumentos.map(i => ({
-        ticker: i.ticker, tem: i.tem, diasRestantes: i.diasRestantes, tna: i.tna
-      }))
-    }));
-  }
-
+  guardarEnStorage();
   cerrarEditor();
-
-  // Re-renderizar todo con los nuevos valores
-  renderGauges();
-  const arbData = renderArbitraje();
-  renderTabla();
-  renderSignalBanner(arbData);
-  renderSalidas();
-  renderRotacion();
+  renderAll();
 }
 
-// Cargar tasas guardadas al iniciar
-function cargarTasasGuardadas() {
-  try {
-    const saved = localStorage.getItem('arb_tasas');
-    if (!saved) return;
-    const data = JSON.parse(saved);
-    if (data.cauciones) STATE.cauciones = data.cauciones;
-    if (data.instrumentos) {
-      data.instrumentos.forEach(saved => {
-        const instr = STATE.instrumentos.find(i => i.ticker === saved.ticker);
-        if (instr) { instr.tem = saved.tem; instr.diasRestantes = saved.diasRestantes; instr.tna = saved.tna; }
-      });
-    }
-  } catch(e) { console.warn('cargarTasasGuardadas error:', e); }
-}
-
-// ─── ESTADO GLOBAL ───────────────────────────────────────────
-const STATE = {
-  dolares: {},
-  cauciones: { tna: 23, tem: 1.92 }, // dato de hoy cargado manualmente (APIs BYMA no son públicas)
-  comision: 0.15, // comisión A Cuánto Está (% sobre el monto, ida y vuelta = 0.30% round trip)
-  instrumentos: [
-    { ticker: 'S16M6', tipo: 'LECAP', vto: '16 Mar 2026', diasRestantes: 10, tem: 2.20, tna: 29.7 },
-    { ticker: 'S30A6', tipo: 'LECAP', vto: '30 Abr 2026', diasRestantes: 55, tem: 2.50, tna: 34.0 },
-    { ticker: 'S29Y6', tipo: 'LECAP', vto: '29 May 2026', diasRestantes: 84, tem: 2.60, tna: 35.2 },
-    { ticker: 'S30O6', tipo: 'LECAP', vto: '30 Oct 2026', diasRestantes: 207, tem: 2.75, tna: 37.4 },
-    { ticker: 'T30A7', tipo: 'BONCAP', vto: '30 Abr 2027', diasRestantes: 390, tem: 2.80, tna: 38.1 },
-    { ticker: 'T31Y7', tipo: 'BONCAP', vto: '31 May 2027', diasRestantes: 421, tem: 2.82, tna: 38.4 },
-  ],
-  loaded: false,
-  lastFetch: null
-};
-
-// ─── FORMATEAR ────────────────────────────────────────────────
-const fmt = n => isNaN(n) ? '--' : Math.round(n).toLocaleString('es-AR');
-const fmtP = (n, d=2) => isNaN(n) ? '--' : n.toFixed(d);
-const now = () => new Date().toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
-const today = () => new Date().toLocaleDateString('es-AR', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
-
-// ─── FETCH DOLARES — auto-detección de entorno ───────────────
-const IS_GITHUB = window.location.hostname === "pablo2541.github.io";
+// ═══════════════════════════════════════════════════════════════
+// FETCH DÓLARES
+// ═══════════════════════════════════════════════════════════════
+// ── fetchDolares: usa Cloudflare Worker como proxy para evitar CORS
+//    Worker: https://winter-paper-ea1epabsimeon.pabsimeon.workers.dev
+//    En GitHub Pages también funciona directo con dolarapi, pero el worker
+//    es la ruta única y gratuita que sirve tanto en Claude.ai como en GitHub.
 
 async function fetchDolares() {
-  // GitHub Pages → dolarapi.com directo (sin CORS issues)
-  if (IS_GITHUB) {
-    try {
-      const res = await fetch("https://dolarapi.com/v1/dolares");
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const arr = await res.json();
-      arr.forEach(d => { STATE.dolares[d.casa] = d; });
-      return true;
-    } catch(e) {
-      console.warn("fetchDolares [github] fallback:", e.message);
-    }
-  }
-
-  // Claude.ai u otro entorno → API Anthropic con web search
+  // ── Intentar con el Cloudflare Worker (resuelve CORS, funciona en browser propio y GitHub Pages)
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": getApiKey(),
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 300,
-        tools: [{ type: "web_search_20250305", name: "web_search" }],
-        messages: [{
-          role: "user",
-          content: "Buscá el precio del dólar en Argentina ahora. Respondé ÚNICAMENTE con JSON válido, sin texto extra ni markdown: {\"oficial\":{\"compra\":0,\"venta\":0},\"bolsa\":{\"compra\":0,\"venta\":0},\"contadoconliqui\":{\"compra\":0,\"venta\":0},\"blue\":{\"compra\":0,\"venta\":0}}"
-        }]
-      })
-    });
-    const data = await res.json();
-    const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
-    const json = JSON.parse(text.replace(/```json|```/g, "").trim());
-    Object.entries(json).forEach(([casa, vals]) => { STATE.dolares[casa] = { ...vals, casa }; });
-    return true;
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 4000); // timeout 4s
+    const res = await fetch('https://winter-paper-ea1epabsimeon.pabsimeon.workers.dev/dolares', { signal: ctrl.signal });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const arr = await res.json();
+    if (!Array.isArray(arr)) throw new Error('respuesta no es array');
+    arr.forEach(d => { STATE.dolares[d.casa] = d; });
+    return 'worker';
   } catch(e) {
-    console.warn("fetchDolares [anthropic] fallback:", e.message);
+    // silencioso — es esperado cuando se corre dentro de Claude.ai
   }
 
-  // Fallback final — datos de referencia
+  // ── Fallback: dolarapi directo (funciona en GitHub Pages)
+  try {
+    const ctrl2 = new AbortController();
+    setTimeout(() => ctrl2.abort(), 4000);
+    const res = await fetch('https://dolarapi.com/v1/dolares', { signal: ctrl2.signal });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const arr = await res.json();
+    arr.forEach(d => { STATE.dolares[d.casa] = d; });
+    return 'dolarapi';
+  } catch(e) {
+    // silencioso
+  }
+
+  // ── Sin acceso a red: usar valores de referencia (normal en Claude.ai)
   STATE.dolares = {
-    oficial:         { venta: 1048,  compra: 1008,  casa: "oficial" },
-    bolsa:           { venta: 1430,  compra: 1425,  casa: "bolsa" },
-    contadoconliqui: { venta: 1469,  compra: 1462,  casa: "contadoconliqui" },
-    blue:            { venta: 1400,  compra: 1380,  casa: "blue" },
+    oficial:         { venta:1048, compra:1008, casa:'oficial' },
+    bolsa:           { venta:1437, compra:1432, casa:'bolsa' },
+    contadoconliqui: { venta:1469, compra:1462, casa:'contadoconliqui' },
+    blue:            { venta:1400, compra:1380, casa:'blue' },
   };
   return false;
 }
 
-// ─── RENDER KPIs ──────────────────────────────────────────────
-function renderKPIs() {
-  const d = STATE.dolares;
-  const oficial = d.oficial || d.Oficial || {};
-  const mep = d.bolsa || d.Bolsa || {};
-  const ccl = d.contadoconliqui || d['contadoconliqui'] || {};
-  const blue = d.blue || d.Blue || {};
 
-  const mepVenta = mep.venta || 1430;
-  const cclVenta = ccl.venta || 1469;
-  const ofVenta = oficial.venta || 1048;
-  const blueVenta = blue.venta || 1400;
+// ═══════════════════════════════════════════════════════════════
+// FETCH EXCEL (via servidor local puerto 8765)
+// ═══════════════════════════════════════════════════════════════
+async function fetchExcelData() {
+  try {
+    const ctrl = new AbortController();
+    setTimeout(() => ctrl.abort(), 2000);
+    const res = await fetch('http://localhost:8765/arb_data.json', { signal: ctrl.signal });
+    if (!res.ok) return false;
+    const data = await res.json();
+    if (!data.instrumentos || !data.instrumentos.length) return false;
 
-  const brechaOfiMep = ((mepVenta - ofVenta) / ofVenta * 100).toFixed(1);
-  const brechaMepCcl = ((cclVenta - mepVenta) / mepVenta * 100).toFixed(1);
+    // Reemplazar instrumentos con los del Excel, preservando precios manuales
+    const previos = STATE.instrumentos || [];
+    const nuevos = data.instrumentos.map(excel => {
+      const previo = previos.find(i => i.ticker === excel.ticker);
+      return {
+        ticker:        excel.ticker,
+        tipo:          excel.tipo,
+        vto:           excel.vto,
+        tem:           excel.tem   || (previo ? previo.tem : 2.4),
+        tna:           excel.tna   || tnaDesdetem(excel.tem || 2.4),
+        diasRestantes: excel.dias  || calcularDiasRestantes(excel.vto),
+        precio:        excel.precio || (previo ? previo.precio : null),
+      };
+    });
+    if (nuevos.length > 0) STATE.instrumentos = nuevos;
 
-  document.getElementById('valOficial').innerHTML = `<span style="color:var(--muted);">$</span><span style="color:var(--text);">${fmt(ofVenta)}</span>`;
-  document.getElementById('subOficial').innerHTML = `BNA · Compra $${fmt(oficial.compra || ofVenta-40)}`;
-
-  document.getElementById('valMep').innerHTML = `<span style="color:var(--muted);">$</span><span style="color:var(--accent);">${fmt(mepVenta)}</span>`;
-  document.getElementById('subMep').innerHTML = `Brecha: <span style="color:${Math.abs(brechaOfiMep)<2?'var(--green)':'var(--yellow)'};">${brechaOfiMep}% vs oficial</span>`;
-
-  document.getElementById('valCcl').innerHTML = `<span style="color:var(--muted);">$</span><span style="color:var(--yellow);">${fmt(cclVenta)}</span>`;
-  document.getElementById('subCcl').innerHTML = `Spread MEP→CCL: <span style="color:var(--muted);">+${brechaMepCcl}%</span>`;
-
-  document.getElementById('valBlue').innerHTML = `<span style="color:var(--muted);">$</span><span style="color:var(--accent2);">${fmt(blueVenta)}</span>`;
-  document.getElementById('subBlue').innerHTML = `vs MEP: <span style="color:${blueVenta < mepVenta ? 'var(--green)':'var(--red)'};">${blueVenta < mepVenta ? '↓' : '↑'} ${Math.abs(((blueVenta-mepVenta)/mepVenta)*100).toFixed(1)}%</span>`;
-
-  // Guardar MEP para cálculos
-  STATE.mepActual = mepVenta;
+    // Ordenar por días restantes
+    STATE.instrumentos.sort((a,b) => calcularDiasRestantes(a.vto) - calcularDiasRestantes(b.vto));
+    // NO guardar en storage — los datos del Excel se leen frescos cada vez
+    STATE.excelActualizado = data.actualizado;
+    return true;
+  } catch(e) {
+    return false;
+  }
 }
 
-// ─── RENDER GAUGES ────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// RENDERS
+// ═══════════════════════════════════════════════════════════════
+function renderKPIs() {
+  const d = STATE.dolares;
+  const oficial = d.oficial  || {};
+  const mep     = d.bolsa    || {};
+  const ccl     = d.contadoconliqui || {};
+  const blue    = d.blue     || {};
+  const mepV  = mep.venta  || 1437;
+  const cclV  = ccl.venta  || 1469;
+  const ofV   = oficial.venta || 1048;
+  const blueV = blue.venta || 1400;
+  const brechaOM  = ((mepV - ofV)  / ofV  * 100).toFixed(1);
+  const brechaMC  = ((cclV - mepV) / mepV * 100).toFixed(1);
+  STATE.mepActual = mepV;
+
+  document.getElementById('valOficial').innerHTML = `<span style="color:var(--muted);">$</span><span style="color:var(--text);">${fmt(ofV)}</span>`;
+  document.getElementById('subOficial').innerHTML = `BNA · Compra $${fmt(oficial.compra || ofV-40)}`;
+  document.getElementById('valMep').innerHTML = `<span style="color:var(--muted);">$</span><span style="color:var(--accent);">${fmt(mepV)}</span>`;
+  document.getElementById('subMep').innerHTML = `Brecha: <span style="color:var(--yellow);">${brechaOM}% vs oficial</span>`;
+  document.getElementById('valCcl').innerHTML = `<span style="color:var(--muted);">$</span><span style="color:var(--yellow);">${fmt(cclV)}</span>`;
+  document.getElementById('subCcl').innerHTML = `Spread MEP→CCL: <span style="color:var(--muted);">+${brechaMC}%</span>`;
+  document.getElementById('valBlue').innerHTML = `<span style="color:var(--muted);">$</span><span style="color:var(--accent2);">${fmt(blueV)}</span>`;
+  document.getElementById('subBlue').innerHTML = `vs MEP: <span style="color:${blueV < mepV ? 'var(--green)':'var(--red)'};">${blueV < mepV ? '↓' : '↑'} ${Math.abs(((blueV-mepV)/mepV)*100).toFixed(1)}%</span>`;
+}
+
 function renderGauges() {
   const cau = STATE.cauciones;
-  const instr = STATE.instrumentos;
   const maxTem = 4.5;
-
   const items = [
-    { label: 'Caución 1 día', tem: cau.tem, color: 'var(--accent2)', tipo: 'corto' },
-    ...instr.map(i => ({ label: i.ticker, tem: i.tem, color: i.tipo === 'LECAP' ? 'var(--accent)' : 'var(--purple)', tipo: i.tipo }))
+    { label:'Caución 1d', tem:cau.tem, color:'var(--accent2)' },
+    ...(STATE.instrumentos||[]).map(i => ({ label:i.ticker, tem:i.tem, color: i.tipo==='LECAP' ? 'var(--accent)' : 'var(--purple)' }))
   ];
-
   document.getElementById('gaugeWrap').innerHTML = items.map(item => {
-    const pct = Math.min(100, (item.tem / maxTem) * 100);
-    const color = item.tem > cau.tem * 1.3 ? 'var(--green)' :
-                  item.tem > cau.tem ? 'var(--accent)' : 'var(--red)';
-    return `
-      <div class="gauge-item">
-        <div class="gauge-label-row">
-          <span class="gauge-name">${item.label}</span>
-          <span class="gauge-val" style="color:${color};">${fmtP(item.tem)}% TEM</span>
-        </div>
-        <div class="gauge-track">
-          <div class="gauge-fill" style="width:${pct}%;background:${color};"></div>
-        </div>
-      </div>`;
+    const pct   = Math.min(100, (item.tem / maxTem) * 100);
+    const color = item.tem > cau.tem * 1.3 ? 'var(--green)' : item.tem > cau.tem ? 'var(--accent)' : 'var(--red)';
+    return `<div class="gauge-item">
+      <div class="gauge-label-row">
+        <span class="gauge-name">${item.label}</span>
+        <span class="gauge-val" style="color:${color};">${fmtP(item.tem)}% TEM</span>
+      </div>
+      <div class="gauge-track"><div class="gauge-fill" style="width:${pct}%;background:${color};"></div></div>
+    </div>`;
   }).join('');
 }
 
-
-// ─── PRÓXIMAS LICITACIONES (fechas estimadas 2026) ────────────
-const LICITACIONES = [
-  new Date('2026-03-11'),
-  new Date('2026-03-25'),
-  new Date('2026-04-08'),
-  new Date('2026-04-22'),
-  new Date('2026-05-06'),
-  new Date('2026-05-20'),
-  new Date('2026-06-03'),
-  new Date('2026-06-17'),
-  new Date('2026-07-01'),
-  new Date('2026-07-15'),
-];
-
-function renderLicitacion() {
-  const hoy = new Date();
-  hoy.setHours(0,0,0,0);
-  let proxima = null, diasRestantes = null;
-
-  for (const fecha of LICITACIONES) {
-    const diff = Math.round((fecha - hoy) / 86400000);
-    if (diff >= 0) { proxima = fecha; diasRestantes = diff; break; }
-  }
-
-  const banner  = document.getElementById('licitBanner');
-  const title   = document.getElementById('licitTitle');
-  const desc    = document.getElementById('licitDesc');
-  const icon    = document.getElementById('licitIcon');
-  const daysEl  = document.getElementById('licitDays');
-
-  if (!proxima) { title.textContent = 'Sin licitaciones programadas'; return; }
-
-  const fechaStr = proxima.toLocaleDateString('es-AR', { weekday:'long', day:'numeric', month:'long' });
-
-  if (diasRestantes === 0) {
-    banner.className = 'licit-banner now';
-    icon.textContent = '⚡';
-    title.textContent = '¡LICITACIÓN HOY! — Monitoreá el resultado';
-    desc.textContent = `Observá la TEM de corte. Si baja → precio de tus bonos sube hoy mismo.`;
-    daysEl.textContent = 'HOY'; daysEl.style.color = 'var(--purple)'; daysEl.style.background = 'rgba(168,85,247,0.15)';
-  } else if (diasRestantes <= 3) {
-    banner.className = 'licit-banner entry';
-    icon.textContent = '🟢';
-    title.textContent = `VENTANA DE ENTRADA: Licitación en ${diasRestantes} día${diasRestantes>1?'s':''} (${fechaStr})`;
-    desc.textContent = 'Momento óptimo para comprar BONCAPs o LECAPs antes de que el mercado anticipe la baja de tasas.';
-    daysEl.textContent = `${diasRestantes}d`; daysEl.style.color = 'var(--accent)'; daysEl.style.background = 'rgba(0,229,255,0.1)';
-  } else if (diasRestantes <= 1) {
-    banner.className = 'licit-banner after';
-    icon.textContent = '⚠️';
-    title.textContent = `Licitación muy próxima: ${fechaStr}`;
-    desc.textContent = 'Si el resultado baja tasas, el precio sube ese mismo día. Posicionarse antes.';
-    daysEl.textContent = `${diasRestantes}d`; daysEl.style.color = 'var(--yellow)'; daysEl.style.background = 'rgba(255,210,63,0.1)';
-  } else {
-    banner.className = 'licit-banner wait';
-    icon.textContent = '📋';
-    title.textContent = `Próxima licitación: ${fechaStr}`;
-    desc.textContent = `Faltan ${diasRestantes} días. Podés esperar o entrar gradualmente si el spread es atractivo.`;
-    daysEl.textContent = `${diasRestantes}d`; daysEl.style.color = 'var(--muted)'; daysEl.style.background = 'var(--surface2)';
-  }
+function lecapMasCorta() {
+  return STATE.instrumentos
+    .filter(i => i.tipo === 'LECAP')
+    .sort((a,b) => calcularDiasRestantes(a.vto) - calcularDiasRestantes(b.vto))[0] || null;
 }
 
-// ─── RENDER SEÑALES DE SALIDA ─────────────────────────────────
-function renderSalidas() {
-  const mep   = STATE.mepActual || 1430;
-  const rp    = STATE.riesgoPais || 500;
-  const instr = STATE.instrumentos;
-  const temLargo = instr.filter(i=>i.tipo==='BONCAP').reduce((s,i)=>s+i.tem,0) / instr.filter(i=>i.tipo==='BONCAP').length;
-
-  const UMBRAL_MEP = 1550;
-  const UMBRAL_RP  = 650;
-  const UMBRAL_TEM = 2.2;
-
-  const checks = [
-    {
-      label: 'Dólar MEP',
-      val: `$${fmt(mep)}`,
-      threshold: `Salir si > $${fmt(UMBRAL_MEP)}`,
-      triggered: mep > UMBRAL_MEP,
-      warning:   mep > 1500,
-      action:    mep > UMBRAL_MEP ? '🚨 SALIR AHORA' : mep > 1500 ? '⚠️ REDUCIR' : '✅ OK',
-      actionClass: mep > UMBRAL_MEP ? 'sell' : mep > 1500 ? 'warn' : 'ok',
-      cardClass:   mep > UMBRAL_MEP ? 'triggered' : mep > 1500 ? 'warning' : 'safe',
-    },
-    {
-      label: 'Riesgo País (EMBI)',
-      val: rp ? `${rp} bps` : '···',
-      threshold: `Salir si > ${UMBRAL_RP} bps`,
-      triggered: rp > UMBRAL_RP,
-      warning:   rp > 550,
-      action:    rp > UMBRAL_RP ? '🚨 SALIR AHORA' : rp > 550 ? '⚠️ PRECAUCIÓN' : '✅ OK',
-      actionClass: rp > UMBRAL_RP ? 'sell' : rp > 550 ? 'warn' : 'ok',
-      cardClass:   rp > UMBRAL_RP ? 'triggered' : rp > 550 ? 'warning' : 'safe',
-    },
-    {
-      label: 'TEM Tramo Largo',
-      val: `${fmtP(temLargo, 2)}% TEM`,
-      threshold: `Vender 50% si ≤ ${UMBRAL_TEM}% TEM`,
-      triggered: temLargo <= UMBRAL_TEM,
-      warning:   temLargo <= 2.4,
-      action:    temLargo <= UMBRAL_TEM ? '🎯 VENDER 50%' : temLargo <= 2.4 ? '⚠️ PREPARAR SALIDA' : '✅ MANTENER',
-      actionClass: temLargo <= UMBRAL_TEM ? 'sell' : temLargo <= 2.4 ? 'warn' : 'ok',
-      cardClass:   temLargo <= UMBRAL_TEM ? 'triggered' : temLargo <= 2.4 ? 'warning' : 'safe',
-    },
-  ];
-
-  document.getElementById('exitGrid').innerHTML = checks.map(c => `
-    <div class="exit-card ${c.cardClass}">
-      <div class="exit-label">${c.label}</div>
-      <div class="exit-val" style="color:${c.triggered?'var(--red)':c.warning?'var(--yellow)':'var(--green)'};">${c.val}</div>
-      <div class="exit-threshold">${c.threshold}</div>
-      <span class="exit-action ${c.actionClass}">${c.action}</span>
-    </div>`).join('');
-
-  const hayAlerta = checks.some(c => c.triggered);
-  const hayWarning = checks.some(c => c.warning && !c.triggered);
-  const badge = document.getElementById('exitBadge');
-  if (hayAlerta) {
-    badge.textContent = '🚨 ACCIÓN REQUERIDA';
-    badge.style.background = 'rgba(255,61,90,0.15)'; badge.style.color = 'var(--red)';
-  } else if (hayWarning) {
-    badge.textContent = '⚠️ Monitorear';
-    badge.style.background = 'rgba(255,210,63,0.12)'; badge.style.color = 'var(--yellow)';
-  } else {
-    badge.textContent = '✅ Todo en orden';
-    badge.style.background = 'rgba(0,255,136,0.08)'; badge.style.color = 'var(--green)';
-  }
-
-  return checks;
-}
-
-// ─── RENDER ALERTA DE ROTACIÓN ────────────────────────────────
-function renderRotacion() {
-  const cau   = STATE.cauciones;
-  const instr = STATE.instrumentos;
-  const lecapCorta = instr.find(i => i.ticker === 'S30A6');
-  const temLargo   = instr.filter(i=>i.tipo==='BONCAP').reduce((s,i)=>s+i.tem,0) / instr.filter(i=>i.tipo==='BONCAP').length;
-  const alert  = document.getElementById('rotateAlert');
-  const title  = document.getElementById('rotateTitle');
-  const desc   = document.getElementById('rotateDesc');
-
-  // Caución supera LECAP corta → rotar a caución
-  if (lecapCorta && cau.tem > lecapCorta.tem) {
-    alert.className = 'rotate-alert visible';
-    title.textContent = '🔄 ROTAR A CAUCIÓN — La caución supera la LECAP corta';
-    desc.textContent = `La caución (${fmtP(cau.tem)}% TEM) rinde más que ${lecapCorta.ticker} (${fmtP(lecapCorta.tem)}% TEM). Igual que en diciembre 2025: conviene salir de tasa fija corta y parquear en caución mientras dure este fenómeno.`;
-  }
-  // TEM largo comprimió mucho → rotar a tramo corto
-  else if (temLargo < 2.3 && lecapCorta && lecapCorta.tem > temLargo - 0.2) {
-    alert.className = 'rotate-alert visible';
-    title.textContent = '🔄 ROTAR A TRAMO CORTO — El largo ya no paga la diferencia';
-    desc.textContent = `Los BONCAPs largos comprimieron a ${fmtP(temLargo,2)}% TEM. El diferencial vs. LECAPs cortas ya no justifica el riesgo de duration. Considerá rotar a ${lecapCorta.ticker} o caución.`;
-  }
-  else {
-    alert.className = 'rotate-alert';
-  }
-}
-
-// ─── RENDER ARBITRAJE ─────────────────────────────────────────
 function renderArbitraje() {
-  const cau = STATE.cauciones;
-  const mep = STATE.mepActual || 1430;
-  const instr = STATE.instrumentos;
-
-  // Calcular spread promedio de los 2 BONCAPs largos vs caución
-  const largos = instr.filter(i => i.tipo === 'BONCAP');
-  const spreadLargo = largos.length ? (largos.reduce((s, i) => s + i.tem, 0) / largos.length - cau.tem).toFixed(2) : 0;
-
-  // Señal caución vs lecap corta
-  const lecapCorta = instr.find(i => i.ticker === 'S30A6');
-  const spreadCortaVsCau = lecapCorta ? (lecapCorta.tem - cau.tem).toFixed(2) : 0;
-
-  // Brecha MEP-CCL
-  const ccl = STATE.dolares?.contadoconliqui?.venta || 1469;
-  const brechaMepCcl = ((ccl - mep) / mep * 100).toFixed(1);
-
-  // Arbitraje caución vs BONCAP largo
+  const cau   = STATE.cauciones;
+  const mepV  = STATE.mepActual || 1437;
+  const largos = STATE.instrumentos.filter(i => i.tipo === 'BONCAP');
+  const spreadLargo = largos.length
+    ? (largos.reduce((s,i)=>s+i.tem,0)/largos.length - cau.tem).toFixed(2)
+    : '0.00';
+  const lc = lecapMasCorta();
+  const spreadCortaVsCau = lc ? (lc.tem - cau.tem).toFixed(2) : '0.00';
+  const cclV = STATE.dolares?.contadoconliqui?.venta || 1469;
+  const brechaMepCcl = ((cclV - mepV) / mepV * 100).toFixed(1);
   const arbLargo = parseFloat(spreadLargo);
-  const tieneOpp = arbLargo > 0.6;
 
-  let oppCount = 0;
   const cards = [
     {
-      title: 'Arbitraje Curva: BONCAPs vs Caución',
-      desc: `BONCAPs largos pagan ${fmtP(largos[0]?.tem || 2.8)}% TEM vs caución en ${fmtP(cau.tem)}% TEM. Spread: +${spreadLargo}%`,
-      value: `+${spreadLargo}%`,
-      unit: 'spread TEM',
+      title: 'BONCAPs vs Caución',
+      desc: largos.length
+        ? `BONCAPs pagan ${fmtP(largos.reduce((s,i)=>s+i.tem,0)/largos.length)}% TEM vs caución ${fmtP(cau.tem)}% TEM. Spread: +${spreadLargo}%`
+        : 'Sin BONCAPs en lista',
+      value: `+${spreadLargo}%`, unit: 'spread TEM',
       clase: arbLargo > 0.6 ? 'active-opp' : arbLargo > 0.3 ? 'active-warn' : '',
-      indicador: arbLargo > 0.6 ? '🟢' : arbLargo > 0.3 ? '🟡' : '🔴',
-      tag: arbLargo > 0.6 ? 'buy' : 'watch'
+      ind: arbLargo > 0.6 ? '🟢' : arbLargo > 0.3 ? '🟡' : '🔴',
+      tag: arbLargo > 0.6 ? 'buy' : 'watch',
     },
     {
-      title: 'Arbitraje: Caución vs LECAP corta',
-      desc: parseFloat(spreadCortaVsCau) > 0
-        ? `LECAP S30A6 paga más que la caución. Conviene estar en LECAP, no en caución.`
-        : `La caución supera temporalmente la LECAP corta. Fenómeno transitorio — mirar si persiste.`,
-      value: `${parseFloat(spreadCortaVsCau) > 0 ? '+' : ''}${spreadCortaVsCau}%`,
-      unit: 'spread TEM',
+      title: `LECAP corta (${lc ? lc.ticker : '—'}) vs Caución`,
+      desc: lc
+        ? (parseFloat(spreadCortaVsCau) > 0
+          ? `${lc.ticker} paga más que la caución. Conviene estar en LECAP.`
+          : `La caución supera temporalmente ${lc.ticker}. Fenómeno transitorio.`)
+        : 'Sin LECAPs en lista',
+      value: `${parseFloat(spreadCortaVsCau) > 0 ? '+' : ''}${spreadCortaVsCau}%`, unit: 'spread TEM',
       clase: parseFloat(spreadCortaVsCau) > 0.3 ? 'active-opp' : '',
-      indicador: parseFloat(spreadCortaVsCau) > 0.3 ? '🟢' : '🟡',
-      tag: parseFloat(spreadCortaVsCau) > 0.3 ? 'buy' : 'hold'
+      ind: parseFloat(spreadCortaVsCau) > 0.3 ? '🟢' : '🟡',
+      tag: parseFloat(spreadCortaVsCau) > 0.3 ? 'buy' : 'hold',
     },
     {
-      title: 'Arbitraje Cambiario: MEP vs CCL',
-      desc: `Spread entre MEP ($${fmt(mep)}) y CCL ($${fmt(ccl)}) es de ${brechaMepCcl}%. Bajo → conveniente para carry en pesos.`,
-      value: `${brechaMepCcl}%`,
-      unit: 'brecha',
-      clase: parseFloat(brechaMepCcl) < 3 ? 'active-opp' : parseFloat(brechaMepCcl) < 5 ? '' : 'active-warn',
-      indicador: parseFloat(brechaMepCcl) < 3 ? '🟢' : '🟡',
-      tag: parseFloat(brechaMepCcl) < 3 ? 'buy' : 'watch'
-    }
+      title: 'Brecha MEP vs CCL',
+      desc: `MEP $${fmt(mepV)} · CCL $${fmt(cclV)} · Spread ${brechaMepCcl}%. Bajo → conveniente para carry en pesos.`,
+      value: `${brechaMepCcl}%`, unit: 'brecha',
+      clase: parseFloat(brechaMepCcl) < 3 ? 'active-opp' : parseFloat(brechaMepCcl) > 5 ? 'active-warn' : '',
+      ind: parseFloat(brechaMepCcl) < 3 ? '🟢' : '🟡',
+      tag: parseFloat(brechaMepCcl) < 3 ? 'buy' : 'watch',
+    },
   ];
 
-  oppCount = cards.filter(c => c.clase === 'active-opp').length;
-
+  const oppCount = cards.filter(c => c.clase === 'active-opp').length;
   document.getElementById('arbCards').innerHTML = cards.map(c => `
     <div class="arb-card ${c.clase}">
       <div>
-        <div class="arb-title">${c.indicador} ${c.title}</div>
+        <div class="arb-title">${c.ind} ${c.title}</div>
         <div class="arb-desc">${c.desc}</div>
       </div>
       <div class="arb-value">
@@ -1199,335 +1364,996 @@ function renderArbitraje() {
       </div>
     </div>`).join('');
 
-  // Badge contador
-  document.getElementById('arbCount').textContent = `${oppCount} oportunidad${oppCount !== 1 ? 'es' : ''}`;
-  document.getElementById('arbCount').style.background = oppCount > 0 ? 'rgba(0,255,136,0.12)' : 'rgba(61,79,107,0.3)';
-  document.getElementById('arbCount').style.color = oppCount > 0 ? 'var(--green)' : 'var(--muted)';
+  const badge = document.getElementById('arbCount');
+  badge.textContent = `${oppCount} oportunidad${oppCount!==1?'es':''}`;
+  badge.style.background = oppCount>0 ? 'rgba(0,255,136,0.12)' : 'rgba(61,79,107,0.3)';
+  badge.style.color      = oppCount>0 ? 'var(--green)' : 'var(--muted)';
 
-  return { oppCount, arbLargo, tieneOpp };
+  return { oppCount, arbLargo, tieneOpp: oppCount > 0 };
 }
 
-// ─── RENDER TABLA INSTRUMENTOS ────────────────────────────────
 function renderTabla() {
-  const mep   = STATE.mepActual || 1430;
+  if (!STATE.instrumentos || !STATE.instrumentos.length) return;
+  const mep   = STATE.mepActual || 1437;
   const cau   = STATE.cauciones;
-  const com   = STATE.comision / 100;        // 0.0015
-  const comRT = com * 2;                     // round trip (compra + venta)
+  const comRT = (STATE.comision / 100) * 2;
+  const com   = STATE.comision / 100;
 
+  const cartTickers = new Set((STATE.cartera || []).map(c => c.ticker));
   const rows = STATE.instrumentos.map(i => {
-    // Ganancia bruta del período
-    const ganBruta = i.tem / 100 * (i.diasRestantes / 30.44);
-    // Ganancia neta descontando comisión round trip
-    const ganNeta  = ganBruta - comRT;
-    // TEM neta equivalente
-    const temNeta  = (ganNeta / (i.diasRestantes / 30.44) * 100);
-    // Breakeven USD con comisión incluida
-    const breakeven = (mep * (1 + ganBruta + com)).toFixed(0); // com entrada ya incluida
-    // Spread neto vs caución
-    const spreadNeto = (temNeta - cau.tem).toFixed(2);
-    const spreadNum  = parseFloat(spreadNeto);
+    const dias  = Math.max(1, calcularDiasRestantes(i.vto));
+    const meses = dias / 30.44;
+    const ganB  = i.tem / 100 * meses;
+    const ganN  = Math.max(0, ganB - comRT);
+    const temN  = ganN / meses * 100;
+    const be    = Math.round(mep * (1 + ganB + com));
+    const spread = (temN - cau.tem).toFixed(2);
+    const sNum   = parseFloat(spread);
+    let señal = 'hold', sl = 'HOLD';
+    if (sNum > 0.7)  { señal='buy';   sl='COMPRAR ✦'; }
+    else if (sNum > 0.3) { señal='watch'; sl='MONITOREAR'; }
+    else if (sNum < 0)   { señal='sell';  sl='ROTAR'; }
 
-    let señal = 'hold', señalLabel = 'HOLD';
-    if (spreadNum > 0.7) { señal = 'buy';  señalLabel = 'COMPRAR ✦'; }
-    else if (spreadNum > 0.3) { señal = 'watch'; señalLabel = 'MONITOREAR'; }
-    else if (spreadNum < 0)   { señal = 'sell';  señalLabel = 'ROTAR'; }
-
-    return `<tr>
+    const enCart = cartTickers.has(i.ticker);
+    return `<tr class='${enCart ? 'en-cartera-row' : ''}'>
       <td>
         <span style="font-weight:700;color:${i.tipo==='BONCAP'?'var(--purple)':'var(--accent)'};">${i.ticker}</span>
-        <span style="color:#8fa8c4;font-size:0.65rem;margin-left:6px;">${i.tipo} · ${i.vto}</span>
+        <span style="color:#8fa8c4;font-size:0.65rem;margin-left:6px;">${i.tipo} · ${i.vto} · ${dias}d</span>
+      </td>
+      <td class="precio-input-cell">
+        <input class="precio-inline" type="number" step="0.0001"
+          placeholder="—" value="${i.precio??''}"
+          onchange="actualizarPrecio('${i.ticker}', this.value)"
+          title="Ingresá el precio actual para mejorar la precisión del arbitraje">
+        ${i.precio ? '<span style="font-size:0.6rem;color:#8fa8c4;display:block;text-align:center;">c/c: ' + fmtP(i.precio*(1+STATE.comision/100),4) + '</span>' : '<span style="font-size:0.6rem;color:var(--muted);display:block;text-align:center;">opcional</span>'}
       </td>
       <td>
-        <span style="color:var(--green);font-weight:700;">${fmtP(i.tem, 2)}%</span>
-        <span style="color:#8fa8c4;font-size:0.65rem;display:block;">neto: ${fmtP(temNeta,2)}%</span>
+        <span style="color:var(--green);font-weight:700;">${fmtP(i.tem,2)}%</span>
+        <span style="color:#8fa8c4;font-size:0.63rem;display:block;">neto: ${fmtP(temN,2)}%</span>
       </td>
-      <td style="color:var(--text);">~${fmtP(i.tna, 1)}% TNA</td>
-      <td style="color:var(--yellow);">$${fmt(parseFloat(breakeven))}</td>
-      <td style="color:${spreadNum > 0.5?'var(--green)':spreadNum > 0?'var(--accent)':'var(--red)'};">${spreadNum > 0 ? '+' : ''}${spreadNeto}%
+      <td style="color:var(--text);">~${fmtP(i.tna,1)}%</td>
+      <td style="color:var(--yellow);">$${fmt(be)}</td>
+      <td style="color:${sNum>0.5?'var(--green)':sNum>0?'var(--accent)':'var(--red)'};">
+        ${sNum>0?'+':''}${spread}%
         <span style="color:#8fa8c4;font-size:0.6rem;display:block;">c/ comisión</span>
       </td>
-      <td><span class="tag ${señal}">${señalLabel}</span></td>
+      <td><span class="tag ${señal}">${sl}</span></td>
+      <td><button class="btn-comprar ${enCart ? 'en-cartera' : ''}"
+        onclick="abrirModalCompra('${i.ticker}')"
+        title="${enCart ? 'Ya en cartera — clic para editar' : 'Registrar compra'}">
+        ${enCart ? '✓ EN CARTERA' : '🛒 COMPRAR'}
+      </button></td>
     </tr>`;
   }).join('');
 
   document.getElementById('ratesBody').innerHTML = rows +
-    `<tr style="background:rgba(61,79,107,0.1);">
-      <td colspan="1" style="color:var(--muted);">CAUCIÓN (referencia) <span style="font-size:0.6rem;display:block;color:#8fa8c4;">comisión: ${STATE.comision}% x2 = ${(STATE.comision*2).toFixed(2)}% round trip</span></td>
-      <td style="color:var(--accent2);">${fmtP(cau.tem)}%</td>
-      <td style="color:var(--muted);">${fmtP(cau.tna, 1)}% TNA</td>
-      <td style="color:var(--muted);">—</td>
-      <td style="color:var(--muted);">base</td>
-      <td><span class="tag hold">BASE</span></td>
-    </tr>`;
+  `<tr style="background:rgba(61,79,107,0.08);">
+    <td style="color:var(--muted);">CAUCIÓN (base)
+      <span style="font-size:0.6rem;display:block;color:#8fa8c4;">comisión ${STATE.comision}% × 2 = ${(STATE.comision*2).toFixed(2)}% RT</span>
+    </td>
+    <td style="color:var(--muted);">—</td>
+    <td style="color:var(--accent2);">${fmtP(cau.tem)}%</td>
+    <td style="color:var(--muted);">${fmtP(cau.tna,1)}% TNA</td>
+    <td style="color:var(--muted);">—</td>
+    <td style="color:var(--muted);">base</td>
+    <td><span class="tag hold">BASE</span></td>
+    <td></td>
+  </tr>`;
 }
 
-// ─── RENDER SIGNAL BANNER ─────────────────────────────────────
+const LICITACIONES = [
+  '2026-03-25','2026-04-08','2026-04-22','2026-05-06','2026-05-20',
+  '2026-06-03','2026-06-17','2026-07-01','2026-07-15','2026-07-29',
+].map(s => new Date(s));
+
+function renderLicitacion() {
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  let proxima = null, diff = null;
+  for (const f of LICITACIONES) {
+    const d = Math.round((f - hoy) / 86400000);
+    if (d >= 0) { proxima = f; diff = d; break; }
+  }
+  if (!proxima) { document.getElementById('licitTitle').textContent = 'Sin licitaciones programadas'; return; }
+
+  const banner = document.getElementById('licitBanner');
+  const fechaStr = proxima.toLocaleDateString('es-AR', {weekday:'long',day:'numeric',month:'long'});
+  const dEl = document.getElementById('licitDays');
+
+  if (diff === 0) {
+    banner.className = 'licit-banner now';
+    document.getElementById('licitIcon').textContent = '⚡';
+    document.getElementById('licitTitle').textContent = '¡LICITACIÓN HOY! — Monitoreá el resultado';
+    document.getElementById('licitDesc').textContent  = 'Observá la TEM de corte. Si baja → precio de tus bonos sube.';
+    dEl.textContent='HOY'; dEl.style.color='var(--purple)'; dEl.style.background='rgba(168,85,247,0.15)';
+  } else if (diff <= 3) {
+    banner.className = 'licit-banner entry';
+    document.getElementById('licitIcon').textContent = '🟢';
+    document.getElementById('licitTitle').textContent = `VENTANA DE ENTRADA: Licitación en ${diff} día${diff>1?'s':''} (${fechaStr})`;
+    document.getElementById('licitDesc').textContent  = 'Momento óptimo para comprar antes de que el mercado anticipe la baja de tasas.';
+    dEl.textContent=`${diff}d`; dEl.style.color='var(--accent)'; dEl.style.background='rgba(0,229,255,0.1)';
+  } else if (diff <= 7) {
+    banner.className = 'licit-banner after';
+    document.getElementById('licitIcon').textContent = '⚠️';
+    document.getElementById('licitTitle').textContent = `Licitación próxima: ${fechaStr}`;
+    document.getElementById('licitDesc').textContent  = 'Posicionarse antes. Si el Tesoro baja tasas, el precio sube ese mismo día.';
+    dEl.textContent=`${diff}d`; dEl.style.color='var(--yellow)'; dEl.style.background='rgba(255,210,63,0.1)';
+  } else {
+    banner.className = 'licit-banner wait';
+    document.getElementById('licitIcon').textContent = '📋';
+    document.getElementById('licitTitle').textContent = `Próxima licitación: ${fechaStr}`;
+    document.getElementById('licitDesc').textContent  = `Faltan ${diff} días. Entrá gradualmente si el spread es atractivo.`;
+    dEl.textContent=`${diff}d`; dEl.style.color='var(--muted)'; dEl.style.background='var(--surface2)';
+  }
+}
+
+function renderSalidas() {
+  const mep = STATE.mepActual || 1437;
+  const rp  = STATE.riesgoPais || 575;
+  const largos = STATE.instrumentos.filter(i=>i.tipo==='BONCAP');
+  const temLargo = largos.length ? largos.reduce((s,i)=>s+i.tem,0)/largos.length : 2.5;
+
+  const UMBRAL_MEP=1550, UMBRAL_RP=650, UMBRAL_TEM=2.2;
+  const checks = [
+    {
+      label:'Dólar MEP', val:`$${fmt(mep)}`, threshold:`Salir si > $${fmt(UMBRAL_MEP)}`,
+      triggered:mep>UMBRAL_MEP, warning:mep>1500,
+      action:mep>UMBRAL_MEP?'🚨 SALIR AHORA':mep>1500?'⚠️ REDUCIR':'✅ OK',
+      ac:mep>UMBRAL_MEP?'sell':mep>1500?'warn':'ok', cc:mep>UMBRAL_MEP?'triggered':mep>1500?'warning':'safe',
+    },
+    {
+      label:'Riesgo País (EMBI)', val:`${rp} bps`, threshold:`Salir si > ${UMBRAL_RP} bps`,
+      triggered:rp>UMBRAL_RP, warning:rp>550,
+      action:rp>UMBRAL_RP?'🚨 SALIR AHORA':rp>550?'⚠️ PRECAUCIÓN':'✅ OK',
+      ac:rp>UMBRAL_RP?'sell':rp>550?'warn':'ok', cc:rp>UMBRAL_RP?'triggered':rp>550?'warning':'safe',
+    },
+    {
+      label:'TEM Tramo Largo', val:`${fmtP(temLargo,2)}% TEM`, threshold:`Vender 50% si ≤ ${UMBRAL_TEM}%`,
+      triggered:temLargo<=UMBRAL_TEM, warning:temLargo<=2.4,
+      action:temLargo<=UMBRAL_TEM?'🎯 VENDER 50%':temLargo<=2.4?'⚠️ PREPARAR':'✅ MANTENER',
+      ac:temLargo<=UMBRAL_TEM?'sell':temLargo<=2.4?'warn':'ok', cc:temLargo<=UMBRAL_TEM?'triggered':temLargo<=2.4?'warning':'safe',
+    },
+  ];
+
+  document.getElementById('exitGrid').innerHTML = checks.map(c => `
+    <div class="exit-card ${c.cc}">
+      <div class="exit-label">${c.label}</div>
+      <div class="exit-val" style="color:${c.triggered?'var(--red)':c.warning?'var(--yellow)':'var(--green)'};">${c.val}</div>
+      <div class="exit-threshold">${c.threshold}</div>
+      <span class="exit-action ${c.ac}">${c.action}</span>
+    </div>`).join('');
+
+  const hayAlerta  = checks.some(c=>c.triggered);
+  const hayWarning = checks.some(c=>c.warning && !c.triggered);
+  const badge = document.getElementById('exitBadge');
+  if (hayAlerta) {
+    badge.textContent='🚨 ACCIÓN REQUERIDA'; badge.style.background='rgba(255,61,90,0.15)'; badge.style.color='var(--red)';
+  } else if (hayWarning) {
+    badge.textContent='⚠️ Monitorear'; badge.style.background='rgba(255,210,63,0.12)'; badge.style.color='var(--yellow)';
+  } else {
+    badge.textContent='✅ Todo en orden'; badge.style.background='rgba(0,255,136,0.08)'; badge.style.color='var(--green)';
+  }
+}
+
+function renderRotacion() {
+  const cau = STATE.cauciones;
+  const lc  = lecapMasCorta();
+  const largos = STATE.instrumentos.filter(i=>i.tipo==='BONCAP');
+  const temLargo = largos.length ? largos.reduce((s,i)=>s+i.tem,0)/largos.length : null;
+  const alert = document.getElementById('rotateAlert');
+
+  if (lc && cau.tem > lc.tem) {
+    alert.className='rotate-alert visible';
+    document.getElementById('rotateTitle').textContent='🔄 ROTAR A CAUCIÓN — La caución supera la LECAP corta';
+    document.getElementById('rotateDesc').textContent=`La caución (${fmtP(cau.tem)}% TEM) rinde más que ${lc.ticker} (${fmtP(lc.tem)}% TEM). Igual que diciembre 2025: parquear en caución mientras dure.`;
+  } else if (temLargo && temLargo < 2.3 && lc && lc.tem > temLargo - 0.2) {
+    alert.className='rotate-alert visible';
+    document.getElementById('rotateTitle').textContent='🔄 ROTAR A TRAMO CORTO — El largo ya no justifica el riesgo';
+    document.getElementById('rotateDesc').textContent=`BONCAPs comprimieron a ${fmtP(temLargo,2)}% TEM. El diferencial vs LECAPs cortas no justifica la duration. Considerá rotar a ${lc.ticker}.`;
+  } else {
+    alert.className='rotate-alert';
+  }
+}
+
 function renderSignalBanner(arbData) {
   const banner = document.getElementById('signalBanner');
-  const title = document.getElementById('signalTitle');
-  const desc = document.getElementById('signalDesc');
-  const icon = document.getElementById('signalIcon');
-  const timeEl = document.getElementById('signalTime');
-
-  const mep = STATE.mepActual || 1430;
-  const banda = 1614;
-  const margenBanda = ((banda - mep) / mep * 100).toFixed(1);
+  const mep    = STATE.mepActual || 1437;
+  const banda  = 1614;
+  const margen = ((banda - mep) / mep * 100).toFixed(1);
 
   banner.className = 'signal-banner';
-  if (arbData.tieneOpp && parseFloat(margenBanda) > 10) {
+  if (arbData.tieneOpp && parseFloat(margen) > 10) {
     banner.classList.add('opp');
-    icon.textContent = '🟢';
-    title.textContent = `OPORTUNIDAD ACTIVA: BONCAPs largos con +${fmtP(arbData.arbLargo, 2)}% sobre la caución`;
-    desc.textContent = `El spread de tasas es favorable y el dólar tiene ${margenBanda}% de margen hasta la banda superior ($${fmt(banda)}). Condiciones óptimas para carry en instrumentos de tasa fija.`;
-  } else if (parseFloat(margenBanda) < 8) {
+    document.getElementById('signalIcon').textContent  = '🟢';
+    document.getElementById('signalTitle').textContent = `OPORTUNIDAD ACTIVA: BONCAPs con +${fmtP(arbData.arbLargo,2)}% sobre la caución`;
+    document.getElementById('signalDesc').textContent  = `Spread favorable y el MEP tiene ${margen}% de margen hasta la banda ($${fmt(banda)}). Condiciones óptimas para carry.`;
+  } else if (parseFloat(margen) < 8) {
     banner.classList.add('warn');
-    icon.textContent = '⚠️';
-    title.textContent = `ALERTA: El dólar MEP a $${fmt(mep)} está cerca del techo de la banda ($${fmt(banda)})`;
-    desc.textContent = `Margen cambiario de solo ${margenBanda}%. Reducir duration y preferir tramos cortos o instrumentos CER.`;
+    document.getElementById('signalIcon').textContent  = '⚠️';
+    document.getElementById('signalTitle').textContent = `ALERTA: MEP a $${fmt(mep)} se acerca al techo de la banda ($${fmt(banda)})`;
+    document.getElementById('signalDesc').textContent  = `Margen de solo ${margen}%. Reducir duration, preferir tramos cortos o CER.`;
   } else {
     banner.classList.add('neutral');
-    icon.textContent = '📊';
-    title.textContent = `Mercado estable — ${arbData.oppCount > 0 ? arbData.oppCount + ' señal(es) de arbitraje activa(s)' : 'Sin señales urgentes'}`;
-    desc.textContent = `Dólar MEP a $${fmt(mep)}, margen de ${margenBanda}% hasta banda. Monitorear licitación del Tesoro ~11 Mar.`;
+    document.getElementById('signalIcon').textContent  = '📊';
+    document.getElementById('signalTitle').textContent = `Mercado estable — ${arbData.oppCount>0?arbData.oppCount+' señal(es) activa(s)':'Sin señales urgentes'}`;
+    document.getElementById('signalDesc').textContent  = `MEP $${fmt(mep)}, margen ${margen}% hasta banda. Monitorear próxima licitación.`;
   }
-  timeEl.textContent = `Última actualización: ${today()} · ${now()}`;
-}
-
-// ─── ANÁLISIS IA ──────────────────────────────────────────────
-async function analizarConIA() {
-  const btn = document.getElementById('iaBtn');
-  const output = document.getElementById('iaOutput');
-  btn.disabled = true;
-  btn.textContent = '⏳ Analizando...';
-  output.className = 'ia-output loading-text';
-  output.textContent = '';
-
-  const mep = STATE.mepActual || 1430;
-  const ccl = STATE.dolares?.contadoconliqui?.venta || 1469;
-  const cau = STATE.cauciones;
-  const instr = STATE.instrumentos;
-  const instrStr = instr.map(i => `${i.ticker} (${i.tipo}, vto ${i.vto}, TEM ${i.tem}%)`).join(', ');
-
-  const prompt = `Sos un experto financiero en mercado de capitales argentino. Analizá las condiciones del mercado al ${today()} y dá un diagnóstico de qué hacer HOY con instrumentos de tasa fija en pesos.
-
-Datos actuales de mercado:
-- Dólar MEP: $${fmt(mep)}
-- Dólar CCL: $${fmt(ccl)}  
-- Caución bursátil: ${cau.tna}% TNA (${fmtP(cau.tem)}% TEM)
-- Banda superior BCRA: $1.614 (margen: ${((1614-mep)/mep*100).toFixed(1)}%)
-- Instrumentos monitoreados: ${instrStr}
-- Contexto: No hay elecciones nacionales hasta 2027. Última licitación del Tesoro fue exitosa (rollover 123%). Próxima licitación ~11 Mar 2026.
-
-Respondé en 4 puntos concisos:
-1. DIAGNÓSTICO: Condición general del mercado hoy para carry trade
-2. SEÑAL PRINCIPAL: El arbitraje/instrumento más atractivo en este momento exacto
-3. ACCIÓN CONCRETA: Qué comprar/vender/mantener hoy y por qué
-4. RIESGO: Cuál es el principal riesgo a monitorear esta semana
-
-Sé directo, concreto y usando datos reales. Máximo 150 palabras.`;
-
-  const apiKey = getApiKey();
-  if (!apiKey || !apiKey.startsWith('sk-ant-')) {
-    output.className = 'ia-output';
-    output.innerHTML = `<span style="color:var(--yellow);">⚠️ Ingresá tu API key de Anthropic arriba para usar el análisis IA.</span>`;
-    btn.disabled = false;
-    btn.textContent = '🤖 ANALIZAR MERCADO AHORA CON IA';
-    return;
-  }
-
-  try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-    const data = await res.json();
-
-    // Si la API devolvió un error, mostrarlo claramente
-    if (data.error) {
-      output.className = 'ia-output';
-      output.innerHTML = '<span style="color:var(--red);">❌ Error API (' + data.error.type + '):</span><br><span style="color:var(--yellow);">' + data.error.message + '</span>';
-      btn.textContent = '🤖 ANALIZAR MERCADO AHORA CON IA';
-      btn.disabled = false;
-      return;
-    }
-
-    const text = (data.content || []).map(c => c.text || '').join('');
-    if (!text) {
-      output.innerHTML = '<span style="color:var(--red);">Respuesta vacía.</span><br><pre style="font-size:0.6rem;color:var(--muted);white-space:pre-wrap;">' + JSON.stringify(data, null, 2) + '</pre>';
-      btn.textContent = '🤖 ANALIZAR MERCADO AHORA CON IA';
-      btn.disabled = false;
-      return;
-    }
-
-    output.className = 'ia-output';
-    output.innerHTML = text
-      .replace(/\*\*(.*?)\*\*/g, '<strong style="color:#fff;">$1</strong>')
-      .replace(/^(\d+\. )/gm, '<br><span style="color:var(--purple);font-weight:700;">$1</span>')
-      .replace(/\n/g, '<br>');
-
-    btn.textContent = '🔄 VOLVER A ANALIZAR';
-  } catch(e) {
-    output.className = 'ia-output';
-    output.innerHTML = '<span style="color:var(--red);">❌ Error de red: </span>' + e.message;
-    btn.textContent = '🤖 ANALIZAR MERCADO AHORA CON IA';
-  }
-  btn.disabled = false;
-}
-
-// ─── FETCH RIESGO PAÍS — cascada de fuentes ──────────────────
-async function fetchRiesgoPais() {
-  // Fuente 1: Cloudflare Worker propio (proxy sin CORS) → ArgentinaDatos
-  try {
-    const res = await fetch("https://winter-paper-ea1epabsimeon.pabsimeon.workers.dev");
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    const val = parseInt(data.valor);
-    if (!isNaN(val) && val > 100 && val < 10000) {
-      console.log("fetchRiesgoPais [worker]:", val);
-      return val;
-    }
-  } catch(e) {
-    console.warn("fetchRiesgoPais [worker] fallback:", e.message);
-  }
-
-  // Fuente 3: API Anthropic con web search (Claude.ai)
-  try {
-    const key = getApiKey();
-    if (key && key.startsWith('sk-ant-')) {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": key,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 50,
-          tools: [{ type: "web_search_20250305", name: "web_search" }],
-          messages: [{
-            role: "user",
-            content: "Buscá el riesgo país de Argentina EMBI ahora. Respondé ÚNICAMENTE con el número entero, sin texto ni unidades. Ejemplo: 593"
-          }]
-        })
-      });
-      const data = await res.json();
-      const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
-      const val = parseInt(text.replace(/[^0-9]/g, ""));
-      if (!isNaN(val) && val > 100 && val < 10000) {
-        console.log("fetchRiesgoPais [anthropic]:", val);
-        return val;
-      }
-    }
-  } catch(e) {
-    console.warn("fetchRiesgoPais [anthropic] fallback:", e.message);
-  }
-
-  // Fallback final: último valor conocido
-  console.warn("fetchRiesgoPais: usando fallback manual 575 bps (06/03/2026)");
-  return 575;
+  document.getElementById('signalTime').textContent = `Última actualización: ${today()} · ${now()}`;
 }
 
 function renderRiesgoPais(bps) {
   const dot = document.getElementById('rpDot');
   const val = document.getElementById('rpValue');
-  const pill = document.getElementById('riesgoPaisPill');
-  if (!bps) {
-    dot.className = 'status-dot'; dot.style.background = 'var(--muted)';
-    val.textContent = '···'; val.style.color = 'var(--muted)';
-    return;
-  }
-  val.textContent = bps.toLocaleString('es-AR');
-  if (bps < 500) {
-    dot.className = 'status-dot live'; dot.style.background = 'var(--green)';
-    val.style.color = 'var(--green)';
-    pill.title = `Riesgo País: ${bps} bps — ✅ Nivel favorable para carry trade`;
-  } else if (bps < 650) {
-    dot.className = 'status-dot loading'; dot.style.background = 'var(--yellow)'; dot.style.animationDuration = '2s';
-    val.style.color = 'var(--yellow)';
-    pill.title = `Riesgo País: ${bps} bps — ⚠️ Nivel de precaución`;
-  } else {
-    dot.className = 'status-dot live'; dot.style.background = 'var(--red)'; dot.style.animationDuration = '0.5s';
-    val.style.color = 'var(--red)';
-    pill.title = `Riesgo País: ${bps} bps — 🔴 Nivel de alerta, reducir exposición`;
-  }
+  val.textContent = bps ? bps.toLocaleString('es-AR') : '···';
+  if (!bps) { dot.className='status-dot'; dot.style.background='var(--muted)'; val.style.color='var(--muted)'; return; }
+  if (bps < 500)  { dot.className='status-dot live'; dot.style.background='var(--green)';  val.style.color='var(--green)'; }
+  else if (bps < 650) { dot.className='status-dot loading'; dot.style.background='var(--yellow)'; val.style.color='var(--yellow)'; }
+  else { dot.className='status-dot live'; dot.style.background='var(--red)'; val.style.color='var(--red)'; }
   STATE.riesgoPais = bps;
 }
 
-// ─── LOAD ALL ─────────────────────────────────────────────────
-async function loadAll() {
-  const statusDot = document.getElementById('statusDot');
-  const statusText = document.getElementById('statusText');
-  const refreshBtn = document.getElementById('refreshBtn');
+function generarDiagnostico() {
+  const mep   = STATE.mepActual || 1437;
+  const cau   = STATE.cauciones;
+  const largos = STATE.instrumentos.filter(i=>i.tipo==='BONCAP');
+  const lc    = lecapMasCorta();
+  const banda = 1614;
+  const margen = ((banda - mep) / mep * 100).toFixed(1);
+  const spreadLargo = largos.length ? (largos.reduce((s,i)=>s+i.tem,0)/largos.length - cau.tem).toFixed(2) : 0;
 
-  statusDot.className = 'status-dot loading';
-  statusText.textContent = 'Actualizando...';
-  refreshBtn.classList.add('spinning');
+  const lines = [];
+  if      (parseFloat(margen) > 10) lines.push("✅ <strong>CAMBIARIO OK:</strong> MEP con buen margen hasta la banda");
+  else if (parseFloat(margen) < 5)  lines.push("⚠️ <strong>ALERTA CAMBIARIA:</strong> MEP cerca del techo — reducir exposición");
+  else                               lines.push("📊 <strong>CAMBIARIO NEUTRO:</strong> Monitorear evolución del dólar");
 
-  const startTime = Date.now();
+  if      (parseFloat(spreadLargo) > 0.6) lines.push(`🎯 <strong>OPORTUNIDAD:</strong> BONCAPs pagan +${spreadLargo}% sobre la caución — spread atractivo`);
+  else if (parseFloat(spreadLargo) < 0)   lines.push("🔄 <strong>ROTACIÓN:</strong> Caución supera bonos largos — parquear en caución");
+  else                                     lines.push("⏸️ <strong>ESPERAR:</strong> Spread insuficiente para abrir posición");
 
-  const ok = await fetchDolares();
-  fetchRiesgoPais().then(bps => { renderRiesgoPais(bps); renderSalidas(); }); // re-render salidas con RP real
+  if (lc && cau.tem > lc.tem) lines.push(`💡 <strong>CURVA:</strong> Caución supera ${lc.ticker} — fenómeno transitorio, rotar o esperar`);
+  else if (lc)                 lines.push(`💡 <strong>CURVA:</strong> ${lc.ticker} rinde más que la caución — curva normal`);
 
+  const rp = STATE.riesgoPais;
+  if      (rp > 650) lines.push("🚨 <strong>RIESGO PAÍS:</strong> EMBI > 650 — señal de salida activada");
+  else if (rp > 550) lines.push("⚠️ <strong>RIESGO PAÍS:</strong> EMBI en zona amarilla (>550) — precaución");
+  else               lines.push("✅ <strong>RIESGO PAÍS:</strong> EMBI en nivel favorable para carry");
+
+  document.getElementById('iaOutput').innerHTML = lines.map(l =>
+    `<div style="margin-bottom:8px;padding:8px 10px;background:rgba(61,79,107,0.15);border-radius:6px;">${l}</div>`
+  ).join('');
+}
+
+function exportarCSV() {
+  const cau = STATE.cauciones;
+  const headers = ['Instrumento','Tipo','Vencimiento','TEM%','TNA%','Días','Spread vs Caución','Señal'];
+  const rows = STATE.instrumentos.map(i => {
+    const dias   = calcularDiasRestantes(i.vto);
+    const spread = (i.tem - cau.tem).toFixed(2);
+    let señal = 'HOLD';
+    if      (parseFloat(spread) > 0.7) señal = 'COMPRAR';
+    else if (parseFloat(spread) < 0)   señal = 'VENDER';
+    else if (parseFloat(spread) > 0.3) señal = 'MONITOREAR';
+    return [i.ticker, i.tipo, i.vto, i.tem, i.tna, dias, spread, señal].join(',');
+  });
+  const csv  = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `arb-radar-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+// ARBITRAJE ENTRE PARES
+// ═══════════════════════════════════════════════════════════════
+
+// Actualizar precio desde la celda inline de la tabla
+function actualizarPrecio(ticker, valor) {
+  const instr = STATE.instrumentos.find(i => i.ticker === ticker);
+  if (!instr) return;
+  const p = parseFloat(valor);
+  instr.precio = (!isNaN(p) && p > 0) ? p : null;
+  guardarEnStorage();
+  renderArbitrajePares();  // re-calcular pares al cambiar precio
+}
+
+// Calcular TEM implícita desde precio actual (para LECAP/BONCAP a descuento)
+// precio es el precio limpio por cada $1 de VN (ej: 1.0600)
+// Devuelve TEM mensual como fracción decimal
+function temDesdePrecio(precio, diasRestantes) {
+  if (!precio || precio <= 0 || diasRestantes <= 0) return null;
+  const meses = diasRestantes / 30.44;
+  // Para tasa fija: precio = 1 / (1 + TEM)^meses  →  TEM = (1/precio)^(1/meses) - 1
+  return (Math.pow(1 / precio, 1 / meses) - 1) * 100;
+}
+
+function renderArbitrajePares() {
+  const cau   = STATE.cauciones;
+  const com   = STATE.comision / 100;  // 0.0015
+  const comRT = com * 2;               // 0.003 round trip
+  const instr = STATE.instrumentos;
+  const grid  = document.getElementById('arbParesGrid');
+  const badge = document.getElementById('arbParesBadge');
+
+  if (instr.length < 2) {
+    grid.innerHTML = '<div class="no-pares">Necesitás al menos 2 instrumentos para calcular señales de rotación.</div>';
+    return;
+  }
+
+  const pares = [];
+
+  // ── Comparar cada instrumento contra todos los demás ──
+  for (let a = 0; a < instr.length; a++) {
+    for (let b = 0; b < instr.length; b++) {
+      if (a === b) continue;
+      const desde = instr[a];
+      const hacia = instr[b];
+
+      const diasDesde = Math.max(1, calcularDiasRestantes(desde.vto));
+      const diasHacia = Math.max(1, calcularDiasRestantes(hacia.vto));
+
+      // Solo comparar si el destino vence DESPUÉS del origen (tiene más plazo)
+      // O si es la misma franja pero mejor tasa (mismo tipo, similar vencimiento ±30 días)
+      const mismoPlazo = Math.abs(diasDesde - diasHacia) <= 45;
+      const haciaEsMasLargo = diasHacia > diasDesde + 15;
+      if (!mismoPlazo && !haciaEsMasLargo) continue;
+
+      // TEM efectiva desde: usar precio si está disponible, sino la TEM declarada
+      const temDesdeReal = desde.precio
+        ? temDesdePrecio(desde.precio, diasDesde)
+        : desde.tem;
+      const temHaciaReal = hacia.precio
+        ? temDesdePrecio(hacia.precio, diasHacia)
+        : hacia.tem;
+
+      if (temDesdeReal === null || temHaciaReal === null) continue;
+
+      // Diferencial bruto de TEM mensual
+      const diffTEM = temHaciaReal - temDesdeReal;
+
+      // Ganancia extra proyectada al plazo del instrumento más corto (horizonte común)
+      const horizonte = Math.min(diasDesde, diasHacia) / 30.44;
+      const gananciaExtra = (diffTEM / 100) * horizonte;
+      const costoRotacion = comRT;  // 0.003
+
+      // Ganancia neta de la rotación
+      const gananciaNetaRotacion = gananciaExtra - costoRotacion;
+
+      // Payback: días que tarda en recuperar el costo de rotación
+      const paybackDias = diffTEM > 0
+        ? Math.round((costoRotacion / (diffTEM / 100 / 30.44)))
+        : null;
+
+      pares.push({
+        desde, hacia,
+        diasDesde, diasHacia,
+        temDesdeReal, temHaciaReal,
+        diffTEM,
+        gananciaNetaRotacion,
+        paybackDias,
+        conviene: gananciaNetaRotacion > 0.002,   // > 0.2% neto → ROTAR
+        marginal: gananciaNetaRotacion > 0 && gananciaNetaRotacion <= 0.002,
+      });
+    }
+  }
+
+  // ── También comparar cada instrumento vs caución ──
+  instr.forEach(i => {
+    const dias = Math.max(1, calcularDiasRestantes(i.vto));
+    const temReal = i.precio ? temDesdePrecio(i.precio, dias) : i.tem;
+    if (temReal === null) return;
+
+    // Instrumento → Caución
+    const diffVsCau = cau.tem - temReal;
+    const horizonte = Math.min(dias, 30) / 30.44;
+    const gananciaExtra = (diffVsCau / 100) * horizonte;
+    const gananciaNetaRotacion = gananciaExtra - comRT;
+
+    if (diffVsCau > 0) {  // solo si la caución paga MÁS
+      pares.push({
+        desde: i,
+        hacia: { ticker:'CAUCIÓN', tipo:'caución', vto:'1 día', tem: cau.tem, precio: null },
+        diasDesde: dias, diasHacia: 1,
+        temDesdeReal: temReal, temHaciaReal: cau.tem,
+        diffTEM: diffVsCau,
+        gananciaNetaRotacion,
+        paybackDias: diffVsCau > 0 ? Math.round(comRT / (diffVsCau/100/30.44)) : null,
+        conviene: gananciaNetaRotacion > 0.001,
+        marginal: gananciaNetaRotacion <= 0.001 && gananciaNetaRotacion > -0.001,
+        esCaucion: true,
+      });
+    }
+  });
+
+  // ── Filtrar: mostrar solo pares donde hay diferencial positivo ──
+  const paresRelevantes = pares
+    .filter(p => p.diffTEM > 0.05)  // al menos 0.05% TEM de diferencia
+    .sort((a, b) => b.gananciaNetaRotacion - a.gananciaNetaRotacion)
+    .slice(0, 8);  // máximo 8 pares
+
+  if (!paresRelevantes.length) {
+    grid.innerHTML = '<div class="no-pares">✅ Sin oportunidades de rotación — todos los instrumentos están bien posicionados en la curva.</div>';
+    badge.textContent = 'Sin señales';
+    badge.style.background = 'rgba(0,255,136,0.08)';
+    badge.style.color = 'var(--green)';
+    return;
+  }
+
+  const señalesActivas = paresRelevantes.filter(p => p.conviene).length;
+  badge.textContent = señalesActivas > 0
+    ? `${señalesActivas} señal${señalesActivas > 1 ? 'es' : ''} activa${señalesActivas > 1 ? 's' : ''}`
+    : `${paresRelevantes.length} par${paresRelevantes.length > 1 ? 'es' : ''} a evaluar`;
+  badge.style.background = señalesActivas > 0 ? 'rgba(0,255,136,0.12)' : 'rgba(255,210,63,0.12)';
+  badge.style.color      = señalesActivas > 0 ? 'var(--green)' : 'var(--yellow)';
+
+  grid.innerHTML = paresRelevantes.map(p => {
+    const tipoDesde = p.desde.tipo === 'LECAP' ? 'lecap' : p.desde.tipo === 'BONCAP' ? 'boncap' : '';
+    const tipoHacia = p.hacia.tipo === 'LECAP' ? 'lecap' : p.hacia.tipo === 'BONCAP' ? 'boncap' : '';
+    const colorDiff = p.conviene ? 'var(--green)' : p.marginal ? 'var(--yellow)' : 'var(--muted)';
+    const rowClass  = p.conviene ? 'conviene' : p.marginal ? 'marginal' : 'no-conviene';
+    const tagClass  = p.conviene ? 'rotar' : p.marginal ? 'evaluar' : 'mantener';
+    const tagText   = p.conviene ? '🔀 ROTAR' : p.marginal ? '⚖️ EVALUAR' : '✋ MANTENER';
+    const precioDesde = p.desde.precio ? `<span class="par-precio">Precio: ${p.desde.precio.toFixed(4)}</span>` : '';
+    const ganStr = p.gananciaNetaRotacion >= 0
+      ? `<span style="color:var(--green);">+${(p.gananciaNetaRotacion*100).toFixed(2)}%</span>`
+      : `<span style="color:var(--red);">${(p.gananciaNetaRotacion*100).toFixed(2)}%</span>`;
+
+    return `
+    <div class="par-row ${rowClass}">
+      <div class="par-cell par-desde">
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${tipoDesde ? '<span class="ticker-badge ' + tipoDesde + '" style="font-size:0.72rem;">' + p.desde.ticker + '</span>' : '<span style="font-family:var(--mono);font-size:0.75rem;color:var(--accent2);">' + p.desde.ticker + '</span>'}
+          <span class="par-meta">${p.desde.tipo} · ${p.diasDesde}d · ${fmtP(p.temDesdeReal,2)}% TEM</span>
+        </div>
+        ${precioDesde}
+      </div>
+      <div class="par-cell par-arrow" style="padding:0 4px;">
+        <span style="color:${colorDiff};font-size:1.1rem;">→</span>
+      </div>
+      <div class="par-cell par-hacia">
+        <div style="display:flex;align-items:center;gap:8px;">
+          ${tipoHacia ? '<span class="ticker-badge ' + tipoHacia + '" style="font-size:0.72rem;">' + p.hacia.ticker + '</span>' : '<span style="font-family:var(--mono);font-size:0.75rem;color:var(--accent2);">' + p.hacia.ticker + '</span>'}
+          <span class="par-meta">${p.hacia.tipo} · ${p.diasHacia}d · ${fmtP(p.temHaciaReal,2)}% TEM</span>
+        </div>
+        <div style="margin-top:4px;font-size:0.62rem;color:var(--muted);">
+          Δ TEM: <span style="color:${colorDiff};font-weight:700;">+${fmtP(p.diffTEM,2)}%</span>
+          ${p.paybackDias ? ' · Payback: ' + p.paybackDias + 'd' : ''}
+        </div>
+      </div>
+      <div class="par-cell par-accion">
+        <span class="par-tag ${tagClass}">${tagText}</span>
+        <div style="font-size:0.62rem;margin-top:3px;text-align:right;">
+          Neto rot.: ${ganStr}
+          <div style="font-size:0.6rem;color:var(--muted);">c/ com. ${(p.gananciaNetaRotacion*100 - p.diffTEM * Math.min(p.diasDesde,p.diasHacia)/30.44/100*100).toFixed(0)} bps</div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+
+
+// ═══════════════════════════════════════════════════════════════
+// MI CARTERA
+// ═══════════════════════════════════════════════════════════════
+
+function abrirModalCompra(ticker) {
+  const instr = STATE.instrumentos.find(i => i.ticker === ticker);
+  document.getElementById('compraTicker').value    = ticker;
+  document.getElementById('compraSubtitulo').textContent = 'Registrar compra de ' + ticker + (instr ? ' — ' + instr.tipo + ' · ' + calcularDiasRestantes(instr.vto) + 'd' : '');
+  document.getElementById('compraPrecio').value    = instr && instr.precio ? instr.precio : '';
+  document.getElementById('compraVN').value        = '';
+  document.getElementById('compraFecha').value     = new Date().toISOString().split('T')[0];
+  document.getElementById('compraOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('compraPrecio').focus(), 100);
+}
+
+function cerrarModalCompra() {
+  document.getElementById('compraOverlay').classList.remove('open');
+}
+
+function confirmarCompra() {
+  const ticker = document.getElementById('compraTicker').value;
+  const precio = parseFloat(document.getElementById('compraPrecio').value);
+  const vn     = parseFloat(document.getElementById('compraVN').value);
+  const fecha  = document.getElementById('compraFecha').value;
+
+  if (!ticker || isNaN(precio) || precio <= 0) {
+    document.getElementById('compraPrecio').style.borderColor = 'var(--red)'; return;
+  }
+  if (isNaN(vn) || vn <= 0) {
+    document.getElementById('compraVN').style.borderColor = 'var(--red)'; return;
+  }
+
+  // Si ya existe esa posición, actualizar; sino agregar
+  if (!STATE.cartera) STATE.cartera = [];
+  const idx = STATE.cartera.findIndex(c => c.ticker === ticker);
+  const pos = { ticker, precio, vn, fecha: fecha || new Date().toISOString().split('T')[0] };
+  if (idx >= 0) STATE.cartera[idx] = pos;
+  else STATE.cartera.push(pos);
+
+  guardarEnStorage();
+  cerrarModalCompra();
+  renderAll();
+}
+
+function venderPosicion(ticker) {
+  if (!confirm('¿Confirmás la venta de ' + ticker + '? Se eliminará de tu cartera.')) return;
+  STATE.cartera = STATE.cartera.filter(c => c.ticker !== ticker);
+  guardarEnStorage();
+  renderAll();
+}
+
+function renderCartera() {
+  const cartera  = STATE.cartera || [];
+  const body     = document.getElementById('carteraBody');
+  const badge    = document.getElementById('carteraBadge');
+  const alerta   = document.getElementById('cartAlerta');
+  const comRT    = (STATE.comision / 100) * 2;
+  const mep      = STATE.mepActual || 1437;
+
+  // Calcular métricas para ranking actual
+  const rankActual = (STATE.instrumentos||[]).map(i => {
+    const dias = Math.max(1, calcularDiasRestantes(i.vto));
+    const precio = i.precio || precioDesdetem(i.tem, dias);
+    const gd = calcGDiariaNeta(i.tem, dias, comRT);
+    return { ticker: i.ticker, gd, precio, tem: i.tem, dias };
+  }).sort((a,b) => b.gd - a.gd);
+
+  const topRank = rankActual[0] || null;
+
+  if (!cartera.length) {
+    body.innerHTML = '<div class="cartera-empty">No tenés posiciones registradas. Usá el botón 🛒 en la tabla de instrumentos para registrar una compra.</div>';
+    badge.textContent = 'Sin posiciones';
+    badge.style.background = 'rgba(61,79,107,0.3)'; badge.style.color = 'var(--muted)';
+    alerta.style.display = 'none';
+    return;
+  }
+
+  // Calcular P&L de cada posición
+  let alertaUrgente = null, alertaPosible = null;
+
+  const rows = cartera.map(pos => {
+    const instr = STATE.instrumentos.find(i => i.ticker === pos.ticker);
+    const dias  = instr ? Math.max(1, calcularDiasRestantes(instr.vto)) : 0;
+    const precioActual = instr && instr.precio ? instr.precio : (instr ? precioDesdetem(instr.tem, dias) : pos.precio);
+    const tem   = instr ? instr.tem : 0;
+
+    // P&L
+    const pnlPct  = ((precioActual - pos.precio) / pos.precio) * 100;
+    const pnlPesos = (precioActual - pos.precio) * pos.vn;
+    const diasHolding = Math.round((new Date() - new Date(pos.fecha)) / 86400000);
+
+    // G/día actual de esta posición
+    const gdPos = diasHolding > 0 ? pnlPct / diasHolding : 0;
+
+    // ¿Hay mejor oportunidad en el mercado?
+    const gdTop = topRank && topRank.ticker !== pos.ticker ? topRank.gd : 0;
+    const mejora = gdTop - gdPos;
+    let rowClass = 'ok', accionTag = 'ca-ok', accionTxt = '✓ MANTENER';
+
+    if (mejora > 0.05) {
+      rowClass = 'rotar-urgente'; accionTag = 'ca-rotar';
+      accionTxt = '🔴 ROTAR → ' + topRank.ticker;
+      if (!alertaUrgente) alertaUrgente = { desde: pos.ticker, hacia: topRank.ticker, mejora };
+    } else if (mejora > 0.02) {
+      rowClass = 'rotar-posible'; accionTag = 'ca-evaluar';
+      accionTxt = '🟡 EVALUAR → ' + topRank.ticker;
+      if (!alertaPosible) alertaPosible = { desde: pos.ticker, hacia: topRank.ticker, mejora };
+    }
+
+    const pnlColor = pnlPct >= 0 ? 'var(--green)' : 'var(--red)';
+    const diasStr  = diasHolding === 0 ? 'hoy' : diasHolding + 'd';
+
+    return '<div class="cartera-row ' + rowClass + '">' +
+      '<div>' +
+        '<span style="font-weight:700;color:' + (instr && instr.tipo==='BONCAP'?'var(--purple)':'var(--accent)') + ';font-size:0.85rem;">' + pos.ticker + '</span>' +
+        '<span style="font-size:0.6rem;color:var(--muted);display:block;">' + (instr ? instr.tipo : '') + ' · ' + dias + 'd restantes · hold: ' + diasStr + '</span>' +
+      '</div>' +
+      '<div style="font-family:var(--mono);font-size:0.78rem;color:var(--yellow);">' + fmtP(pos.precio,4) + '<span style="font-size:0.6rem;color:var(--muted);display:block;">entrada</span></div>' +
+      '<div style="font-family:var(--mono);font-size:0.78rem;">' + fmtP(precioActual,4) + '<span style="font-size:0.6rem;color:var(--muted);display:block;">actual</span></div>' +
+      '<div style="font-family:var(--mono);font-size:0.78rem;color:var(--muted);">' + fmt(pos.vn) + '<span style="font-size:0.6rem;display:block;">VN</span></div>' +
+      '<div><span style="font-family:var(--mono);font-size:0.85rem;font-weight:700;color:' + pnlColor + ';">' + (pnlPct>=0?'+':'') + fmtP(pnlPct,2) + '%</span>' +
+        '<span style="font-size:0.6rem;color:var(--muted);display:block;">' + (pnlPesos>=0?'+':'') + '$' + fmt(Math.abs(pnlPesos)) + '</span>' +
+      '</div>' +
+      '<div><span style="font-family:var(--mono);font-size:0.72rem;color:var(--muted);">' + (gdPos>=0?'+':'') + fmtP(gdPos,3) + '%/d<span style="display:block;font-size:0.58rem;">holding</span></span></div>' +
+      '<div><span class="cartera-accion ' + accionTag + '">' + accionTxt + '</span></div>' +
+      '<div><button class="btn-sell" onclick="venderPosicion(\'' + pos.ticker + '\')">✓ VENDER</button></div>' +
+      '</div>';
+  }).join('');
+
+  // Header de columnas
+  const hdr = '<div class="cartera-hdr">' +
+    '<span>Instrumento</span><span>P. Entrada</span><span>P. Actual</span><span>VN</span>' +
+    '<span>P&L</span><span>G/día hold</span><span>Acción</span><span></span>' +
+    '</div>';
+
+  body.innerHTML = hdr + rows;
+
+  // Badge
+  const total = cartera.length;
+  badge.textContent = total + ' posición' + (total > 1 ? 'es' : '');
+  badge.style.background = 'rgba(0,229,255,0.1)'; badge.style.color = 'var(--accent)';
+
+  // Alerta banner
+  if (alertaUrgente) {
+    alerta.style.display = 'block';
+    alerta.className = 'cartera-alerta urgente';
+    document.getElementById('cartAlertaTitulo').textContent = '⚡ ROTAR AHORA: ' + alertaUrgente.desde + ' → ' + alertaUrgente.hacia;
+    document.getElementById('cartAlertaDesc').textContent = 'El instrumento ' + alertaUrgente.hacia + ' genera +' + fmtP(alertaUrgente.mejora,3) + '%/día más. La rotación cubre la comisión en pocos días.';
+  } else if (alertaPosible) {
+    alerta.style.display = 'block';
+    alerta.className = 'cartera-alerta posible';
+    document.getElementById('cartAlertaTitulo').textContent = '🟡 EVALUAR ROTACIÓN: ' + alertaPosible.desde + ' → ' + alertaPosible.hacia;
+    document.getElementById('cartAlertaDesc').textContent = 'Mejora marginal de +' + fmtP(alertaPosible.mejora,3) + '%/día. Evaluá según horizonte y comisión.';
+  } else {
+    alerta.style.display = 'none';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MÉTRICAS DE ARBITRAJE ACTIVO
+// ═══════════════════════════════════════════════════════════════
+
+// RAE hold-to-maturity desde precio actual
+function calcRAE(precio, diasRestantes) {
+  if (!precio || precio <= 0 || diasRestantes <= 0) return null;
+  return (Math.pow(1 / precio, 365 / diasRestantes) - 1) * 100;
+}
+
+// RAE desde TEM mensual
+function calcRAEdesdetem(tem, dias) {
+  const meses = dias / 30.44;
+  const ganTotal = Math.pow(1 + tem / 100, meses) - 1;
+  return (Math.pow(1 + ganTotal, 365 / dias) - 1) * 100;
+}
+
+// Ganancia diaria neta descontando comisión round-trip prorrateada
+function calcGDiariaNeta(tem, dias, comRT) {
+  const meses = dias / 30.44;
+  const ganBruta = Math.pow(1 + tem / 100, meses) - 1;
+  const ganNeta = ganBruta - comRT;
+  return (ganNeta / dias) * 100;  // % por día
+}
+
+// Precio implícito dado TEM y días
+function precioDesdetem(tem, dias) {
+  const meses = dias / 30.44;
+  return 1 / Math.pow(1 + tem / 100, meses);
+}
+
+// ── RENDER RANKING ──────────────────────────────────────────────
+function renderRanking() {
+  const cau   = STATE.cauciones;
+  const comRT = (STATE.comision / 100) * 2;
+  const mep   = STATE.mepActual || 1437;
+
+  // Calcular métricas para cada instrumento
+  const items = STATE.instrumentos.map(i => {
+    const dias  = Math.max(1, calcularDiasRestantes(i.vto));
+    // Usar precio real si está disponible, sino inferir desde TEM
+    const precio = i.precio || precioDesdetem(i.tem, dias);
+    const rae   = calcRAE(precio, dias);
+    const gd    = calcGDiariaNeta(i.tem, dias, comRT);
+    const spreadVsCau = i.tem - cau.tem;
+    return { ...i, dias, precio, rae, gd, spreadVsCau };
+  });
+
+  // Ordenar por ganancia diaria neta descendente
+  items.sort((a, b) => b.gd - a.gd);
+
+  const maxGd   = items.length ? items[0].gd : 0.1;
+  const mejorRae = items.length ? items[0].rae : 0;
+
+  // Actualizar estrategia banner con el #1
+  if (items.length > 0) {
+    const top = items[0];
+    const entra = top.rae > 35 && top.spreadVsCau > 0.5;
+    document.getElementById('estTitulo').textContent =
+      entra ? 'ENTRAR en ' + top.ticker + ' — condiciones óptimas' : 'Monitorear ' + top.ticker + ' — verificar spread';
+    document.getElementById('estSub').textContent =
+      'Horizonte: mixto · Comisión RT: ' + (STATE.comision*2).toFixed(2) + '% · Mejor instrumento por G/día';
+    document.getElementById('estRae').textContent    = fmtP(top.rae,1) + '%';
+    document.getElementById('estGDiaria').textContent = '+' + fmtP(top.gd,3) + '%/d';
+    document.getElementById('estSpread').textContent  = (top.spreadVsCau>0?'+':'') + fmtP(top.spreadVsCau,2) + '%';
+    const accion = entra ? '🟢 ENTRAR' : top.spreadVsCau > 0.3 ? '🟡 EVALUAR' : '🔴 ESPERAR';
+    document.getElementById('estAccion').textContent = accion;
+    document.getElementById('estRae').style.color    = top.rae > 35 ? 'var(--green)' : 'var(--yellow)';
+    document.getElementById('estAccion').style.color = entra ? 'var(--green)' : top.spreadVsCau > 0.3 ? 'var(--yellow)' : 'var(--red)';
+  }
+
+  // Render tabla ranking
+  const tbody = document.getElementById('rankingBody');
+  tbody.innerHTML = items.map((i, idx) => {
+    const rank = idx + 1;
+    const rankClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : 'rank-n';
+    const topClass  = rank === 1 ? 'top-rank' : '';
+
+    // Spread vs mejor instrumento (el #1)
+    const spreadVsMejor = i.gd - maxGd;
+
+    // Señal de ventana
+    let vTag, vClass;
+    if (i.rae > 35 && i.spreadVsCau > 0.5) {
+      vTag = '🟢 ENTRAR'; vClass = 'ventana-entrar';
+    } else if (i.spreadVsCau < 0.3 && i.spreadVsCau > 0) {
+      vTag = '🟡 COMPRIMIR'; vClass = 'ventana-ambar';
+    } else if (i.spreadVsCau <= 0) {
+      vTag = '🔴 SALIDA'; vClass = 'ventana-salida';
+    } else {
+      vTag = 'HOLD'; vClass = 'ventana-hold';
+    }
+
+    // Barra de ganancia diaria
+    const barPct = Math.max(0, Math.min(100, (i.gd / Math.max(maxGd, 0.001)) * 100));
+    const barColor = rank === 1 ? 'var(--green)' : rank === 2 ? 'var(--accent)' : 'var(--purple)';
+    const tipoColor = i.tipo === 'BONCAP' ? 'var(--purple)' : 'var(--accent)';
+
+    return '<tr class="' + topClass + '">' +
+      '<td><span class="rank-num ' + rankClass + '">' + rank + '</span></td>' +
+      '<td style="text-align:left;">' +
+        '<span style="font-weight:700;color:' + tipoColor + ';font-size:0.85rem;">' + i.ticker + '</span>' +
+        '<span style="color:var(--muted);font-size:0.62rem;margin-left:6px;">' + i.tipo + ' · ' + i.dias + 'd</span>' +
+      '</td>' +
+      '<td><span style="font-family:var(--mono);color:var(--yellow);">' + (i.precio ? fmtP(i.precio,4) : '—') + '</span></td>' +
+      '<td><span style="font-family:var(--mono);color:var(--green);font-weight:700;">' + fmtP(i.tem,2) + '%</span></td>' +
+      '<td><div class="rae-cell">' +
+        '<div class="rae-val" style="color:' + (i.rae>35?'var(--green)':'var(--yellow)') + ';">' + fmtP(i.rae,1) + '%</div>' +
+        '<div class="rae-hold">anualizado</div>' +
+      '</div></td>' +
+      '<td><div class="gdneta-bar">' +
+        '<div class="gdneta-val" style="color:' + barColor + ';">+' + fmtP(i.gd,3) + '%</div>' +
+        '<div class="gdneta-track"><div class="gdneta-fill" style="width:' + barPct + '%;background:' + barColor + ';"></div></div>' +
+      '</div></td>' +
+      '<td><span style="font-family:var(--mono);color:' + (spreadVsMejor===0?'var(--yellow)':spreadVsMejor>-0.01?'var(--accent)':'var(--muted)') + ';">' +
+        (spreadVsMejor >= 0 ? '—' : fmtP(spreadVsMejor,3) + '%') + '</span></td>' +
+      '<td><span class="ventana-tag ' + vClass + '">' + vTag + '</span></td>' +
+      '</tr>';
+  }).join('');
+
+  // Actualizar select del simulador
+  const sel = document.getElementById('simTicker');
+  const prev = sel.value;
+  sel.innerHTML = STATE.instrumentos.map(i =>
+    '<option value="' + i.ticker + '">' + i.ticker + ' — ' + i.tipo + ' ' + calcularDiasRestantes(i.vto) + 'd</option>'
+  ).join('');
+  if (prev) sel.value = prev;
+  calcularSimulador();
+}
+
+// ── SIMULADOR ──────────────────────────────────────────────────
+function calcularSimulador() {
+  const ticker    = document.getElementById('simTicker').value;
+  const diasHold  = parseInt(document.getElementById('simDias').value) || 15;
+  const bpsInput  = parseInt(document.getElementById('simBps').value) || 0;
+  const precioObjManual = parseFloat(document.getElementById('simPrecioObj').value);
+
+  const instr = STATE.instrumentos.find(i => i.ticker === ticker);
+  if (!instr) return;
+
+  const cau    = STATE.cauciones;
+  const comRT  = (STATE.comision / 100) * 2;
+  const mep    = STATE.mepActual || 1437;
+  const dias   = Math.max(1, calcularDiasRestantes(instr.vto));
+  const diasEfectivos = Math.min(diasHold, dias);
+
+  // Precio de compra (usar precio real si disponible)
+  const precioCompra = instr.precio || precioDesdetem(instr.tem, dias);
+
+  // TEM proyectada con compresión de bps
+  const bpsEnTEM = bpsInput / 100;  // bps de TEM mensual
+  const temSalida = Math.max(0.5, instr.tem + bpsEnTEM);
+
+  // Días restantes al momento de la venta
+  const diasAlVenderle = Math.max(1, dias - diasEfectivos);
+
+  // Precio de venta calculado desde TEM proyectada
+  const precioVentaCalc = precioDesdetem(temSalida, diasAlVenderle);
+  const precioVenta = !isNaN(precioObjManual) && precioObjManual > 0
+    ? precioObjManual : precioVentaCalc;
+
+  // Precio con comisión de compra
+  const precioCompraCC = precioCompra * (1 + STATE.comision / 100);
+  // Precio de venta neto de comisión
+  const precioVentaNeto = precioVenta * (1 - STATE.comision / 100);
+
+  const ganBruta = (precioVenta - precioCompra) / precioCompra;
+  const ganNeta  = (precioVentaNeto - precioCompraCC) / precioCompraCC;
+  const raeEfectivo = (Math.pow(1 + ganNeta, 365 / diasEfectivos) - 1) * 100;
+  const gDiariaEf   = (ganNeta / diasEfectivos) * 100;
+  const enUsd       = ganNeta / 1;  // en pesos, vs USD necesita asumir MEP estable
+  const breakeven   = comRT > 0 ? Math.ceil(comRT / ((ganBruta / diasEfectivos))) : 0;
+
+  // G/día de la caución para comparar
+  const cauDiaria = cau.tem / 30.44;
+  const vsCaucion = gDiariaEf - cauDiaria;
+
+  // Rellenar resultado
+  document.getElementById('srPrecioSalida').textContent  = fmtP(precioVenta,4);
+  document.getElementById('srGanBruta').textContent      = (ganBruta>=0?'+':'') + fmtP(ganBruta*100,2) + '%';
+  document.getElementById('srGanNeta').textContent       = (ganNeta>=0?'+':'') + fmtP(ganNeta*100,2) + '%';
+  document.getElementById('srRaeEfectivo').textContent   = fmtP(raeEfectivo,1) + '%';
+  document.getElementById('srEnUsd').textContent         = (ganNeta>=0?'+':'') + fmtP(ganNeta*100,2) + '% (ARS)';
+  document.getElementById('srGDiaria').textContent       = (gDiariaEf>=0?'+':'') + fmtP(gDiariaEf,3) + '%/d';
+  document.getElementById('srBreakeven').textContent     = breakeven + 'd';
+  document.getElementById('srVsCaucion').textContent     = (vsCaucion>=0?'+':'') + fmtP(vsCaucion,3) + '%/d';
+
+  // Colores dinámicos
+  document.getElementById('srGanNeta').style.color   = ganNeta>0?'var(--green)':'var(--red)';
+  document.getElementById('srRaeEfectivo').style.color = raeEfectivo>30?'var(--green)':raeEfectivo>15?'var(--yellow)':'var(--red)';
+  document.getElementById('srVsCaucion').style.color = vsCaucion>0?'var(--green)':'var(--red)';
+
+  // Veredicto
+  const verd = document.getElementById('simVeredicto');
+  if (ganNeta > 0.003 && raeEfectivo > 25) {
+    verd.className = 'sim-veredicto sim-v-go';
+    verd.textContent = '✅ OPERACIÓN CONVENIENTE — Ganancia neta ' + fmtP(ganNeta*100,2) + '% en ' + diasEfectivos + 'd · RAE ' + fmtP(raeEfectivo,1) + '% · Supera caución por ' + fmtP(vsCaucion,3) + '%/d';
+  } else if (ganNeta > 0) {
+    verd.className = 'sim-veredicto sim-v-wait';
+    verd.textContent = '⚠️ MARGINAL — Ganancia positiva pero baja. Revisá si hay mejor alternativa en el ranking.';
+  } else {
+    verd.className = 'sim-veredicto sim-v-no';
+    verd.textContent = '❌ NO CONVIENE — La comisión supera la ganancia proyectada en ' + diasEfectivos + ' días. Extendé el horizonte.';
+  }
+}
+
+// ── BONUS: ESTRATEGIA ─────────────────────────────────────────
+function renderBonus() {
+  const cau   = STATE.cauciones;
+  const comRT = (STATE.comision / 100) * 2;
+  const mep   = STATE.mepActual || 1437;
+
+  const items = STATE.instrumentos.map(i => {
+    const dias  = Math.max(1, calcularDiasRestantes(i.vto));
+    const precio = i.precio || precioDesdetem(i.tem, dias);
+    const rae   = calcRAE(precio, dias);
+    const gd    = calcGDiariaNeta(i.tem, dias, comRT);
+    const spread = i.tem - cau.tem;
+    return { ...i, dias, precio, rae, gd, spread };
+  }).sort((a, b) => b.gd - a.gd);
+
+  const top = items[0] || null;
+  const reglas = [];
+
+  // Regla 1: ordenar por G/día — siempre cumplida si hay instrumentos
+  reglas.push({
+    n: 1,
+    titulo: 'Ordenar por Ganancia Diaria Neta (descendente)',
+    desc: top
+      ? '#1: ' + top.ticker + ' con +' + fmtP(top.gd,3) + '%/d neto · RAE: ' + fmtP(top.rae,1) + '%'
+      : 'Sin instrumentos cargados',
+    status: top ? 'ok' : 'fail',
+    label: top ? '✓ RANKING ACTIVO' : '✗ SIN DATOS',
+  });
+
+  // Regla 2: ¿RAE > 35% y Spread > 0.5%? → ENTRAR
+  const r2ok = top && top.rae > 35 && top.spread > 0.5;
+  const r2warn = top && (top.rae > 28 || top.spread > 0.3);
+  reglas.push({
+    n: 2,
+    titulo: 'Si RAE > 35% y Spread vs Caución > 0.5% → ENTRAR',
+    desc: top
+      ? top.ticker + ': RAE ' + fmtP(top.rae,1) + '% (umbral 35%) · Spread ' + fmtP(top.spread,2) + '% (umbral 0.5%)'
+      : '—',
+    status: r2ok ? 'ok' : r2warn ? 'warn' : 'fail',
+    label: r2ok ? '🟢 CONDICIÓN CUMPLIDA → ENTRAR' : r2warn ? '🟡 PARCIAL — verificar' : '🔴 CONDICIÓN NO CUMPLIDA',
+  });
+
+  // Regla 3: ¿Spread < 0.3%? → SALIR
+  const r3trigger = top && top.spread < 0.3;
+  reglas.push({
+    n: 3,
+    titulo: 'Si Spread vs Caución se comprime < 0.3% → SALIR (tomar ganancias)',
+    desc: top
+      ? 'Spread actual ' + top.ticker + ': ' + fmtP(top.spread,2) + '% — umbral de salida: 0.30%'
+      : '—',
+    status: r3trigger ? 'fail' : 'ok',
+    label: r3trigger ? '🚨 SALIDA RECOMENDADA — spread comprimido' : '✓ Spread saludable — mantener posición',
+  });
+
+  // Regla 4: ¿Hay otro instrumento con +0.4% más de G/día? → ROTAR
+  const r4 = items.length > 1 ? (items[0].gd - items[1].gd) : 0;
+  const r4rotar = items.length > 1 && (items[1].gd - items[0].gd) > 0.04;
+  reglas.push({
+    n: 4,
+    titulo: 'Si otro instrumento tiene +0.04%/d más de G/día → ROTAR',
+    desc: items.length > 1
+      ? '#1: ' + items[0].ticker + ' (' + fmtP(items[0].gd,3) + '%/d) · #2: ' + items[1].ticker + ' (' + fmtP(items[1].gd,3) + '%/d) · Δ: ' + fmtP(Math.abs(items[0].gd - items[1].gd),3) + '%/d'
+      : 'Necesitás al menos 2 instrumentos para detectar señal de rotación',
+    status: r4rotar ? 'warn' : 'ok',
+    label: r4rotar ? '🔀 ROTAR a ' + items[1].ticker : '✓ Sin señal de rotación — el #1 es el mejor',
+  });
+
+  // Regla 5: ¿MEP > $1.550? → Reducir exposición
+  const r5trigger = mep > 1550;
+  reglas.push({
+    n: 5,
+    titulo: 'Si Dólar MEP > $1.550 → Reducir exposición en pesos',
+    desc: 'MEP actual: $' + fmt(mep) + ' — umbral de reducción: $1.550',
+    status: r5trigger ? 'fail' : 'ok',
+    label: r5trigger ? '🚨 MEP SUPERÓ UMBRAL — evaluar dolarización parcial' : '✓ MEP en zona segura ($' + fmt(mep) + ')',
+  });
+
+  const stepsEl = document.getElementById('bonusSteps');
+  stepsEl.innerHTML = reglas.map(r => {
+    const cls = r.status === 'ok' ? 'bonus-ok' : r.status === 'warn' ? 'bonus-warn' : 'bonus-fail';
+    return '<div class="bonus-step">' +
+      '<div class="bonus-num">' + r.n + '</div>' +
+      '<div class="bonus-content">' +
+        '<div class="bonus-titulo">' + r.titulo + '</div>' +
+        '<div class="bonus-desc">' + r.desc + '</div>' +
+        '<span class="bonus-status ' + cls + '">' + r.label + '</span>' +
+      '</div>' +
+      '</div>';
+  }).join('');
+
+  // Badge resumen
+  const alertas = reglas.filter(r => r.status === 'fail').length;
+  const warns   = reglas.filter(r => r.status === 'warn').length;
+  const badge = document.getElementById('bonusBadge');
+  if (alertas > 0) {
+    badge.textContent = alertas + ' alerta' + (alertas>1?'s':'') + ' activa' + (alertas>1?'s':'');
+    badge.style.color = 'var(--red)'; badge.style.background = 'rgba(255,61,90,0.1)';
+  } else if (warns > 0) {
+    badge.textContent = warns + ' condición a evaluar';
+    badge.style.color = 'var(--yellow)'; badge.style.background = 'rgba(255,210,63,0.1)';
+  } else {
+    badge.textContent = '✓ Todas las condiciones OK';
+    badge.style.color = 'var(--green)'; badge.style.background = 'rgba(0,255,136,0.1)';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER ALL + LOAD
+// ═══════════════════════════════════════════════════════════════
+function renderAll() {
   renderKPIs();
   renderGauges();
   const arbData = renderArbitraje();
   renderTabla();
+  renderArbitrajePares();
+  renderCartera();
+  renderRanking();
+  renderBonus();
   renderSignalBanner(arbData);
   renderSalidas();
   renderRotacion();
   renderLicitacion();
+  renderRiesgoPais(STATE.riesgoPais);
+  document.getElementById('lastUpdate').textContent = now();
+}
+
+async function loadAll() {
+  const dot  = document.getElementById('statusDot');
+  const text = document.getElementById('statusText');
+  const btn  = document.getElementById('refreshBtn');
+  dot.className = 'status-dot loading';
+  text.textContent = 'Actualizando...';
+  btn.classList.add('spinning');
+
+  const start = Date.now();
+  const [fuente, excelOk] = await Promise.all([fetchDolares(), fetchExcelData()]);
+  renderAll();
 
   STATE.lastFetch = new Date();
-  document.getElementById('lastUpdate').textContent = now();
-  document.getElementById('footerTime').textContent = `Datos al: ${now()} · ${ok ? 'API en línea' : 'Usando datos de referencia'}`;
+  const fuenteLabel = fuente === 'worker' ? 'Worker · dolarapi' : fuente === 'dolarapi' ? 'dolarapi.com' : 'Datos ref.';
+  const excelLabel  = excelOk ? ' · 📊 Excel ' + (STATE.excelActualizado || '') : '';
+  document.getElementById('footerTime').textContent = `Datos al: ${now()} · ${fuenteLabel}${excelLabel}`;
+  dot.className = `status-dot ${fuente ? 'live' : 'error'}`;
+  text.textContent = fuente ? `En vivo · ${fuenteLabel}` : 'Datos ref.';
 
-  statusDot.className = `status-dot ${ok ? 'live' : 'error'}`;
-  const fuente = ok ? (IS_GITHUB ? 'En vivo · dolarapi' : 'En vivo · IA') : 'Datos ref.';
-  statusText.textContent = fuente;
-
-  // Spinner visible mínimo 800ms
-  const elapsed = Date.now() - startTime;
+  const elapsed = Date.now() - start;
   if (elapsed < 800) await new Promise(r => setTimeout(r, 800 - elapsed));
-  refreshBtn.classList.remove('spinning');
+  btn.classList.remove('spinning');
 }
 
-// ─── INIT ─────────────────────────────────────────────────────
-const ON_GITHUB = window.location.hostname === "pablo2541.github.io";
-
-// En GitHub: saltear modal de key del dashboard, mostrar campo de key IA
-if (ON_GITHUB) {
-  document.getElementById('keyOverlay').style.display = 'none';
-  // Mostrar el campo de key inline en el panel IA
-  const iaKeyRow = document.getElementById('iaKeyRow');
-  if (iaKeyRow) iaKeyRow.style.display = 'block';
-  // Verificar si ya tiene key guardada
-  const iaKeySaved = localStorage.getItem('arb_ia_key');
-  const btn = document.getElementById('iaBtn');
-  const status = document.getElementById('iaKeyStatus');
-  if (iaKeySaved) {
-    if (status) { status.style.color = 'var(--green)'; status.textContent = '✅ Key guardada — listo para analizar'; }
-  } else {
-    if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; btn.textContent = '🤖 Análisis IA — ingresá tu key arriba'; }
-  }
-}
-
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
 cargarTasasGuardadas();
-if (checkKey()) loadAll();
-// Auto-refresh cada 5 minutos
-setInterval(() => { cargarTasasGuardadas();
-if (checkKey()) loadAll(); }, 5 * 60 * 1000);
+loadAll();
+setInterval(loadAll, 5 * 60 * 1000);
 </script>
 </body>
 </html>
