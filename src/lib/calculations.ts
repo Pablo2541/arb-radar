@@ -1,18 +1,38 @@
 import { Instrument, Config, Position, RotationAnalysis, SwingSignal, CurveAnomaly, CompositeSignal, DiagnosticResult, Snapshot, MomentumData, RotationScoreV17 } from './types';
 
 /**
- * Calculate days remaining to expiry from an expiry date string (DD/MM/YYYY)
+ * Calculate days remaining to expiry from an expiry date string.
+ * V3.0.1: Supports both DD/MM/YYYY (manual/paste) and YYYY-MM-DD (ISO/live API) formats.
  */
 export function daysFromExpiry(expiry: string): number {
   if (!expiry || typeof expiry !== 'string') return 0;
-  const parts = expiry.split('/');
-  if (parts.length !== 3) return 0;
-  const day = parseInt(parts[0], 10);
-  const month = parseInt(parts[1], 10) - 1;
-  const year = parseInt(parts[2], 10);
-  if (isNaN(day) || isNaN(month) || isNaN(year)) return 0;
-  if (year < 2000 || year > 2100) return 0;
-  const expiryDate = new Date(year, month, day);
+
+  let expiryDate: Date;
+
+  if (expiry.includes('/')) {
+    // DD/MM/YYYY format (manual/paste data)
+    const parts = expiry.split('/');
+    if (parts.length !== 3) return 0;
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const year = parseInt(parts[2], 10);
+    if (isNaN(day) || isNaN(month) || isNaN(year)) return 0;
+    if (year < 2000 || year > 2100) return 0;
+    expiryDate = new Date(year, month, day);
+  } else if (expiry.includes('-')) {
+    // YYYY-MM-DD format (ISO / live API / ArgentinaDatos)
+    const parts = expiry.split('-');
+    if (parts.length !== 3) return 0;
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    if (isNaN(day) || isNaN(month) || isNaN(year)) return 0;
+    if (year < 2000 || year > 2100) return 0;
+    expiryDate = new Date(year, month, day);
+  } else {
+    return 0;
+  }
+
   // V2.0.5 FIX: Dynamic date — always use current system date for live trading accuracy
   const now = new Date();
   now.setHours(0, 0, 0, 0);
@@ -22,9 +42,14 @@ export function daysFromExpiry(expiry: string): number {
 }
 
 /**
- * Ensure instrument has valid days (recalculate from expiry only if days=0)
- * We preserve the original days value from the data source since it may be more
- * accurate (e.g., "days to maturity at next business day" vs our simple date diff).
+ * Ensure instrument has valid days — V3.0.1: ALWAYS recalculate from expiry
+ * when available, using the current system date (new Date()).
+ *
+ * This ensures that days-to-maturity is always REAL even if prices are stale
+ * (e.g., LIVE off, weekend, holiday). A bond that expires in 10 days today
+ * will show 9 days tomorrow regardless of when its price was last updated.
+ *
+ * If expiry is not available, we preserve the original days value (manual entry).
  */
 export function ensureValidDays(instruments: Instrument[]): Instrument[] {
   return instruments.map(inst => {
@@ -33,12 +58,21 @@ export function ensureValidDays(instruments: Instrument[]): Instrument[] {
     const protectedTEM = effectiveRate;
     const protectedTIR = effectiveRate;  // tir always equals tem
 
-    if (inst.days <= 0 && inst.expiry) {
+    // V3.0.1: If we have an expiry date, ALWAYS recalculate days from it
+    // This guarantees real days-to-maturity even with stale price data
+    if (inst.expiry) {
       const calculatedDays = daysFromExpiry(inst.expiry);
-      if (calculatedDays > 0) {
+      if (calculatedDays >= 0) {
         return { ...inst, days: calculatedDays, tem: protectedTEM, tir: protectedTIR };
       }
     }
+
+    // No expiry available — keep original days (manual entry / hardcoded)
+    if (inst.days <= 0) {
+      // Last resort: can't determine days
+      return { ...inst, tem: protectedTEM, tir: protectedTIR };
+    }
+
     return { ...inst, tem: protectedTEM, tir: protectedTIR };
   });
 }

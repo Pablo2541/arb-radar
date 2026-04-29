@@ -102,6 +102,12 @@ export default function CurvasTab({ instruments, config, position, momentumMap }
   const chartTickFill = 'rgba(220, 220, 220, 0.8)';
   const chartLabelFill = 'rgba(220, 220, 220, 0.8)';
 
+  // V3.0.1: Axis formatters — limit decimals for clean labels
+  const formatTEM = (v: number) => v.toFixed(2);
+  const formatSpread = (v: number) => v.toFixed(3);
+  const formatSlope = (v: number) => v.toFixed(2);
+  const formatDM = (v: number) => v.toFixed(3);
+
   const getCurveShapeColor = (s: string) => {
     switch (s) {
       case 'NORMAL': return '#00d4aa';
@@ -337,8 +343,8 @@ export default function CurvasTab({ instruments, config, position, momentumMap }
               {({ width, height }) => (
                 <LineChart width={width} height={height} margin={{ top: 10, right: 30, left: 15, bottom: 10 }} key={`tem-${width}-${height}`}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
-                  <XAxis dataKey="days" type="number" domain={[0, 'dataMax']} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'Días', position: 'insideBottomRight', offset: -5, fill: chartLabelFill, fontSize: 11 }} />
-                  <YAxis domain={['dataMin - 0.1', 'dataMax + 0.1']} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'TEM %', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
+                  <XAxis dataKey="days" type="number" domain={[-2, 'dataMax + 5']} padding={{ left: 20, right: 20 }} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'Días', position: 'insideBottomRight', offset: -5, fill: chartLabelFill, fontSize: 11 }} />
+                  <YAxis domain={['dataMin - 0.1', 'dataMax + 0.1']} tickFormatter={formatTEM} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'TEM %', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '12px', fontSize: 12, color: '#FFFFFF', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
                     labelStyle={{ color: '#9CA3AF' }}
@@ -363,8 +369,8 @@ export default function CurvasTab({ instruments, config, position, momentumMap }
               {({ width, height }) => (
                 <AreaChart width={width} height={height} data={spreadCurveData} margin={{ top: 10, right: 30, left: 15, bottom: 10 }} key={`spc-${width}-${height}`}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
-                  <XAxis dataKey="days" type="number" domain={[0, 'dataMax']} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'Días', position: 'insideBottomRight', offset: -5, fill: chartLabelFill, fontSize: 11 }} />
-                  <YAxis tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'Spread %', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
+                  <XAxis dataKey="days" type="number" domain={[-2, 'dataMax + 5']} padding={{ left: 20, right: 20 }} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'Días', position: 'insideBottomRight', offset: -5, fill: chartLabelFill, fontSize: 11 }} />
+                  <YAxis tickFormatter={formatSpread} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'Spread %', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '12px', fontSize: 12, color: '#FFFFFF', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
                     itemStyle={{ color: '#FFFFFF' }}
@@ -395,7 +401,7 @@ export default function CurvasTab({ instruments, config, position, momentumMap }
                 <BarChart width={width} height={height} data={slopeData} margin={{ top: 10, right: 30, left: 15, bottom: 10 }} key={`sl-${width}-${height}`}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
                   <XAxis dataKey="ticker" type="category" tick={{ fill: '#FFFFFF', fontSize: 10 }} angle={-45} textAnchor="end" height={60} />
-                  <YAxis tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: '% TEM/30d', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
+                  <YAxis tickFormatter={formatSlope} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: '% TEM/30d', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '12px', fontSize: 12, color: '#FFFFFF', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
                     itemStyle={{ color: '#FFFFFF' }}
@@ -434,7 +440,7 @@ export default function CurvasTab({ instruments, config, position, momentumMap }
             <BarChart width={width} height={height} data={durationData} margin={{ top: 5, right: 30, left: 15, bottom: 5 }} key={`dm-${width}-${height}`}>
               <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
               <XAxis dataKey="ticker" tick={{ fill: '#FFFFFF', fontSize: 9 }} angle={-45} textAnchor="end" height={60} />
-              <YAxis tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'DM', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
+              <YAxis tickFormatter={formatDM} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'DM', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
               <Tooltip
                 contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '12px', fontSize: 12, color: '#FFFFFF', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
                 itemStyle={{ color: '#FFFFFF' }}
