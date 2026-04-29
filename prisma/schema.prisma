@@ -1,7 +1,9 @@
 // ════════════════════════════════════════════════════════════════════════
-// V3.0 — ARB//RADAR Prisma Schema
+// V3.0.1 — ARB//RADAR Prisma Schema (PostgreSQL for Neon / Vercel)
 //
-// PostgreSQL-compatible schema for data persistence.
+// This is the PRODUCTION schema for Neon PostgreSQL.
+// For local development with SQLite, use schema.sqlite.prisma instead.
+//
 // LIVE data is persisted via debounced writes (every 60s)
 // to avoid exhausting Vercel serverless function quotas.
 //
@@ -14,7 +16,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
