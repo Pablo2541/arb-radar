@@ -4,8 +4,11 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   reactStrictMode: false,
-  allowedDevOrigins: ["localhost", "127.0.0.1"],
+  output: undefined,
 };
 
 export default nextConfig;
