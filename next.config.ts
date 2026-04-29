@@ -4,11 +4,12 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
   reactStrictMode: false,
-  output: undefined,
+  allowedDevOrigins: ["localhost", "127.0.0.1"],
+  // V3.0: Vercel production optimization
+  // No output: 'export' by default — use Vercel's Node.js runtime
+  // API routes work with force-dynamic for fresh data
+  // Static export can be done temporarily for Netlify builds
 };
 
 export default nextConfig;

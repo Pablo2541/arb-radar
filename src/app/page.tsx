@@ -2,20 +2,17 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Instrument, Config, Position, Transaction, TabId,
+  Instrument, Config, Position, Transaction,
   SimulationRecord, ExternalHistoryRecord, MomentumData,
   LiveInstrument,
 } from '@/lib/types';
-import {
-  SAMPLE_INSTRUMENTS, DEFAULT_CONFIG, DEFAULT_POSITION,
-  INITIAL_TRANSACTIONS, STORAGE_KEYS, loadFromStorage, saveToStorage,
-} from '@/lib/sampleData';
-import { ensureValidDays, spreadVsCaucion, caucionTEMFromTNA, getCaucionForDays, analyzeCurveShape } from '@/lib/calculations';
+import { useRadarStore, initializeStore } from '@/lib/store';
+import type { AppTheme, TabId, ActivityItem } from '@/lib/store';
+import { filterForCharts } from '@/lib/outlierFilter';
+import { spreadVsCaucion, caucionTEMFromTNA, getCaucionForDays, analyzeCurveShape } from '@/lib/calculations';
 import { useSessionHistory } from '@/hooks/useSessionHistory';
 import { useLiveInstruments } from '@/hooks/useLiveInstruments';
-import {
-  PriceHistoryFile, loadPriceHistory, savePriceHistory,
-} from '@/lib/priceHistory';
+import type { PriceHistoryFile } from '@/lib/priceHistory';
 
 import MercadoTab from '@/components/dashboard/MercadoTab';
 import OportunidadesTab from '@/components/dashboard/OportunidadesTab';
@@ -27,8 +24,6 @@ import DiagnosticoTab from '@/components/dashboard/DiagnosticoTab';
 import HistorialTab from '@/components/dashboard/HistorialTab';
 import ThresholdAlerts from '@/components/dashboard/ThresholdAlerts';
 import ConfiguracionTab from '@/components/dashboard/ConfiguracionTab';
-
-export type AppTheme = 'dark' | 'light';
 
 const TAB_CONFIG: { id: TabId; icon: string; label: string; shortcut: string }[] = [
   { id: 'mercado', icon: '📊', label: 'Mercado', shortcut: '1' },
@@ -45,40 +40,52 @@ const TAB_CONFIG: { id: TabId; icon: string; label: string; shortcut: string }[]
 // ── Inner Content ──
 
 function HomeContent() {
-  // ── State ──
-  const [activeTab, setActiveTab] = useState<TabId>('mercado');
-  const [instruments, setInstruments] = useState<Instrument[]>(SAMPLE_INSTRUMENTS);
-  const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
-  const [position, setPosition] = useState<Position | null>(DEFAULT_POSITION);
-  const [transactions, setTransactions] = useState<Transaction[]>(INITIAL_TRANSACTIONS);
-  const [simulations, setSimulations] = useState<SimulationRecord[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.SIMULATIONS);
-      return stored ? JSON.parse(stored) : [];
-    } catch { return []; }
-  });
-  const [externalHistory, setExternalHistory] = useState<ExternalHistoryRecord[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.EXTERNAL_HISTORY);
-      return stored ? JSON.parse(stored) : [];
-    } catch { return []; }
-  });
-  const [lastUpdate, setLastUpdate] = useState<string | null>(null);
-  const [rawInput, setRawInput] = useState<string>('');
-  const [mepRate, setMepRate] = useState<number | undefined>(undefined);
-  const [cclRate, setCclRate] = useState<number | undefined>(undefined);
-  const [dolarLastUpdateTime, setDolarLastUpdateTime] = useState<string>('');
-  const [mounted, setMounted] = useState(false);
-  const [theme, setTheme] = useState<AppTheme>('dark');
-  const [priceHistory, setPriceHistory] = useState<PriceHistoryFile | null>(null);
-  const [currentTime, setCurrentTime] = useState<string>('');
+  // ════════════════════════════════════════════════════════════════
+  // V3.0 — Zustand Store (replaces ALL useState for shared state)
+  // ════════════════════════════════════════════════════════════════
+  const instruments = useRadarStore(s => s.instruments);
+  const config = useRadarStore(s => s.config);
+  const position = useRadarStore(s => s.position);
+  const transactions = useRadarStore(s => s.transactions);
+  const simulations = useRadarStore(s => s.simulations);
+  const externalHistory = useRadarStore(s => s.externalHistory);
+  const lastUpdate = useRadarStore(s => s.lastUpdate);
+  const rawInput = useRadarStore(s => s.rawInput);
+  const mepRate = useRadarStore(s => s.mepRate);
+  const cclRate = useRadarStore(s => s.cclRate);
+  const priceHistory = useRadarStore(s => s.priceHistory);
+  const activeTab = useRadarStore(s => s.activeTab);
+  const theme = useRadarStore(s => s.theme);
+  const mounted = useRadarStore(s => s.mounted);
+  const currentTime = useRadarStore(s => s.currentTime);
+  const activityFeed = useRadarStore(s => s.activityFeed);
+  const dbAvailable = useRadarStore(s => s.dbAvailable);
+  const lastDbSyncStatus = useRadarStore(s => s.lastDbSyncStatus);
+
+  // ── Store setters ──
+  const setActiveTab = useRadarStore(s => s.setActiveTab);
+  const setInstruments = useRadarStore(s => s.setInstruments);
+  const setConfig = useRadarStore(s => s.setConfig);
+  const setPosition = useRadarStore(s => s.setPosition);
+  const setTransactions = useRadarStore(s => s.setTransactions);
+  const setSimulations = useRadarStore(s => s.setSimulations);
+  const setExternalHistory = useRadarStore(s => s.setExternalHistory);
+  const setLastUpdate = useRadarStore(s => s.setLastUpdate);
+  const setRawInput = useRadarStore(s => s.setRawInput);
+  const setMepRate = useRadarStore(s => s.setMepRate);
+  const setCclRate = useRadarStore(s => s.setCclRate);
+  const setPriceHistory = useRadarStore(s => s.setPriceHistory);
+  const setCurrentTime = useRadarStore(s => s.setCurrentTime);
+  const addActivity = useRadarStore(s => s.addActivity);
+  const clearActivityFeed = useRadarStore(s => s.clearActivityFeed);
+
+  // ── Local-only state (NOT in store) ──
   const [tabTransition, setTabTransition] = useState(false);
   const [isTabLoading, setIsTabLoading] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [showHelp, setShowHelp] = useState(false);
-  const [showNukeConfirm, setShowNukeConfirm] = useState(false); // V2.0.4
+  const [showNukeConfirm, setShowNukeConfirm] = useState(false);
+  const [dolarLastUpdateTime, setDolarLastUpdateTime] = useState<string>('');
 
   // ════════════════════════════════════════════════════════════════
   // V2.0.3 — GLOBAL LIVE DATA (moved from MercadoTab to page.tsx)
@@ -127,31 +134,6 @@ function HomeContent() {
     return updated;
   }, [liveData.active, liveData.instruments, liveDataMap, instruments]);
 
-  // ── Activity Feed State ──
-  interface ActivityItem {
-    id: string;
-    icon: string;
-    message: string;
-    timestamp: string;
-    type: 'data' | 'dolar' | 'position' | 'threshold';
-  }
-  const [activityFeed, setActivityFeed] = useState<ActivityItem[]>([]);
-  const addActivity = useCallback((item: Omit<ActivityItem, 'id' | 'timestamp'>) => {
-    const itemId = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    setActivityFeed(prev => {
-      const newItem: ActivityItem = {
-        ...item,
-        id: itemId,
-        timestamp: new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      };
-      return [newItem, ...prev].slice(0, 5);
-    });
-    // V1.8.5: Auto-dismiss after 3 seconds
-    setTimeout(() => {
-      setActivityFeed(prev => prev.filter(i => i.id !== itemId));
-    }, 3000);
-  }, []);
-
   // ── Loading progress bar animation ──
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
@@ -175,25 +157,10 @@ function HomeContent() {
   // V1.3 — Session History (Momentum Module)
   const sessionHistory = useSessionHistory();
 
-  // ── Theme ──
-  const applyTheme = (t: AppTheme) => {
-    if (t === 'dark') {
-      document.documentElement.setAttribute('data-theme', 'dark');
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.setAttribute('data-theme', 'light');
-      document.documentElement.classList.remove('dark');
-    }
-  };
-
-  // ── Theme toggle ──
+  // ── Theme toggle (V3.0 — uses store) ──
   const toggleTheme = useCallback(() => {
-    setTheme(prev => {
-      const newTheme = prev === 'dark' ? 'light' : 'dark';
-      applyTheme(newTheme);
-      localStorage.setItem('arbradar_theme', newTheme);
-      return newTheme;
-    });
+    const current = useRadarStore.getState().theme;
+    useRadarStore.getState().setTheme(current === 'dark' ? 'light' : 'dark');
   }, []);
 
   // ── Tab change with transition + skeleton loading ──
@@ -209,7 +176,7 @@ function HomeContent() {
     setTimeout(() => {
       setIsTabLoading(false);
     }, 350);
-  }, [activeTab]);
+  }, [activeTab, setActiveTab]);
 
   // ── Real-time clock ──
   useEffect(() => {
@@ -220,7 +187,7 @@ function HomeContent() {
     updateTime();
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [setCurrentTime]);
 
   // ── Keyboard shortcuts ──
   useEffect(() => {
@@ -254,119 +221,73 @@ function HomeContent() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleTabChange, toggleTheme]);
 
-  // ── Load from localStorage on mount ──
+  // ── V3.0: Initialize store (DB first, then localStorage fallback) ──
   useEffect(() => {
-    const storedInstruments = loadFromStorage<Instrument[]>(STORAGE_KEYS.INSTRUMENTS, SAMPLE_INSTRUMENTS);
-    const storedConfig = loadFromStorage<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
-    const storedPosition = loadFromStorage<Position | null>(STORAGE_KEYS.POSITION, DEFAULT_POSITION);
-    const storedTransactions = loadFromStorage<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, INITIAL_TRANSACTIONS);
-    const storedLastUpdate = loadFromStorage<string | null>(STORAGE_KEYS.LAST_UPDATE, null);
-    const storedRawInput = loadFromStorage<string>(STORAGE_KEYS.RAW_INPUT, '');
-    const storedTheme = (localStorage.getItem('arbradar_theme') as AppTheme) || 'dark';
-    const storedPriceHistory = loadPriceHistory();
-
-    const batchUpdate = () => {
-      const fixInstruments = (insts: Instrument[]): Instrument[] =>
-        insts.map(inst => {
-          const effectiveRate = inst.tem || inst.tir || 0;
-          return { ...inst, tir: effectiveRate, tem: effectiveRate };
-        });
-
-      const fixedInstruments = fixInstruments(storedInstruments.length > 0 ? storedInstruments : SAMPLE_INSTRUMENTS);
-      const validInstruments = ensureValidDays(fixedInstruments);
-
-      setInstruments(validInstruments);
-      if (storedConfig.capitalDisponible === undefined) {
-        storedConfig.capitalDisponible = DEFAULT_CONFIG.capitalDisponible;
-      }
-      setConfig(storedConfig);
-      setPosition(storedPosition);
-      setTransactions(storedTransactions);
-      setLastUpdate(storedLastUpdate);
-      setRawInput(storedRawInput);
-      setTheme(storedTheme);
-      applyTheme(storedTheme);
-      setPriceHistory(storedPriceHistory);
-      setMounted(true);
+    initializeStore().then(() => {
+      const validInstruments = useRadarStore.getState().instruments;
       sessionHistory.addSnapshot(validInstruments);
-    };
-    batchUpdate();
+    });
   }, []);
 
-  // ── Persist state changes ──
+  // ── V3.0: Persist state changes (store handles localStorage + DB) ──
   const updateInstruments = useCallback((v: Instrument[]) => {
-    const fixedInstruments = v.map(inst => {
-      const effectiveRate = inst.tem || inst.tir || 0;
-      return { ...inst, tir: effectiveRate, tem: effectiveRate };
-    });
-    const validInstruments = ensureValidDays(fixedInstruments);
-    setInstruments(validInstruments);
-    saveToStorage(STORAGE_KEYS.INSTRUMENTS, validInstruments);
-    sessionHistory.addSnapshot(validInstruments);
-    addActivity({ icon: '📊', message: 'Datos actualizados', type: 'data' });
-  }, [sessionHistory, addActivity]);
+    useRadarStore.getState().setInstruments(v);
+    sessionHistory.addSnapshot(useRadarStore.getState().instruments);
+    useRadarStore.getState().addActivity({ icon: '📊', message: 'Datos actualizados', type: 'data' });
+  }, [sessionHistory]);
 
   const updateConfig = useCallback((v: Config) => {
-    setConfig(v);
-    saveToStorage(STORAGE_KEYS.CONFIG, v);
+    useRadarStore.getState().setConfig(v);
   }, []);
 
   const updatePosition = useCallback((v: Position | null) => {
-    setPosition(v);
-    saveToStorage(STORAGE_KEYS.POSITION, v);
-    addActivity({ icon: '💼', message: `Posición modificada: ${v?.ticker ?? 'cerrada'}`, type: 'position' });
-  }, [addActivity]);
+    useRadarStore.getState().setPosition(v);
+    useRadarStore.getState().addActivity({ icon: '💼', message: `Posición modificada: ${v?.ticker ?? 'cerrada'}`, type: 'position' });
+  }, []);
 
   const updateTransactions = useCallback((v: Transaction[]) => {
-    setTransactions(v);
-    saveToStorage(STORAGE_KEYS.TRANSACTIONS, v);
+    useRadarStore.getState().setTransactions(v);
   }, []);
 
   const updateLastUpdate = useCallback((v: string) => {
-    setLastUpdate(v);
-    saveToStorage(STORAGE_KEYS.LAST_UPDATE, v);
+    useRadarStore.getState().setLastUpdate(v);
   }, []);
 
   const updateRawInput = useCallback((v: string) => {
-    setRawInput(v);
-    saveToStorage(STORAGE_KEYS.RAW_INPUT, v);
+    useRadarStore.getState().setRawInput(v);
   }, []);
 
   const updateExternalHistory = useCallback((v: ExternalHistoryRecord[]) => {
-    setExternalHistory(v);
-    saveToStorage(STORAGE_KEYS.EXTERNAL_HISTORY, v);
+    useRadarStore.getState().setExternalHistory(v);
   }, []);
 
   const updatePriceHistory = useCallback((v: PriceHistoryFile) => {
-    setPriceHistory(v);
-    savePriceHistory(v);
+    useRadarStore.getState().setPriceHistory(v);
   }, []);
 
   // ── MEP/CCL Rate callbacks from MercadoTab ──
   const handleMepRate = useCallback((rate: number) => {
-    setMepRate(rate);
+    useRadarStore.getState().setMepRate(rate);
   }, []);
   const handleCclRate = useCallback((rate: number) => {
-    setCclRate(rate);
+    useRadarStore.getState().setCclRate(rate);
   }, []);
   const handleDolarUpdate = useCallback((timestamp: string) => {
     setDolarLastUpdateTime(timestamp);
-    addActivity({ icon: '💱', message: 'Cotización dólar actualizada', type: 'dolar' });
-  }, [addActivity]);
+    useRadarStore.getState().addActivity({ icon: '💱', message: 'Cotización dólar actualizada', type: 'dolar' });
+  }, []);
 
   // V2.0.3: Sync new LIVE instruments to the permanent instruments list
   // This runs in a useEffect (NOT during render) to avoid side effects in render
   const handleSyncLiveInstruments = useCallback((newInstruments: Instrument[]) => {
-    setInstruments(prev => {
-      const existingTickers = new Set(prev.map(i => i.ticker));
-      const trulyNew = newInstruments.filter(i => !existingTickers.has(i.ticker));
-      if (trulyNew.length === 0) return prev;
-      const updated = [...prev, ...trulyNew];
-      saveToStorage(STORAGE_KEYS.INSTRUMENTS, updated);
-      addActivity({ icon: '📡', message: `${trulyNew.length} instrumento(s) nuevo(s) desde LIVE: ${trulyNew.map(i => i.ticker).join(', ')}`, type: 'data' });
-      return updated;
-    });
-  }, [addActivity]);
+    const currentInstruments = useRadarStore.getState().instruments;
+    const existingTickers = new Set(currentInstruments.map(i => i.ticker));
+    const trulyNew = newInstruments.filter(i => !existingTickers.has(i.ticker));
+    if (trulyNew.length === 0) return;
+    const updated = [...currentInstruments, ...trulyNew];
+    useRadarStore.getState().setInstruments(updated);
+    useRadarStore.getState().addActivity({ icon: '📡', message: `${trulyNew.length} instrumento(s) nuevo(s) desde LIVE: ${trulyNew.map(i => i.ticker).join(', ')}`, type: 'data' });
+  }, []);
 
   // V2.0.3: Sync new LIVE instruments via useEffect (not during render!)
   useEffect(() => {
@@ -378,16 +299,17 @@ function HomeContent() {
     }
   }, [liveData.active, liveData.instruments, instruments, handleSyncLiveInstruments]);
 
-  // V2.0.3: Sanitized instruments for footer/curves (exclude days < 1)
-  const sanitizedInstruments = useMemo(() => effectiveInstruments.filter(i => i.days >= 1), [effectiveInstruments]);
+  // V3.0: Sanitized instruments for footer/curves (filter outliers for charts)
+  const sanitizedInstruments = useMemo(() =>
+    filterForCharts(effectiveInstruments.filter(i => i.days >= 1)),
+    [effectiveInstruments]
+  );
 
   // ── Curve shape computed for Market Summary ──
   const curveShape = useMemo(() => analyzeCurveShape(sanitizedInstruments), [sanitizedInstruments]);
 
   // ════════════════════════════════════════════════════════════════
-  // V2.0.4 — NUKE BUTTON: Hard Reset with localStorage.clear()
-  // Completely wipes all data and reloads the page from scratch.
-  // No ghost transactions, no stale config, no phantom positions.
+  // V3.0 — NUKE BUTTON: Hard Reset via store.nukeAll()
   // ════════════════════════════════════════════════════════════════
 
   const handleReset = () => {
@@ -395,15 +317,7 @@ function HomeContent() {
   };
 
   const handleNukeConfirm = () => {
-    // V2.0.4: Nuclear option — wipe EVERYTHING from localStorage
-    try {
-      localStorage.clear();
-    } catch {
-      // Storage unavailable — nothing to clear
-    }
-    // Hard reload — app will initialize with DEFAULT_CONFIG, DEFAULT_POSITION=null,
-    // INITIAL_TRANSACTIONS=[] — clean slate, $390,000 capital, no ghosts
-    window.location.reload();
+    useRadarStore.getState().nukeAll();
   };
 
   const handleNukeCancel = () => {
@@ -423,6 +337,17 @@ function HomeContent() {
     const day = now.getDay();
     return day >= 1 && day <= 5 && hour >= 10 && hour < 17;
   }, [currentTime]);
+
+  // ── DB Sync indicator color ──
+  const dbSyncDotColor = useMemo(() => {
+    if (!dbAvailable) return '#6b7280'; // gray — DB not configured
+    switch (lastDbSyncStatus) {
+      case 'syncing': return '#fbbf24'; // yellow
+      case 'error': return '#f87171'; // red
+      case 'success': return '#2eebc8'; // green
+      default: return '#6b7280'; // gray — idle
+    }
+  }, [dbAvailable, lastDbSyncStatus]);
 
   // ── Loading Screen ──
   if (!mounted) {
@@ -457,7 +382,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V2.0.5...
+            Cargando V3.0...
           </p>
         </div>
       </div>
@@ -541,7 +466,9 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V2.0.5</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.0</span>
+            {/* V3.0: DB Sync indicator dot */}
+            <div className="w-1.5 h-1.5 rounded-full hidden sm:block" style={{ backgroundColor: dbSyncDotColor }} title={dbAvailable ? `DB: ${lastDbSyncStatus}` : 'DB: no configurado'} />
             {/* Market status indicator */}
             <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[8px] font-medium ${marketOpen ? 'bg-[#2eebc8]/10 text-[#2eebc8]' : 'bg-app-subtle/50 text-app-text4'}`}>
               <div className={`w-1.5 h-1.5 rounded-full ${marketOpen ? 'bg-[#2eebc8] animate-pulse' : 'bg-app-text4'}`} />
@@ -660,7 +587,7 @@ function HomeContent() {
               {effectiveInstruments.length} inst.
               {priceHistory && ' · 📜'}
             </div>
-            {/* V2.0.4: Nuke Button — Hard Reset */}
+            {/* V3.0: Nuke Button — Hard Reset */}
             <button
               onClick={handleReset}
               className="text-[9px] text-app-text4 hover:text-[#f87171] transition-colors px-1.5 py-1 rounded hover:bg-[#f87171]/10"
@@ -791,7 +718,7 @@ function HomeContent() {
               <div className="flex items-center gap-1.5 mb-1.5">
                 <span className="text-[8px] text-app-text4 uppercase tracking-wider font-medium">Actividad reciente</span>
                 <button
-                  onClick={() => setActivityFeed([])}
+                  onClick={() => clearActivityFeed()}
                   className="text-[8px] text-app-text4 hover:text-[#f87171] transition-colors ml-auto"
                   title="Limpiar actividad"
                 >✕</button>
@@ -842,7 +769,7 @@ function HomeContent() {
       <footer className="mt-auto bg-app-card/80 backdrop-blur-sm px-5 py-2.5 flex items-center justify-between flex-wrap gap-y-1 gap-x-3">
         <div className="text-[8px] text-app-text4 font-mono flex items-center gap-2">
           <span className="version-pulse-dot" />
-          <span>ARB//RADAR V2.0.5</span>
+          <span>ARB//RADAR V3.0</span>
           <span className="text-app-border/60">·</span>
           <span>{sanitizedInstruments.length} inst.</span>
           {dolarLastUpdateTime && (
@@ -945,7 +872,7 @@ function HomeContent() {
         </div>
       )}
 
-      {/* ── V2.0.4: Nuke Confirmation Dialog ── */}
+      {/* ── V3.0: Nuke Confirmation Dialog ── */}
       {showNukeConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={handleNukeCancel}>
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />

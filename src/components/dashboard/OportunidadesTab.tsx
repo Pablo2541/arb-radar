@@ -303,7 +303,7 @@ export default function OportunidadesTab({
         atractivoEntrada,
       };
     });
-  }, [instruments, config, momentumMap, srDataMap]);
+  }, [instruments, config, momentumMap, srDataMap, liveDataMap]);
 
   // ─── V1.9 Module 2: ⭐ MEJOR OPORTUNIDAD (Triple Filter) ───
   const bestOpportunity = useMemo(() => {
@@ -367,7 +367,7 @@ export default function OportunidadesTab({
       // V1.9: Sort by Hunting Score (not just spreadNeto)
       .sort((a, b) => b.huntingScore - a.huntingScore)
       .slice(0, 5);
-  }, [position, instruments, config, srDataMap, momentumMap]);
+  }, [position, instruments, config, srDataMap, momentumMap, liveDataMap]);
 
   // ─── V1.9 Module 1b: Exit Alert for current position ───
   const exitAlert = useMemo(() => {
