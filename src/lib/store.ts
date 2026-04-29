@@ -99,6 +99,8 @@ export interface RadarState {
 function saveToStorage<T>(key: string, data: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(data));
+    // V3.0: Track last persist time for DB vs localStorage comparison on init
+    localStorage.setItem('arbradar_lastPersistTime', String(Date.now()));
   } catch {
     // Storage full or unavailable
   }
@@ -454,52 +456,162 @@ export const useRadarStore = create<RadarState>((set, get) => ({
 
 // ════════════════════════════════════════════════════════════════════════
 // Initialization helper — call once on app mount
-// Tries DB first, falls back to localStorage, then defaults
+//
+// PRIORITY (V3.0 with timestamp comparison):
+// 1. Load both DB and localStorage data
+// 2. Compare timestamps — use whichever is MORE RECENT
+// 3. If DB has no data or is unreachable → use localStorage
+// 4. If localStorage has no data → use DB
+// 5. If neither has data → use defaults
+//
+// This ensures that if a user made changes on another device
+// (synced to DB), those changes won't be overwritten by stale
+// localStorage data from the current browser.
 // ════════════════════════════════════════════════════════════════════════
 
 export async function initializeStore(): Promise<void> {
-  const store = useRadarStore.getState();
+  // ── Step 1: Load localStorage data (synchronous, fast) ──
+  const lsInstruments = loadFromStorage<Instrument[]>(STORAGE_KEYS.INSTRUMENTS, SAMPLE_INSTRUMENTS);
+  const lsConfig = loadFromStorage<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
+  const lsPosition = loadFromStorage<Position | null>(STORAGE_KEYS.POSITION, DEFAULT_POSITION);
+  const lsTransactions = loadFromStorage<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, INITIAL_TRANSACTIONS);
+  const lsLastUpdate = loadFromStorage<string | null>(STORAGE_KEYS.LAST_UPDATE, null);
+  const lsRawInput = loadFromStorage<string>(STORAGE_KEYS.RAW_INPUT, '');
+  const lsSimulations = loadFromStorage<SimulationRecord[]>(STORAGE_KEYS.SIMULATIONS, []);
+  const lsExternalHistory = loadFromStorage<ExternalHistoryRecord[]>(STORAGE_KEYS.EXTERNAL_HISTORY, []);
+  const lsTheme = (localStorage.getItem('arbradar_theme') as AppTheme) || 'dark';
+  const lsPriceHistory = loadPriceHistory();
+  const lsPersistTime = loadFromStorage<number | null>('arbradar_lastPersistTime', null);
 
-  // Step 1: Try loading from DB (async)
-  const dbLoaded = await store.loadFromDb();
+  // Ensure config has capitalDisponible
+  if (lsConfig.capitalDisponible === undefined) {
+    lsConfig.capitalDisponible = DEFAULT_CONFIG.capitalDisponible;
+  }
 
-  if (!dbLoaded) {
-    // Step 2: Fallback to localStorage
-    const storedInstruments = loadFromStorage<Instrument[]>(STORAGE_KEYS.INSTRUMENTS, SAMPLE_INSTRUMENTS);
-    const storedConfig = loadFromStorage<Config>(STORAGE_KEYS.CONFIG, DEFAULT_CONFIG);
-    const storedPosition = loadFromStorage<Position | null>(STORAGE_KEYS.POSITION, DEFAULT_POSITION);
-    const storedTransactions = loadFromStorage<Transaction[]>(STORAGE_KEYS.TRANSACTIONS, INITIAL_TRANSACTIONS);
-    const storedLastUpdate = loadFromStorage<string | null>(STORAGE_KEYS.LAST_UPDATE, null);
-    const storedRawInput = loadFromStorage<string>(STORAGE_KEYS.RAW_INPUT, '');
-    const storedSimulations = loadFromStorage<SimulationRecord[]>(STORAGE_KEYS.SIMULATIONS, []);
-    const storedExternalHistory = loadFromStorage<ExternalHistoryRecord[]>(STORAGE_KEYS.EXTERNAL_HISTORY, []);
-    const storedTheme = (localStorage.getItem('arbradar_theme') as AppTheme) || 'dark';
-    const storedPriceHistory = loadPriceHistory();
+  // ── Step 2: Try loading from DB (async) ──
+  let dbData: {
+    instruments: string;
+    config: string;
+    position: string | null;
+    transactions: string;
+    lastUpdate: string | null;
+    rawInput: string | null;
+    mepRate: number | null;
+    cclRate: number | null;
+    liveActive: boolean;
+    updatedAt?: string;
+  } | null = null;
+  let dbAvailable = false;
 
-    // Ensure config has capitalDisponible
-    if (storedConfig.capitalDisponible === undefined) {
-      storedConfig.capitalDisponible = DEFAULT_CONFIG.capitalDisponible;
+  try {
+    const res = await fetch('/api/state', {
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.fallback) {
+        // DB not configured — signal to use localStorage
+        dbAvailable = false;
+      } else if (data.exists) {
+        dbData = data.data;
+        dbAvailable = true;
+      }
     }
+  } catch {
+    // Network error — DB unreachable
+    dbAvailable = false;
+  }
 
+  // ── Step 3: Compare timestamps and decide source ──
+  let useDB = false;
+
+  if (dbData) {
+    const dbUpdatedAt = dbData.updatedAt ? new Date(dbData.updatedAt).getTime() : 0;
+
+    if (lsPersistTime && dbUpdatedAt > 0) {
+      // Both have timestamps → use the MORE RECENT one
+      useDB = dbUpdatedAt > lsPersistTime;
+      if (useDB) {
+        console.log(`[initializeStore] DB wins: DB updatedAt=${new Date(dbUpdatedAt).toISOString()} > LS persistTime=${new Date(lsPersistTime).toISOString()}`);
+      } else {
+        console.log(`[initializeStore] LS wins: LS persistTime=${new Date(lsPersistTime).toISOString()} >= DB updatedAt=${new Date(dbUpdatedAt).toISOString()}`);
+      }
+    } else if (dbUpdatedAt > 0) {
+      // DB has timestamp but localStorage doesn't → prefer DB (cross-device sync)
+      useDB = true;
+      console.log('[initializeStore] DB wins: no LS timestamp, DB has data');
+    } else {
+      // DB has no timestamp → can't determine recency, prefer localStorage (more reliable)
+      useDB = false;
+      console.log('[initializeStore] LS wins: DB has no updatedAt timestamp');
+    }
+  }
+
+  // ── Step 4: Apply the chosen source ──
+  if (useDB && dbData) {
+    try {
+      const instruments = fixInstruments(JSON.parse(dbData.instruments));
+      const config = JSON.parse(dbData.config) as Config;
+      const position = dbData.position ? JSON.parse(dbData.position) as Position : null;
+      const transactions = JSON.parse(dbData.transactions) as Transaction[];
+
+      if (config.capitalDisponible === undefined) {
+        config.capitalDisponible = DEFAULT_CONFIG.capitalDisponible;
+      }
+
+      useRadarStore.setState({
+        instruments: instruments.length > 0 ? instruments : SAMPLE_INSTRUMENTS,
+        config,
+        position,
+        transactions,
+        lastUpdate: dbData.lastUpdate,
+        rawInput: dbData.rawInput ?? '',
+        mepRate: dbData.mepRate ?? undefined,
+        cclRate: dbData.cclRate ?? undefined,
+        simulations: lsSimulations, // DB doesn't store simulations, keep LS
+        externalHistory: lsExternalHistory, // DB doesn't store extHistory, keep LS
+        theme: lsTheme, // Theme is local-only, not synced
+        priceHistory: lsPriceHistory, // Price history is local-only
+        dbAvailable: true,
+        lastDbSync: new Date(),
+      });
+
+      // Apply theme from localStorage (theme is device-specific, not synced)
+      if (lsTheme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.setAttribute('data-theme', 'light');
+        document.documentElement.classList.remove('dark');
+      }
+    } catch (parseError) {
+      console.error('[initializeStore] DB data corrupted, falling back to localStorage:', parseError);
+      useDB = false;
+    }
+  }
+
+  if (!useDB) {
     const validInstruments = fixInstruments(
-      storedInstruments.length > 0 ? storedInstruments : SAMPLE_INSTRUMENTS
+      lsInstruments.length > 0 ? lsInstruments : SAMPLE_INSTRUMENTS
     );
 
     useRadarStore.setState({
       instruments: validInstruments,
-      config: storedConfig,
-      position: storedPosition,
-      transactions: storedTransactions,
-      lastUpdate: storedLastUpdate,
-      rawInput: storedRawInput,
-      simulations: storedSimulations,
-      externalHistory: storedExternalHistory,
-      theme: storedTheme,
-      priceHistory: storedPriceHistory,
+      config: lsConfig,
+      position: lsPosition,
+      transactions: lsTransactions,
+      lastUpdate: lsLastUpdate,
+      rawInput: lsRawInput,
+      simulations: lsSimulations,
+      externalHistory: lsExternalHistory,
+      theme: lsTheme,
+      priceHistory: lsPriceHistory,
+      dbAvailable,
     });
 
     // Apply theme
-    if (storedTheme === 'dark') {
+    if (lsTheme === 'dark') {
       document.documentElement.setAttribute('data-theme', 'dark');
       document.documentElement.classList.add('dark');
     } else {

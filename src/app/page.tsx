@@ -299,6 +299,41 @@ function HomeContent() {
     }
   }, [liveData.active, liveData.instruments, instruments, handleSyncLiveInstruments]);
 
+  // ════════════════════════════════════════════════════════════════
+  // V3.0 — LIVE OFF PERSISTENCE
+  // When LIVE is turned off, the effectiveInstruments revert to
+  // the store's `instruments` (old prices). We need to capture
+  // the last LIVE-merged state and persist it so prices don't
+  // "reset" when the user disconnects LIVE.
+  // ════════════════════════════════════════════════════════════════
+  const lastLiveEffectiveRef = useRef<Instrument[]>([]);
+  const prevLiveActiveRef = useRef(false);
+
+  // Keep ref updated while LIVE is active (captures every price tick)
+  useEffect(() => {
+    if (liveData.active && effectiveInstruments.length > 0) {
+      lastLiveEffectiveRef.current = effectiveInstruments;
+    }
+  }, [liveData.active, effectiveInstruments]);
+
+  // On LIVE → OFF transition: persist last LIVE-merged instruments to store
+  useEffect(() => {
+    if (prevLiveActiveRef.current && !liveData.active && lastLiveEffectiveRef.current.length > 0) {
+      const lastLive = lastLiveEffectiveRef.current;
+      const currentStore = useRadarStore.getState().instruments;
+      // Only persist if prices actually changed (avoid unnecessary writes)
+      const hasChanges = lastLive.some(li => {
+        const si = currentStore.find(s => s.ticker === li.ticker);
+        return si && (Math.abs(si.price - li.price) > 0.0001 || Math.abs(si.tem - li.tem) > 0.001);
+      });
+      if (hasChanges) {
+        useRadarStore.getState().setInstruments(lastLive);
+        useRadarStore.getState().addActivity({ icon: '💾', message: 'Precios LIVE preservados al desconectar', type: 'data' });
+      }
+    }
+    prevLiveActiveRef.current = liveData.active;
+  }, [liveData.active]);
+
   // V3.0: Sanitized instruments for footer/curves (filter outliers for charts)
   const sanitizedInstruments = useMemo(() =>
     filterForCharts(effectiveInstruments.filter(i => i.days >= 1)),
