@@ -24,6 +24,7 @@ interface PersistedState {
   mepRate: number | null;
   cclRate: number | null;
   liveActive: boolean;
+  iolLevel2Online?: boolean; // V3.1: IOL Level 2 status
   updatedAt?: Date;  // Returned from DB, not part of payload
 }
 
@@ -50,6 +51,7 @@ export async function GET() {
         mepRate: state.mepRate,
         cclRate: state.cclRate,
         liveActive: state.liveActive,
+        iolLevel2Online: state.iolLevel2Online,
         updatedAt: state.updatedAt,
       } satisfies PersistedState,
     });
@@ -80,6 +82,7 @@ export async function PUT(request: NextRequest) {
         mepRate: body.mepRate,
         cclRate: body.cclRate,
         liveActive: body.liveActive,
+        iolLevel2Online: body.iolLevel2Online ?? false,
       },
       create: {
         id: 'main',
@@ -92,6 +95,7 @@ export async function PUT(request: NextRequest) {
         mepRate: body.mepRate,
         cclRate: body.cclRate,
         liveActive: body.liveActive,
+        iolLevel2Online: body.iolLevel2Online ?? false,
       },
     });
 

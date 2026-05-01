@@ -155,6 +155,7 @@ function getMomentumBg(label: string): string {
 }
 
 // ─── V1.9: Calculate Hunting Score (simplified from ArbitrajeTab) ───
+// V3.1: Enhanced with IOL Level 2 volume validation (Filtro de Verdad)
 function calculateHuntingScore(
   inst: Instrument,
   config: Config,
@@ -195,6 +196,22 @@ function calculateHuntingScore(
   const posicionEnCanal = srData?.posicionEnCanal ?? 50;
   if (posicionEnCanal > 90) {
     score -= 2;
+  }
+
+  // ── V3.1: IOL Level 2 — Filtro de Verdad Adjustment ──
+  // Apply the hunting adjustment from the Cerebro Táctico script
+  if (inst.iolHuntingAdjustment) {
+    score += inst.iolHuntingAdjustment;
+  }
+
+  // V3.1: IOL Liquidity Alert penalty — if IOL reports low volume, penalize
+  if (inst.iolLiquidityAlert) {
+    score -= 8; // Significant penalty for unconfirmed volume
+  }
+
+  // V3.1: IOL Volume Confirmed boost — if IOL shows healthy volume, boost
+  if (inst.iolStatus === 'online' && inst.iolVolume && inst.iolVolume > 0 && !inst.iolLiquidityAlert) {
+    score += 5; // Volume-confirmed opportunity
   }
 
   return Math.max(0, Math.min(100, score));
@@ -568,6 +585,24 @@ export default function OportunidadesTab({
                   : '—'}
               </span>
             </div>
+            {/* V3.1: IOL Level 2 Status */}
+            {(() => {
+              const iolOnlineCount = instruments.filter(i => i.iolStatus === 'online').length;
+              const iolAlertCount = instruments.filter(i => i.iolLiquidityAlert).length;
+              return iolOnlineCount > 0 ? (
+                <>
+                  <div className="w-px h-3 bg-app-border/40" />
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#a78bfa] animate-pulse" />
+                    <span className="text-app-text4 uppercase tracking-wider text-[10px]">IOL L2</span>
+                    <span className="font-mono font-bold text-[#a78bfa] text-[10px]">{iolOnlineCount}</span>
+                    {iolAlertCount > 0 && (
+                      <span className="text-[#fbbf24] font-mono text-[10px]">⚠{iolAlertCount}</span>
+                    )}
+                  </div>
+                </>
+              ) : null;
+            })()}
           </div>
         </div>
       )}
@@ -1001,6 +1036,16 @@ export default function OportunidadesTab({
                           🚨 TECHO
                         </span>
                       )}
+                      {row.instrument.iolLiquidityAlert && (
+                        <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-[#fbbf24]/15 text-[#fbbf24]">
+                          ⚠️ BAJA LIQ
+                        </span>
+                      )}
+                      {row.instrument.iolStatus === 'online' && !row.instrument.iolLiquidityAlert && row.instrument.iolVolume && row.instrument.iolVolume > 0 && (
+                        <span className="px-1.5 py-0.5 rounded text-[8px] font-semibold bg-[#a78bfa]/15 text-[#a78bfa]">
+                          ✓ VOL IOL
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -1114,6 +1159,12 @@ export default function OportunidadesTab({
                         )}
                         {row.isCeiling && (
                           <span className="text-[#f87171] text-[8px] font-semibold compra-pulse">🚨 TECHO</span>
+                        )}
+                        {row.instrument.iolLiquidityAlert && (
+                          <span className="text-[#fbbf24] text-[8px] font-semibold bg-[#fbbf24]/15 px-1.5 py-0.5 rounded">⚠️ BAJA LIQUIDEZ</span>
+                        )}
+                        {row.instrument.iolStatus === 'online' && !row.instrument.iolLiquidityAlert && row.instrument.iolVolume && row.instrument.iolVolume > 0 && (
+                          <span className="text-[#a78bfa] text-[8px] font-semibold bg-[#a78bfa]/15 px-1.5 py-0.5 rounded">✓ VOL IOL</span>
                         )}
                       </div>
                     </td>

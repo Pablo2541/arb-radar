@@ -11,6 +11,15 @@ export interface Instrument {
   gananciaDirecta: number;
   vsPlazoFijo: string;
   dm?: number; // V1.5: Duration Modified from historico_precios.json
+
+  // ── V3.1: IOL Level 2 Fields (from Cerebro Táctico local script) ──
+  iolVolume?: number;              // cantidadOperada from IOL
+  iolBid?: number;                 // best bid price from IOL puntas
+  iolAsk?: number;                 // best ask price from IOL puntas
+  iolAvgDailyVolume?: number;      // estimated average daily volume
+  iolStatus?: 'online' | 'offline' | 'no_data'; // IOL data availability
+  iolLiquidityAlert?: boolean;     // True when volume < 10% avg daily
+  iolHuntingAdjustment?: number;   // Score adjustment from Filtro de Verdad
 }
 
 export interface Config {

@@ -61,6 +61,7 @@ function HomeContent() {
   const activityFeed = useRadarStore(s => s.activityFeed);
   const dbAvailable = useRadarStore(s => s.dbAvailable);
   const lastDbSyncStatus = useRadarStore(s => s.lastDbSyncStatus);
+  const iolLevel2Online = useRadarStore(s => s.iolLevel2Online);
 
   // ── Store setters ──
   const setActiveTab = useRadarStore(s => s.setActiveTab);
@@ -501,9 +502,14 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.0</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.1</span>
             {/* V3.0: DB Sync indicator dot */}
             <div className="w-1.5 h-1.5 rounded-full hidden sm:block" style={{ backgroundColor: dbSyncDotColor }} title={dbAvailable ? `DB: ${lastDbSyncStatus}` : 'DB: no configurado'} />
+            {/* V3.1: IOL Level 2 indicator dot */}
+            <div className={`flex items-center gap-1 hidden sm:flex ${iolLevel2Online ? 'text-[#a78bfa]' : 'text-app-text4'}`} title={iolLevel2Online ? 'IOL Nivel 2: ONLINE — Volumen validado' : 'IOL Nivel 2: OFFLINE — Sin datos de volumen'}>
+              <div className={`w-1.5 h-1.5 rounded-full ${iolLevel2Online ? 'bg-[#a78bfa] animate-pulse' : 'bg-app-text4'}`} />
+              <span className="text-[7px] font-mono uppercase tracking-wider">{iolLevel2Online ? 'L2' : 'L2✗'}</span>
+            </div>
             {/* Market status indicator */}
             <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[8px] font-medium ${marketOpen ? 'bg-[#2eebc8]/10 text-[#2eebc8]' : 'bg-app-subtle/50 text-app-text4'}`}>
               <div className={`w-1.5 h-1.5 rounded-full ${marketOpen ? 'bg-[#2eebc8] animate-pulse' : 'bg-app-text4'}`} />
@@ -739,6 +745,25 @@ function HomeContent() {
                     <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill={shapeColor} opacity="0.7" /></svg>
                     <span className="text-[9px] text-app-text4 uppercase tracking-wider">Curva</span>
                     <span className="text-[11px] font-mono font-medium" style={{ color: shapeColor }}>{curveShape.shape.replace('_', ' ')}</span>
+                  </div>
+                </>
+              );
+            })()}
+            {/* V3.1: IOL Level 2 Status */}
+            {(() => {
+              const iolCount = effectiveInstruments.filter(i => i.iolStatus === 'online').length;
+              const iolAlerts = effectiveInstruments.filter(i => i.iolLiquidityAlert).length;
+              const iolColor = iolCount > 0 ? '#a78bfa' : '#6b7280';
+              return (
+                <>
+                  <div className="w-px h-3 bg-app-border/40 shrink-0" />
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill={iolColor} opacity="0.7" /></svg>
+                    <span className="text-[9px] text-app-text4 uppercase tracking-wider">IOL L2</span>
+                    <span className="text-[11px] font-mono font-medium" style={{ color: iolColor }}>{iolCount > 0 ? `${iolCount}` : 'OFF'}</span>
+                    {iolAlerts > 0 && (
+                      <span className="text-[9px] text-[#fbbf24] font-mono">⚠{iolAlerts}</span>
+                    )}
                   </div>
                 </>
               );

@@ -67,6 +67,9 @@ export interface RadarState {
   lastDbSync: Date | null;     // last successful DB write
   lastDbSyncStatus: 'idle' | 'syncing' | 'error' | 'success';
 
+  // ── IOL Level 2 State ─────────────────────────────────────────────
+  iolLevel2Online: boolean;    // V3.1: Whether IOL Level 2 data is available
+
   // ── Actions ────────────────────────────────────────────────────────
   setInstruments: (v: Instrument[]) => void;
   setConfig: (v: Config) => void;
@@ -172,6 +175,7 @@ export const useRadarStore = create<RadarState>((set, get) => ({
   dbAvailable: true,
   lastDbSync: null,
   lastDbSyncStatus: 'idle',
+  iolLevel2Online: false,
 
   // ── Setters (write to Zustand + localStorage immediately, schedule DB) ─
   setInstruments: (v: Instrument[]) => {
@@ -307,6 +311,7 @@ export const useRadarStore = create<RadarState>((set, get) => ({
         mepRate: state.mepRate ?? null,
         cclRate: state.cclRate ?? null,
         liveActive: false, // Will be set by LIVE hook
+        iolLevel2Online: state.iolLevel2Online,
       };
 
       const res = await fetch('/api/state', {
@@ -390,6 +395,8 @@ export const useRadarStore = create<RadarState>((set, get) => ({
           cclRate: dbState.cclRate ?? undefined,
           dbAvailable: true,
           lastDbSync: new Date(),
+          // V3.1: Detect IOL Level 2 status from DB flag OR from instrument data
+          iolLevel2Online: dbState.iolLevel2Online === true || instruments.some(i => i.iolStatus === 'online'),
         });
 
         return true;
@@ -575,6 +582,8 @@ export async function initializeStore(): Promise<void> {
         priceHistory: lsPriceHistory, // Price history is local-only
         dbAvailable: true,
         lastDbSync: new Date(),
+        // V3.1: Detect IOL Level 2 from DB flag or instrument data
+        iolLevel2Online: (dbData as Record<string, unknown>).iolLevel2Online === true || instruments.some(i => i.iolStatus === 'online'),
       });
 
       // Apply theme from localStorage (theme is device-specific, not synced)
