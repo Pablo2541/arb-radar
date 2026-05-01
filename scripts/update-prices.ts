@@ -814,6 +814,80 @@ function displayTopSpreads(instruments: LiveInstrument[], filtroResults: FiltroV
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// HISTORICAL ACCUMULATION — Save snapshots + update daily OHLC
+// ════════════════════════════════════════════════════════════════════════
+
+async function accumulateHistorical(prisma: PrismaClient, instruments: LiveInstrument[]): Promise<number> {
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  let saved = 0;
+
+  for (const inst of instruments) {
+    if (inst.last_price <= 0) continue;
+    try {
+      // 1. Save PriceSnapshot
+      await prisma.priceSnapshot.create({
+        data: {
+          ticker: inst.ticker,
+          type: inst.type,
+          timestamp: now,
+          price: inst.last_price,
+          bid: inst.bid || null,
+          ask: inst.ask || null,
+          volume: inst.volume,
+          pctChange: inst.change_pct,
+          vpv: inst.vpv || null,
+          tem: inst.tem || null,
+          tir: inst.tir || null,
+          tna: inst.tna || null,
+          daysToExpiry: inst.days_to_expiry,
+          source: inst.iol_status === 'online' ? 'iol_confirmed' : inst.source,
+        },
+      });
+
+      // 2. Update DailyOHLC
+      const existing = await prisma.dailyOHLC.findUnique({
+        where: { ticker_date: { ticker: inst.ticker, date: today } },
+      });
+
+      if (existing) {
+        await prisma.dailyOHLC.update({
+          where: { id: existing.id },
+          data: {
+            high: Math.max(existing.high, inst.last_price),
+            low: Math.min(existing.low, inst.last_price),
+            close: inst.last_price,
+            volume: existing.volume + inst.volume,
+            avgTem: inst.tem != null ? ((existing.avgTem ?? 0) * existing.snapshotCount + inst.tem) / (existing.snapshotCount + 1) : existing.avgTem,
+            avgTir: inst.tir != null ? ((existing.avgTir ?? 0) * existing.snapshotCount + inst.tir) / (existing.snapshotCount + 1) : existing.avgTir,
+            vpv: inst.vpv ?? existing.vpv,
+            snapshotCount: existing.snapshotCount + 1,
+          },
+        });
+      } else {
+        await prisma.dailyOHLC.create({
+          data: {
+            ticker: inst.ticker,
+            date: today,
+            open: inst.last_price,
+            high: inst.last_price,
+            low: inst.last_price,
+            close: inst.last_price,
+            volume: inst.volume,
+            avgTem: inst.tem,
+            avgTir: inst.tir,
+            vpv: inst.vpv,
+            snapshotCount: 1,
+          },
+        });
+      }
+      saved++;
+    } catch { /* skip individual failures */ }
+  }
+  return saved;
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // MAIN — Orchestrator
 // ════════════════════════════════════════════════════════════════════════
 
@@ -844,6 +918,18 @@ async function runOnce(): Promise<boolean> {
   // Step 5: Write to Neon DB
   log('INFO', 'Escribiendo a Neon PostgreSQL...');
   const dbOk = await writeToNeon(enriched, caucionProxy, iolOnline, filtroResults);
+
+  // Step 6: Accumulate historical data (PriceSnapshot + DailyOHLC)
+  if (dbOk) {
+    try {
+      const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
+      const histSaved = await accumulateHistorical(prisma, enriched);
+      await prisma.$disconnect();
+      if (histSaved > 0) log('OK', `📊 Histórico: ${histSaved} snapshots acumulados + OHLC actualizado`);
+    } catch (err) {
+      log('WARN', `Histórico accumulation failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log('');

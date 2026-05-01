@@ -14,16 +14,38 @@ import { useSessionHistory } from '@/hooks/useSessionHistory';
 import { useLiveInstruments } from '@/hooks/useLiveInstruments';
 import type { PriceHistoryFile } from '@/lib/priceHistory';
 
-import MercadoTab from '@/components/dashboard/MercadoTab';
-import OportunidadesTab from '@/components/dashboard/OportunidadesTab';
-import CurvasTab from '@/components/dashboard/CurvasTab';
-import ArbitrajeTab from '@/components/dashboard/ArbitrajeTab';
-import EstrategiasTab from '@/components/dashboard/EstrategiasTab';
-import CarteraTab from '@/components/dashboard/CarteraTab';
-import DiagnosticoTab from '@/components/dashboard/DiagnosticoTab';
-import HistorialTab from '@/components/dashboard/HistorialTab';
+// ── Dynamic imports for memory efficiency ──
+// Tabs are compiled on-demand, reducing initial compile memory from ~1.2GB to ~400MB
+import dynamic from 'next/dynamic';
 import ThresholdAlerts from '@/components/dashboard/ThresholdAlerts';
-import ConfiguracionTab from '@/components/dashboard/ConfiguracionTab';
+
+// Light tabs — loaded eagerly (small bundle)
+import MercadoTab from '@/components/dashboard/MercadoTab';
+import CurvasTab from '@/components/dashboard/CurvasTab';
+
+// Loading skeleton for lazy-loaded tabs (defined before dynamic imports for hoisting)
+function TabSkeleton() {
+  return (
+    <div className="p-6 animate-pulse space-y-4">
+      <div className="h-6 bg-app-subtle/50 rounded w-48" />
+      <div className="h-32 bg-app-subtle/30 rounded-lg" />
+      <div className="grid grid-cols-3 gap-3">
+        {[1,2,3].map(i => <div key={i} className="h-20 bg-app-subtle/20 rounded-lg" />)}
+      </div>
+      <div className="h-48 bg-app-subtle/20 rounded-lg" />
+    </div>
+  );
+}
+
+// Heavy tabs — loaded lazily (only compiled when user navigates to them)
+const OportunidadesTab = dynamic(() => import('@/components/dashboard/OportunidadesTab'), { ssr: false, loading: TabSkeleton });
+const ArbitrajeTab = dynamic(() => import('@/components/dashboard/ArbitrajeTab'), { ssr: false, loading: TabSkeleton });
+const EstrategiasTab = dynamic(() => import('@/components/dashboard/EstrategiasTab'), { ssr: false, loading: TabSkeleton });
+const CarteraTab = dynamic(() => import('@/components/dashboard/CarteraTab'), { ssr: false, loading: TabSkeleton });
+const DiagnosticoTab = dynamic(() => import('@/components/dashboard/DiagnosticoTab'), { ssr: false, loading: TabSkeleton });
+const HistorialTab = dynamic(() => import('@/components/dashboard/HistorialTab'), { ssr: false, loading: TabSkeleton });
+const HistoricoTab = dynamic(() => import('@/components/dashboard/HistoricoTab'), { ssr: false, loading: TabSkeleton });
+const ConfiguracionTab = dynamic(() => import('@/components/dashboard/ConfiguracionTab'), { ssr: false, loading: TabSkeleton });
 
 const TAB_CONFIG: { id: TabId; icon: string; label: string; shortcut: string }[] = [
   { id: 'mercado', icon: '📊', label: 'Mercado', shortcut: '1' },
@@ -34,7 +56,8 @@ const TAB_CONFIG: { id: TabId; icon: string; label: string; shortcut: string }[]
   { id: 'cartera', icon: '💼', label: 'Cartera', shortcut: '6' },
   { id: 'diagnostico', icon: '🩺', label: 'Diagnóstico', shortcut: '7' },
   { id: 'historial', icon: '📋', label: 'Historial', shortcut: '8' },
-  { id: 'configuracion', icon: '⚙️', label: 'Config', shortcut: '9' },
+  { id: 'historico', icon: '📜', label: 'Histórico', shortcut: '9' },
+  { id: 'configuracion', icon: '⚙️', label: 'Config', shortcut: '0' },
 ];
 
 // ── Inner Content ──
@@ -202,6 +225,11 @@ function HomeContent() {
         if (idx < TAB_CONFIG.length) {
           handleTabChange(TAB_CONFIG[idx].id);
         }
+      }
+      if (e.altKey && e.key === '0') {
+        e.preventDefault();
+        // Config tab is last (index 9)
+        handleTabChange(TAB_CONFIG[TAB_CONFIG.length - 1].id);
       }
       if (e.altKey && e.key.toLowerCase() === 't') {
         e.preventDefault();
@@ -485,6 +513,8 @@ function HomeContent() {
           unrealizedPnL={unrealizedPnL}
         />;
       }
+      case 'historico':
+        return <HistoricoTab instruments={effectiveInstruments} liveDataMap={liveDataMap} isLive={liveData.active} />;
       case 'configuracion':
         return <ConfiguracionTab rawInput={rawInput} setRawInput={updateRawInput} config={config} setConfig={updateConfig} instruments={instruments} setInstruments={updateInstruments} setLastUpdate={updateLastUpdate} position={position} setPosition={updatePosition} transactions={transactions} setTransactions={updateTransactions} simulations={simulations} setSimulations={setSimulations} externalHistory={externalHistory} setExternalHistory={updateExternalHistory} priceHistory={priceHistory} setPriceHistory={updatePriceHistory} snapshots={sessionHistory.getSnapshots()} onRestoreSnapshots={(snaps) => sessionHistory.restoreSnapshots(snaps)} />;
     }
@@ -578,6 +608,7 @@ function HomeContent() {
               {activeTab === 'cartera' && '💼 Cartera'}
               {activeTab === 'diagnostico' && '🩺 Diagnóstico'}
               {activeTab === 'historial' && '📋 Historial'}
+              {activeTab === 'historico' && '📜 Histórico'}
               {activeTab === 'configuracion' && '⚙️ Configuración'}
             </h2>
             {lastUpdate && (

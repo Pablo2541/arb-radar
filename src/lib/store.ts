@@ -31,7 +31,7 @@ import { loadPriceHistory, savePriceHistory } from '@/lib/priceHistory';
 // ════════════════════════════════════════════════════════════════════════
 
 export type AppTheme = 'dark' | 'light';
-export type TabId = 'mercado' | 'oportunidades' | 'curvas' | 'arbitraje' | 'estrategias' | 'cartera' | 'diagnostico' | 'historial' | 'configuracion';
+export type TabId = 'mercado' | 'oportunidades' | 'curvas' | 'arbitraje' | 'estrategias' | 'cartera' | 'diagnostico' | 'historial' | 'historico' | 'configuracion';
 
 export interface ActivityItem {
   id: string;
@@ -93,6 +93,9 @@ export interface RadarState {
   persistToDb: () => Promise<void>;
   loadFromDb: () => Promise<boolean>;
   nukeAll: () => void;
+
+  // ── IOL Level 2 Actions ────────────────────────────────────────────
+  setIolLevel2Online: (v: boolean) => void;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -458,6 +461,11 @@ export const useRadarStore = create<RadarState>((set, get) => ({
     if (typeof window !== 'undefined') {
       window.location.reload();
     }
+  },
+
+  // ── V3.2: IOL Level 2 Status Setter ──
+  setIolLevel2Online: (v: boolean) => {
+    set({ iolLevel2Online: v });
   },
 }));
 

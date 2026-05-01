@@ -1,7 +1,7 @@
 // ════════════════════════════════════════════════════════════════════════
-// V3.1 — ARB//RADAR Prisma Schema (PostgreSQL for Neon)
+// V3.2 — ARB//RADAR Prisma Schema
 //
-// CEREBRO TÁCTICO — Motor de precios + validación IOL Nivel 2
+// PostgreSQL-compatible schema for data persistence.
 // LIVE data is persisted via debounced writes (every 60s)
 // to avoid exhausting Vercel serverless function quotas.
 //
@@ -14,62 +14,62 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
 /// Main application state snapshot — persisted every 60s when LIVE is active
 model AppState {
-  id              String   @id @default("main")
-  instruments     String   // JSON — Instrument[]
-  config          String   // JSON — Config
-  position        String?  // JSON — Position | null
-  transactions    String   // JSON — Transaction[]
-  lastUpdate      String?  // ISO timestamp of last data load
-  rawInput        String?  // Last raw text input
-  mepRate         Float?   // Last known MEP rate
-  cclRate         Float?   // Last known CCL rate
-  liveActive      Boolean  @default(false) // Whether LIVE was active at last persist
-  iolLevel2Online Boolean  @default(false) // V3.1: Whether IOL Level 2 data is available
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id        String   @id @default("main")
+  instruments  String   // JSON — Instrument[]
+  config       String   // JSON — Config
+  position     String?  // JSON — Position | null
+  transactions String   // JSON — Transaction[]
+  lastUpdate   String?  // ISO timestamp of last data load
+  rawInput     String?  // Last raw text input
+  mepRate      Float?   // Last known MEP rate
+  cclRate      Float?   // Last known CCL rate
+  liveActive   Boolean  @default(false) // Whether LIVE was active at last persist
+  iolLevel2Online Boolean @default(false) // V3.1: Whether IOL Level 2 data is available
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 /// External history records (imported from XLSX/CSV)
 model ExternalHistory {
-  id                String   @id @default(cuid())
-  fecha             String   // DD/MM/YYYY
-  ticker            String
-  operacion         String
-  tem               Float    @default(0)
-  precioConComision Float    @default(0)
-  duration          Float    @default(0)
-  capitalNeto       Float    @default(0)
-  notas             String   @default("")
-  gananciaAcumulada Float    @default(0)
-  createdAt         DateTime @default(now())
+  id        String   @id @default(cuid())
+  fecha     String   // DD/MM/YYYY
+  ticker    String
+  operacion String
+  tem       Float    @default(0)
+  precioConComision Float @default(0)
+  duration  Float    @default(0)
+  capitalNeto Float   @default(0)
+  notas     String   @default("")
+  gananciaAcumulada Float @default(0)
+  createdAt DateTime @default(now())
 
   @@index([ticker])
 }
 
 /// Simulation records (rotation simulations)
 model Simulation {
-  id                String   @id @default(cuid())
-  timestamp         String
-  fromTicker        String
-  toTicker          String
-  sellPrice         Float
-  buyPrice          Float
-  sellPriceManual   Boolean  @default(false)
-  buyPriceManual    Boolean  @default(false)
-  spreadNeto        Float
-  spreadBruto       Float
-  evaluacion        String
-  paybackDays       Float
-  nuevosNominales   Float
+  id        String   @id @default(cuid())
+  timestamp String
+  fromTicker String
+  toTicker   String
+  sellPrice  Float
+  buyPrice   Float
+  sellPriceManual Boolean @default(false)
+  buyPriceManual  Boolean @default(false)
+  spreadNeto  Float
+  spreadBruto Float
+  evaluacion  String
+  paybackDays Float
+  nuevosNominales Float
   capitalNetoSalida Float
-  capitalSobrante   Float
-  createdAt         DateTime @default(now())
+  capitalSobrante Float
+  createdAt DateTime @default(now())
 }
 
 /// Keep User model for potential auth
@@ -79,4 +79,50 @@ model User {
   name      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// V3.2: Historical price snapshots — accumulated from data912 + ArgentinaDatos
+/// Builds our OWN historical dataset since no public LECAP/BONCAP history exists
+model PriceSnapshot {
+  id        String   @id @default(cuid())
+  ticker    String   // e.g. T30J6, S17A6
+  type      String   // LECAP or BONCAP
+  timestamp DateTime // When the snapshot was captured
+  price     Float    // Last price per $1 VN (data912 close / 100)
+  bid       Float?   // Best bid per $1 VN
+  ask       Float?   // Best ask per $1 VN
+  volume    Float    @default(0)  // Notional ARS volume
+  pctChange Float    @default(0)  // Daily change %
+  vpv       Float?   // Valor al vencimiento from ArgentinaDatos
+  tem       Float?   // Monthly TEM (decimal, e.g. 0.0197)
+  tir       Float?   // Annualized TIR (decimal)
+  tna       Float?   // Annualized from TEM
+  daysToExpiry Int?  // Days to maturity
+  source    String   @default("data912") // data912, argentinadatos, manual
+  createdAt DateTime @default(now())
+
+  @@index([ticker])
+  @@index([timestamp])
+  @@index([ticker, timestamp])
+}
+
+/// V3.2: Daily aggregated OHLC for efficient historical charting
+model DailyOHLC {
+  id        String   @id @default(cuid())
+  ticker    String
+  date      String   // YYYY-MM-DD
+  open      Float    // First price of day
+  high      Float    // Max price of day
+  low       Float    // Min price of day
+  close     Float    // Last price of day
+  volume    Float    @default(0)  // Total daily volume
+  avgTem    Float?   // Average TEM of the day
+  avgTir    Float?   // Average TIR of the day
+  vpv       Float?   // VPV at end of day
+  snapshotCount Int  @default(0) // Number of snapshots that day
+  createdAt DateTime @default(now())
+
+  @@unique([ticker, date])
+  @@index([ticker])
+  @@index([date])
 }

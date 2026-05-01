@@ -226,7 +226,7 @@ export interface RotationScoreV17 {
   shouldRotateForRun: boolean;    // V1.7: even with similar TEM, better upside + score
 }
 
-export type TabId = 'mercado' | 'oportunidades' | 'curvas' | 'arbitraje' | 'estrategias' | 'cartera' | 'diagnostico' | 'historial' | 'configuracion';
+export type TabId = 'mercado' | 'oportunidades' | 'curvas' | 'arbitraje' | 'estrategias' | 'cartera' | 'diagnostico' | 'historial' | 'historico' | 'configuracion';
 
 // ═══════════════════════════════════════════════════════════════
 // V2.0 — Live Data API Types (data912 + ArgentinaDatos merge)
@@ -289,6 +289,14 @@ export interface LiveInstrument {
   source: 'arg_notes' | 'arg_bonds'; // V2.0.1: which data912 endpoint provided the price
   delta_tir: number | null;  // V2.0.2: TIR(live) - TIR(last_close) in decimal, null if no last_close
   last_close: number | null; // V2.0.2: previous close price per $1 VN, derived from pct_change
+
+  // ── V3.1: IOL Level 2 Fields (from Cerebro Táctico / iol-bridge) ──
+  iol_volume?: number;              // cantidadOperada from IOL
+  iol_bid?: number;                 // best bid price from IOL puntas
+  iol_ask?: number;                 // best ask price from IOL puntas
+  iol_avg_daily_volume?: number;    // estimated average daily volume
+  iol_status?: 'online' | 'offline' | 'no_data'; // IOL data availability per instrument
+  iol_liquidity_alert?: boolean;    // True when volume < 10% avg daily
 }
 
 /** Full /api/letras response (V2.0.1 with multi-source) */
