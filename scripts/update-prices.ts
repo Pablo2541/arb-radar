@@ -1,6 +1,6 @@
 // ════════════════════════════════════════════════════════════════════════
-// CEREBRO TÁCTICO — ARB//RADAR V3.0
-// Motor de actualización de precios con validación IOL Nivel 2
+// CEREBRO TÁCTICO — ARB//RADAR V3.2
+// Motor de actualización de precios con validación IOL Nivel 2 + acumulación histórica
 //
 // ARQUITECTURA:
 //   Nivel 1 (Precios):  data912.com + ArgentinaDatos (estable, broker-focused)
@@ -760,6 +760,7 @@ async function writeToNeon(
         mepRate: existing?.mepRate ?? null,
         cclRate: existing?.cclRate ?? null,
         liveActive: true,
+        iolLevel2Online: iolOnline,
       },
       create: {
         id: 'main',
@@ -770,6 +771,7 @@ async function writeToNeon(
         lastUpdate,
         rawInput,
         liveActive: true,
+        iolLevel2Online: iolOnline,
       },
     });
 
@@ -777,6 +779,128 @@ async function writeToNeon(
     return true;
   } catch (error) {
     log('ERROR', `Neon DB write failed: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// V3.2 — HISTORICAL DATA ACCUMULATION
+// PriceSnapshot (raw ticks) + DailyOHLC (aggregated) + Cleanup
+// ════════════════════════════════════════════════════════════════════════
+
+async function saveHistoricalData(enriched: LiveInstrument[]): Promise<boolean> {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    log('ERROR', 'DATABASE_URL not configured. Cannot save historical data.');
+    return false;
+  }
+
+  const prisma = new PrismaClient({
+    datasources: { db: { url: databaseUrl } },
+  });
+
+  try {
+    const now = new Date();
+
+    // ── 1. Save PriceSnapshot for each instrument ──────────────────────
+    let snapshotCount = 0;
+    for (const inst of enriched) {
+      try {
+        await prisma.priceSnapshot.create({
+          data: {
+            ticker: inst.ticker,
+            type: inst.type,
+            price: inst.last_price,
+            bid: inst.bid,
+            ask: inst.ask,
+            tem: inst.tem * 100,       // Convert from decimal to percentage
+            tir: inst.tem * 100,
+            tna: inst.tna * 100,
+            spread: inst.spread_neto * 100,
+            days: inst.days_to_expiry,
+            volume: inst.volume,
+            change: inst.change_pct,
+            iolVolume: inst.iol_volume || null,
+            iolBid: inst.iol_bid || null,
+            iolAsk: inst.iol_ask || null,
+            iolStatus: inst.iol_status || null,
+            iolLiquidityAlert: inst.iol_liquidity_alert || null,
+            source: 'cerebro',
+            timestamp: now,
+          },
+        });
+        snapshotCount++;
+      } catch (err) {
+        log('WARN', `PriceSnapshot failed for ${inst.ticker}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    log('OK', `📸 Saved ${snapshotCount} PriceSnapshot records`);
+
+    // ── 2. Upsert DailyOHLC ────────────────────────────────────────────
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }); // YYYY-MM-DD
+    let ohlcCount = 0;
+
+    for (const inst of enriched) {
+      try {
+        const existingOHLC = await prisma.dailyOHLC.findUnique({
+          where: { ticker_date: { ticker: inst.ticker, date: today } },
+        });
+
+        if (existingOHLC) {
+          // Update: high = max(existing.high, price), low = min(existing.low, price), close = current, tickCount++
+          await prisma.dailyOHLC.update({
+            where: { id: existingOHLC.id },
+            data: {
+              high: Math.max(existingOHLC.high, inst.last_price),
+              low: Math.min(existingOHLC.low, inst.last_price),
+              close: inst.last_price,
+              highTEM: Math.max(existingOHLC.highTEM, inst.tem * 100),
+              lowTEM: Math.min(existingOHLC.lowTEM, inst.tem * 100),
+              closeTEM: inst.tem * 100,
+              avgVolume: (existingOHLC.avgVolume * existingOHLC.tickCount + inst.volume) / (existingOHLC.tickCount + 1),
+              tickCount: existingOHLC.tickCount + 1,
+            },
+          });
+        } else {
+          // Create: open=high=low=close=current price
+          await prisma.dailyOHLC.create({
+            data: {
+              ticker: inst.ticker,
+              date: today,
+              open: inst.last_price,
+              high: inst.last_price,
+              low: inst.last_price,
+              close: inst.last_price,
+              openTEM: inst.tem * 100,
+              highTEM: inst.tem * 100,
+              lowTEM: inst.tem * 100,
+              closeTEM: inst.tem * 100,
+              avgVolume: inst.volume,
+              tickCount: 1,
+            },
+          });
+        }
+        ohlcCount++;
+      } catch (err) {
+        log('WARN', `DailyOHLC upsert failed for ${inst.ticker}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    log('OK', `📊 Upserted ${ohlcCount} DailyOHLC records`);
+
+    // ── 3. Cleanup old snapshots (>7 days) ─────────────────────────────
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const deleted = await prisma.priceSnapshot.deleteMany({
+      where: { timestamp: { lt: sevenDaysAgo } },
+    });
+    if (deleted.count > 0) {
+      log('OK', `🗑️ Cleaned up ${deleted.count} old PriceSnapshot records (>7d)`);
+    }
+
+    return true;
+  } catch (error) {
+    log('ERROR', `Historical data save failed: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   } finally {
     await prisma.$disconnect();
@@ -814,80 +938,6 @@ function displayTopSpreads(instruments: LiveInstrument[], filtroResults: FiltroV
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// HISTORICAL ACCUMULATION — Save snapshots + update daily OHLC
-// ════════════════════════════════════════════════════════════════════════
-
-async function accumulateHistorical(prisma: PrismaClient, instruments: LiveInstrument[]): Promise<number> {
-  const now = new Date();
-  const today = now.toISOString().split('T')[0];
-  let saved = 0;
-
-  for (const inst of instruments) {
-    if (inst.last_price <= 0) continue;
-    try {
-      // 1. Save PriceSnapshot
-      await prisma.priceSnapshot.create({
-        data: {
-          ticker: inst.ticker,
-          type: inst.type,
-          timestamp: now,
-          price: inst.last_price,
-          bid: inst.bid || null,
-          ask: inst.ask || null,
-          volume: inst.volume,
-          pctChange: inst.change_pct,
-          vpv: inst.vpv || null,
-          tem: inst.tem || null,
-          tir: inst.tir || null,
-          tna: inst.tna || null,
-          daysToExpiry: inst.days_to_expiry,
-          source: inst.iol_status === 'online' ? 'iol_confirmed' : inst.source,
-        },
-      });
-
-      // 2. Update DailyOHLC
-      const existing = await prisma.dailyOHLC.findUnique({
-        where: { ticker_date: { ticker: inst.ticker, date: today } },
-      });
-
-      if (existing) {
-        await prisma.dailyOHLC.update({
-          where: { id: existing.id },
-          data: {
-            high: Math.max(existing.high, inst.last_price),
-            low: Math.min(existing.low, inst.last_price),
-            close: inst.last_price,
-            volume: existing.volume + inst.volume,
-            avgTem: inst.tem != null ? ((existing.avgTem ?? 0) * existing.snapshotCount + inst.tem) / (existing.snapshotCount + 1) : existing.avgTem,
-            avgTir: inst.tir != null ? ((existing.avgTir ?? 0) * existing.snapshotCount + inst.tir) / (existing.snapshotCount + 1) : existing.avgTir,
-            vpv: inst.vpv ?? existing.vpv,
-            snapshotCount: existing.snapshotCount + 1,
-          },
-        });
-      } else {
-        await prisma.dailyOHLC.create({
-          data: {
-            ticker: inst.ticker,
-            date: today,
-            open: inst.last_price,
-            high: inst.last_price,
-            low: inst.last_price,
-            close: inst.last_price,
-            volume: inst.volume,
-            avgTem: inst.tem,
-            avgTir: inst.tir,
-            vpv: inst.vpv,
-            snapshotCount: 1,
-          },
-        });
-      }
-      saved++;
-    } catch { /* skip individual failures */ }
-  }
-  return saved;
-}
-
-// ════════════════════════════════════════════════════════════════════════
 // MAIN — Orchestrator
 // ════════════════════════════════════════════════════════════════════════
 
@@ -919,15 +969,12 @@ async function runOnce(): Promise<boolean> {
   log('INFO', 'Escribiendo a Neon PostgreSQL...');
   const dbOk = await writeToNeon(enriched, caucionProxy, iolOnline, filtroResults);
 
-  // Step 6: Accumulate historical data (PriceSnapshot + DailyOHLC)
+  // Step 6: Save historical data (V3.2)
   if (dbOk) {
-    try {
-      const prisma = new PrismaClient({ datasources: { db: { url: process.env.DATABASE_URL } } });
-      const histSaved = await accumulateHistorical(prisma, enriched);
-      await prisma.$disconnect();
-      if (histSaved > 0) log('OK', `📊 Histórico: ${histSaved} snapshots acumulados + OHLC actualizado`);
-    } catch (err) {
-      log('WARN', `Histórico accumulation failed: ${err instanceof Error ? err.message : String(err)}`);
+    log('INFO', 'V3.2: Guardando datos históricos (PriceSnapshot + DailyOHLC)...');
+    const histOk = await saveHistoricalData(enriched);
+    if (!histOk) {
+      log('WARN', 'V3.2: Falló el guardado de datos históricos.');
     }
   }
 

@@ -1,453 +1,371 @@
 // ════════════════════════════════════════════════════════════════════════
-// IOL BRIDGE — InvertirOnline Authentication & Level 2 Data Module
+// IOL BRIDGE — Shared InvertirOnline Authentication & Cotización Module
 // ════════════════════════════════════════════════════════════════════════
 //
-// Server-side module for authenticating with InvertirOnline API
-// and fetching Level 2 market data (volume, bid/ask, liquidity alerts).
+// SHARED MODULE — works in both:
+//   • Next.js API routes (Edge / Node runtime)
+//   • Standalone Cerebro Táctico script (Node.js via tsx)
 //
-// Consumers:
-//   - Next.js API routes (src/app/api/*)
-//   - scripts/update-prices.ts daemon
+// Uses standard `fetch` only (no axios / node-fetch).
+// Returns null on failure — NEVER throws.
 //
-// DESIGN PRINCIPLES:
-//   - Never throws — always returns gracefully (null / offline status)
-//   - No Prisma dependency — pure HTTP + in-memory cache
-//   - Token auto-refresh at 14min (expires at 15min)
-//   - Batch processing with rate-limit delays
+// TOKEN LIFECYCLE:
+//   IOL tokens expire at 15 minutes.
+//   This module caches tokens with expiry tracking and auto-refreshes
+//   at 14 minutes (60s safety buffer before expiration).
+//
+// VOLUME HEURISTIC:
+//   If current volume is X and we're N hours into a 7h trading day,
+//   estimated daily volume ≈ X × (7 / N).
 // ════════════════════════════════════════════════════════════════════════
-
-import type { LiveInstrument } from './types';
-
-// ── Configuration Constants ────────────────────────────────────────────
-
-const IOL_TOKEN_URL = 'https://api.invertironline.com/token';
-const IOL_COTIZACION_URL = 'https://api.invertironline.com/api/v2/Titulos';
-
-/** Token is considered stale 60 seconds before actual expiry */
-const TOKEN_REFRESH_BUFFER_MS = 60_000;
-/** Default token lifetime if server doesn't return expires_in (15 min) */
-const DEFAULT_TOKEN_LIFETIME_S = 900;
-/** HTTP timeout for token endpoint */
-const TOKEN_TIMEOUT_MS = 10_000;
-/** HTTP timeout for cotización endpoint */
-const COTIZACION_TIMEOUT_MS = 5_000;
-/** Batch size for enrichWithIOL to respect IOL rate limits */
-const ENRICH_BATCH_SIZE = 5;
-/** Delay between batches in milliseconds */
-const ENRICH_BATCH_DELAY_MS = 200;
-/** Volume below this ratio of avg daily triggers liquidity alert */
-const LOW_VOLUME_RATIO = 0.10;
 
 // ── Exported Types ─────────────────────────────────────────────────────
 
-/** Processed Level 2 data from IOL for a single instrument */
-export interface IOLLevel2Data {
-  iol_volume: number;
-  iol_bid: number;
-  iol_ask: number;
-  iol_avg_daily_volume: number;
-  iol_status: 'online' | 'offline' | 'no_data';
-  iol_liquidity_alert: boolean;
+export interface IOLCotizacionResult {
+  iolVolume: number;          // cantidadOperada
+  iolBid: number;             // best bid from puntas
+  iolAsk: number;             // best ask from puntas
+  iolAvgDailyVolume: number;  // estimated average daily volume
+  iolStatus: 'online' | 'offline' | 'no_data';
+  iolLiquidityAlert: boolean; // volume < 10% avg daily
 }
 
-/** Raw IOL /Cotizacion API response */
-export interface IOLCotizacion {
-  titulo: {
+/** Internal: raw IOL token API response */
+interface IOLTokenResponse {
+  access_token: string;
+  expires_in: number;       // seconds until expiration (typically 900 = 15min)
+  token_type?: string;
+  refresh_token?: string;
+}
+
+/** Internal: raw IOL cotización API response structure */
+interface IOLCotizacionAPIResponse {
+  titulo?: {
     simbolo: string;
     descripcion: string;
     pais: string;
     mercado: string;
     tipo: string;
   };
-  ultimoPrecio: number;
-  variacion: number;
-  apertura: number;
-  maximo: number;
-  minimo: number;
-  volumen: number;
-  cantidadOperada: number;
+  ultimoPrecio?: number;
+  variacion?: number;
+  apertura?: number;
+  maximo?: number;
+  minimo?: number;
+  volumen?: number;            // Notional ARS volume
+  cantidadOperada?: number;    // Nominal units traded today
   puntas?: {
-    compra: Array<{ cantidad: number; precio: number }>;
-    venta: Array<{ cantidad: number; precio: number }>;
+    compra?: Array<{ cantidad: number; precio: number }>;
+    venta?: Array<{ cantidad: number; precio: number }>;
   };
 }
 
-/** Configuration interface for the IOL bridge */
-export interface IOLBridgeConfig {
-  tokenUrl?: string;
-  cotizacionUrl?: string;
-  tokenTimeoutMs?: number;
-  cotizacionTimeoutMs?: number;
-  batchSize?: number;
-  batchDelayMs?: number;
-  lowVolumeRatio?: number;
+// ── Token Cache ────────────────────────────────────────────────────────
+
+interface CachedToken {
+  token: string;
+  expiresAt: number;  // Date.now() timestamp when token expires
 }
-
-/** Status of the IOL bridge connection */
-export interface IOLBridgeStatus {
-  online: boolean;
-  lastTokenRefresh: Date | null;
-  credentialsConfigured: boolean;
-}
-
-/** Result of batch enrichment */
-export interface IOLEnrichResult {
-  enriched: LiveInstrument[];
-  iolOnline: boolean;
-  stats: {
-    queried: number;
-    success: number;
-    alerts: number;
-  };
-}
-
-// ── Internal State (in-memory token cache) ─────────────────────────────
-
-let cachedToken: string | null = null;
-let tokenExpiryTimestamp: number = 0;
-let lastTokenRefreshDate: Date | null = null;
-
-/** Lock to prevent concurrent token refreshes */
-let tokenRefreshPromise: Promise<string | null> | null = null;
-
-// ── Config (can be overridden for testing) ─────────────────────────────
-
-let config: Required<IOLBridgeConfig> = {
-  tokenUrl: IOL_TOKEN_URL,
-  cotizacionUrl: IOL_COTIZACION_URL,
-  tokenTimeoutMs: TOKEN_TIMEOUT_MS,
-  cotizacionTimeoutMs: COTIZACION_TIMEOUT_MS,
-  batchSize: ENRICH_BATCH_SIZE,
-  batchDelayMs: ENRICH_BATCH_DELAY_MS,
-  lowVolumeRatio: LOW_VOLUME_RATIO,
-};
 
 /**
- * Override default configuration. Merges with defaults for any
- * fields not provided.
+ * Module-level token cache keyed by username.
+ * Allows multiple IOL accounts to coexist (e.g., testing vs production).
  */
-export function configureIOLBridge(overrides: IOLBridgeConfig): void {
-  config = { ...config, ...overrides };
-}
+const tokenCache = new Map<string, CachedToken>();
 
-// ── Helper: safe numeric parser ────────────────────────────────────────
+/** IOL tokens expire at 15min; we refresh at 14min (60s safety buffer). */
+const REFRESH_BUFFER_MS = 60_000;
 
-function safeNum(val: unknown, fallback = 0): number {
-  if (typeof val === 'number' && Number.isFinite(val)) return val;
-  return fallback;
-}
+/** How long to wait for IOL API responses before timing out. */
+const FETCH_TIMEOUT_MS = 10_000;
 
-// ── Authentication ─────────────────────────────────────────────────────
+/** Low-liquidity threshold: volume < 10% of estimated avg daily → alert. */
+const LOW_VOLUME_PCT = 0.10;
+
+/** Trading day length in hours (Argentina: 10:00–17:00 = 7h). */
+const TRADING_DAY_HOURS = 7;
+
+/** Market open hour in Argentina timezone. */
+const MARKET_OPEN_HOUR = 10;
+
+// ── IOL Token Management ──────────────────────────────────────────────
 
 /**
- * Obtain a valid IOL access token.
+ * Authenticate with IOL API and return an access token.
  *
- * - Returns cached token if still valid (with refresh buffer).
- * - Refreshes proactively when the token is near expiry.
- * - Returns `null` if credentials are not configured or auth fails.
- * - Never throws.
+ * Uses module-level token caching: if a valid (non-expired) token exists
+ * for the given username, it is returned immediately without making a
+ * network request. Tokens are refreshed 60 seconds before expiration.
+ *
+ * @param username - IOL account email
+ * @param password - IOL account password
+ * @returns Access token string, or null on any failure
  */
-export async function getIOLToken(): Promise<string | null> {
-  const username = process.env.IOL_USERNAME;
-  const password = process.env.IOL_PASSWORD;
-
-  // ── Graceful degradation: no credentials ──
+export async function getIOLToken(
+  username: string,
+  password: string,
+): Promise<string | null> {
   if (!username || !password) {
+    console.warn('[iol-bridge] getIOLToken: username or password is empty');
     return null;
   }
 
-  // ── Return cached token if still valid ──
-  if (cachedToken && Date.now() < tokenExpiryTimestamp - TOKEN_REFRESH_BUFFER_MS) {
-    return cachedToken;
+  // Check cache — return early if token is still valid (with refresh buffer)
+  const cached = tokenCache.get(username);
+  if (cached && Date.now() < cached.expiresAt - REFRESH_BUFFER_MS) {
+    return cached.token;
   }
 
-  // ── Deduplicate concurrent refresh attempts ──
-  if (tokenRefreshPromise) {
-    return tokenRefreshPromise;
-  }
+  // Authenticate with IOL
+  try {
+    const params = new URLSearchParams({
+      username,
+      password,
+      grant_type: 'password',
+    });
 
-  tokenRefreshPromise = (async () => {
-    try {
-      const params = new URLSearchParams({
-        username,
-        password,
-        grant_type: 'password',
-      });
+    const res = await fetch('https://api.invertironline.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
 
-      const res = await fetch(config.tokenUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString(),
-        signal: AbortSignal.timeout(config.tokenTimeoutMs),
-      });
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => '');
-        console.warn(
-          `[IOL-Bridge] Auth failed (${res.status}): ${errText.slice(0, 200)}`
-        );
-        cachedToken = null;
-        return null;
-      }
-
-      const data = (await res.json()) as {
-        access_token: string;
-        expires_in?: number;
-      };
-
-      cachedToken = data.access_token;
-      const lifetimeS = data.expires_in ?? DEFAULT_TOKEN_LIFETIME_S;
-      tokenExpiryTimestamp = Date.now() + lifetimeS * 1000;
-      lastTokenRefreshDate = new Date();
-
-      return cachedToken;
-    } catch (err) {
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
       console.warn(
-        `[IOL-Bridge] Auth error: ${err instanceof Error ? err.message : String(err)}`
+        `[iol-bridge] getIOLToken: IOL auth failed (${res.status}): ${errText.slice(0, 200)}`,
       );
-      cachedToken = null;
       return null;
-    } finally {
-      tokenRefreshPromise = null;
     }
-  })();
 
-  return tokenRefreshPromise;
+    const data = (await res.json()) as IOLTokenResponse;
+
+    if (!data.access_token) {
+      console.warn('[iol-bridge] getIOLToken: IOL response missing access_token');
+      return null;
+    }
+
+    // Cache the token with its expiration time
+    const expiresIn = (data.expires_in || 900) * 1000; // default 15min if not provided
+    const expiresAt = Date.now() + expiresIn;
+
+    tokenCache.set(username, { token: data.access_token, expiresAt });
+
+    const validMin = Math.round((data.expires_in || 900) / 60);
+    console.log(
+      `[iol-bridge] getIOLToken: token obtained for ${username.slice(0, 3)}***, valid for ~${validMin}min`,
+    );
+
+    return data.access_token;
+  } catch (error) {
+    console.warn(
+      `[iol-bridge] getIOLToken: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return null;
+  }
 }
 
-// ── Bridge Status ──────────────────────────────────────────────────────
-
 /**
- * Returns the current status of the IOL bridge, including whether
- * credentials are configured and the last successful token refresh time.
+ * Force-clear the cached token for a given username.
+ * Useful when a 401 is received mid-session and a fresh login is needed.
  */
-export function getIOLStatus(): IOLBridgeStatus {
-  const credentialsConfigured = !!(
-    process.env.IOL_USERNAME &&
-    process.env.IOL_PASSWORD
-  );
-
-  return {
-    online: cachedToken !== null && Date.now() < tokenExpiryTimestamp,
-    lastTokenRefresh: lastTokenRefreshDate,
-    credentialsConfigured,
-  };
+export function clearIOLToken(username: string): void {
+  tokenCache.delete(username);
 }
 
-// ── Level 2 Data: Single Instrument ────────────────────────────────────
+// ── IOL Cotización Query ──────────────────────────────────────────────
 
 /**
- * Fetch cotización data for a single ticker from IOL.
+ * Get real-time cotización data for a ticker from IOL.
  *
- * - Returns `IOLLevel2Data` with `iol_status: 'online'` on success.
- * - Returns `IOLLevel2Data` with `iol_status: 'no_data'` if the ticker
- *   is not listed on IOL (HTTP 404).
- * - Returns `null` if IOL is offline, auth fails, or a network error
- *   occurs.
- * - Never throws.
+ * @param token  - Valid IOL access token (from getIOLToken)
+ * @param ticker - Instrument ticker symbol (e.g. "T15J7", "LECAP4J25")
+ * @returns Parsed cotización result, or null on any failure
  */
 export async function getIOLCotizacion(
-  ticker: string
-): Promise<IOLLevel2Data | null> {
-  const token = await getIOLToken();
-  if (!token) return null;
+  token: string,
+  ticker: string,
+): Promise<IOLCotizacionResult | null> {
+  if (!token || !ticker) {
+    console.warn('[iol-bridge] getIOLCotizacion: token or ticker is empty');
+    return null;
+  }
 
   try {
-    const url = `${config.cotizacionUrl}/${encodeURIComponent(ticker)}/Cotizacion?mercado=BCBA`;
+    const url = `https://api.invertironline.com/api/v2/Titulos/${encodeURIComponent(ticker)}/Cotizacion?mercado=BCBA`;
 
     const res = await fetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/json',
       },
-      signal: AbortSignal.timeout(config.cotizacionTimeoutMs),
+      signal: AbortSignal.timeout(5_000),
     });
 
-    // ── 404 = ticker not listed on IOL ──
+    // 404 = ticker not listed on IOL (some instruments aren't available)
     if (res.status === 404) {
       return {
-        iol_volume: 0,
-        iol_bid: 0,
-        iol_ask: 0,
-        iol_avg_daily_volume: 0,
-        iol_status: 'no_data',
-        iol_liquidity_alert: false,
+        iolVolume: 0,
+        iolBid: 0,
+        iolAsk: 0,
+        iolAvgDailyVolume: 0,
+        iolStatus: 'no_data',
+        iolLiquidityAlert: false,
       };
     }
 
     if (!res.ok) {
-      // Silently return offline — don't log every failed per-ticker request
+      console.warn(
+        `[iol-bridge] getIOLCotizacion: IOL cotización failed for ${ticker} (${res.status})`,
+      );
       return null;
     }
 
-    const data = (await res.json()) as IOLCotizacion;
-    return parseIOLCotizacion(data);
-  } catch {
-    // Network / timeout / parse error — offline for this instrument
+    const data = (await res.json()) as IOLCotizacionAPIResponse;
+
+    // Extract best bid/ask from puntas (order book)
+    let iolBid = 0;
+    let iolAsk = 0;
+
+    if (data.puntas) {
+      // Bid = best (highest) compra price
+      if (data.puntas.compra && data.puntas.compra.length > 0) {
+        iolBid = data.puntas.compra[0].precio;
+      }
+      // Ask = best (lowest) venta price
+      if (data.puntas.venta && data.puntas.venta.length > 0) {
+        iolAsk = data.puntas.venta[0].precio;
+      }
+    }
+
+    // cantidadOperada = number of nominal units traded today
+    const cantidadOperada = data.cantidadOperada || 0;
+    const volumenNominal = data.volumen || 0; // Notional ARS volume
+
+    // ── Volume estimation heuristic ──
+    // If current volume is X and we're N hours into a 7h trading day,
+    // estimated daily volume ≈ X × (7 / N).
+    const estimatedAvgDaily = estimateDailyVolume(cantidadOperada, volumenNominal);
+
+    // Filtro de Verdad: volume < 10% of avg daily → liquidity alert
+    const volumeRatio =
+      estimatedAvgDaily > 0 ? volumenNominal / estimatedAvgDaily : 0;
+    const liquidityAlert = volumeRatio < LOW_VOLUME_PCT && volumenNominal > 0;
+
+    return {
+      iolVolume: cantidadOperada,
+      iolBid,
+      iolAsk,
+      iolAvgDailyVolume: Math.round(estimatedAvgDaily),
+      iolStatus: 'online',
+      iolLiquidityAlert: liquidityAlert,
+    };
+  } catch (error) {
+    console.warn(
+      `[iol-bridge] getIOLCotizacion: failed for ${ticker} — ${error instanceof Error ? error.message : String(error)}`,
+    );
     return null;
   }
 }
 
-/**
- * Parse a raw IOLCotizacion response into our normalized IOLLevel2Data.
- */
-function parseIOLCotizacion(data: IOLCotizacion): IOLLevel2Data {
-  // ── Extract best bid/ask from puntas ──
-  let iolBid = 0;
-  let iolAsk = 0;
+// ── Volume Estimation Heuristic ────────────────────────────────────────
 
-  if (data.puntas) {
-    if (data.puntas.compra && data.puntas.compra.length > 0) {
-      iolBid = safeNum(data.puntas.compra[0].precio);
-    }
-    if (data.puntas.venta && data.puntas.venta.length > 0) {
-      iolAsk = safeNum(data.puntas.venta[0].precio);
-    }
+/**
+ * Estimate the total daily volume by extrapolating current volume
+ * across the full trading day.
+ *
+ * Formula: estimated daily ≈ currentVolume × (TRADING_DAY_HOURS / hoursElapsed)
+ *
+ * Falls back gracefully if outside market hours:
+ *   - Before market open → assume 1 hour elapsed (conservative)
+ *   - After market close → assume full day elapsed (no extrapolation)
+ *
+ * @param cantidadOperada - Nominal units traded today
+ * @param volumenNominal  - Notional ARS volume traded today
+ * @returns Estimated total daily volume in notional ARS
+ */
+function estimateDailyVolume(
+  cantidadOperada: number,
+  volumenNominal: number,
+): number {
+  // Determine how many hours of the trading day have elapsed
+  const hoursElapsed = getTradingHoursElapsed();
+
+  if (volumenNominal > 0) {
+    return volumenNominal * (TRADING_DAY_HOURS / hoursElapsed);
   }
 
-  // ── Volume metrics ──
-  const cantidadOperada = safeNum(data.cantidadOperada);
-  const volumenNominal = safeNum(data.volumen);
+  // Fallback: rough estimate from cantidadOperada × assumed price
+  // This is a very rough heuristic when volumenNominal is not available
+  if (cantidadOperada > 0) {
+    // Assume ~100 ARS per nominal unit as a conservative multiplier
+    return cantidadOperada * 100 * (TRADING_DAY_HOURS / hoursElapsed);
+  }
 
-  // ── Estimate average daily volume ──
-  // Heuristic: project current volume across full 7-hour trading day
-  let estimatedAvgDaily = 0;
+  return 0;
+}
+
+/**
+ * Determine how many hours have elapsed in the current trading day.
+ * Uses Argentina timezone (America/Argentina/Buenos_Aires).
+ *
+ * @returns Hours elapsed (clamped to [1, TRADING_DAY_HOURS])
+ */
+function getTradingHoursElapsed(): number {
   try {
-    const hourAR = new Date().toLocaleString('en-US', {
+    // Use Intl for timezone-safe hour calculation (works in both Node & Edge)
+    const arTimeString = new Date().toLocaleString('en-US', {
       timeZone: 'America/Argentina/Buenos_Aires',
     });
-    const currentHour = new Date(hourAR).getHours();
-    const tradingHoursElapsed = Math.max(1, currentHour - 10); // Market opens at 10
-    estimatedAvgDaily =
-      volumenNominal > 0
-        ? volumenNominal * (7 / tradingHoursElapsed)
-        : cantidadOperada * 100 * (7 / tradingHoursElapsed);
+    const currentHour = new Date(arTimeString).getHours();
+
+    // How many hours since market open (10:00)
+    const hoursSinceOpen = currentHour - MARKET_OPEN_HOUR;
+
+    // Clamp: before open → 1 (conservative), after close → full day
+    if (hoursSinceOpen < 1) return 1;
+    if (hoursSinceOpen >= TRADING_DAY_HOURS) return TRADING_DAY_HOURS;
+
+    return hoursSinceOpen;
   } catch {
-    estimatedAvgDaily = volumenNominal;
+    // If timezone detection fails, assume mid-day (conservative default)
+    return Math.ceil(TRADING_DAY_HOURS / 2);
   }
-
-  // ── Liquidity alert: volume < 10% of avg daily ──
-  const volumeRatio =
-    estimatedAvgDaily > 0 ? volumenNominal / estimatedAvgDaily : 0;
-  const liquidityAlert =
-    volumeRatio < config.lowVolumeRatio && volumenNominal > 0;
-
-  return {
-    iol_volume: cantidadOperada,
-    iol_bid: iolBid,
-    iol_ask: iolAsk,
-    iol_avg_daily_volume: Math.round(estimatedAvgDaily),
-    iol_status: 'online',
-    iol_liquidity_alert: liquidityAlert,
-  };
 }
 
-// ── Batch Enrichment ───────────────────────────────────────────────────
+// ── Convenience: Combined Auth + Cotización ───────────────────────────
 
 /**
- * Enrich an array of LiveInstrument[] with IOL Level 2 data.
+ * One-shot helper: authenticate with IOL and fetch cotización.
  *
- * - Processes instruments in batches of 5 with 200ms delay between
- *   batches to respect IOL rate limits.
- * - If IOL credentials are not configured, returns instruments unchanged
- *   with `iol_status: 'offline'`.
- * - Never throws.
+ * This is a convenience wrapper for the common pattern of:
+ *   1. Get token (or use cached)
+ *   2. Fetch cotización
+ *
+ * @param username - IOL account email
+ * @param password - IOL account password
+ * @param ticker   - Instrument ticker to query
+ * @returns Cotización result, or null on any failure (auth or fetch)
  */
-export async function enrichWithIOL(
-  instruments: LiveInstrument[]
-): Promise<IOLEnrichResult> {
-  // ── Graceful degradation: no credentials ──
-  const status = getIOLStatus();
-  if (!status.credentialsConfigured) {
-    return {
-      enriched: instruments.map((inst) => ({
-        ...inst,
-        iol_status: 'offline' as const,
-      })),
-      iolOnline: false,
-      stats: { queried: 0, success: 0, alerts: 0 },
-    };
+export async function getIOLCotizacionWithAuth(
+  username: string,
+  password: string,
+  ticker: string,
+): Promise<IOLCotizacionResult | null> {
+  const token = await getIOLToken(username, password);
+  if (!token) return null;
+
+  const result = await getIOLCotizacion(token, ticker);
+
+  // If we got a 401-style failure, try once more with a fresh token
+  // (the cached token might have just expired between calls)
+  if (result === null) {
+    clearIOLToken(username);
+    const freshToken = await getIOLToken(username, password);
+    if (!freshToken) return null;
+    return getIOLCotizacion(freshToken, ticker);
   }
 
-  // ── Try to get token ──
-  const token = await getIOLToken();
-  if (!token) {
-    return {
-      enriched: instruments.map((inst) => ({
-        ...inst,
-        iol_status: 'offline' as const,
-      })),
-      iolOnline: false,
-      stats: { queried: 0, success: 0, alerts: 0 },
-    };
-  }
-
-  let iolSuccess = 0;
-  let iolAlerts = 0;
-  const enriched: LiveInstrument[] = [];
-
-  // ── Process in batches ──
-  for (let i = 0; i < instruments.length; i += config.batchSize) {
-    const batch = instruments.slice(i, i + config.batchSize);
-
-    const results = await Promise.allSettled(
-      batch.map(async (inst) => {
-        const iolData = await getIOLCotizacion(inst.ticker);
-        return { inst, iolData };
-      })
-    );
-
-    for (const result of results) {
-      if (result.status === 'fulfilled') {
-        const { inst, iolData } = result.value;
-        if (iolData) {
-          enriched.push({
-            ...inst,
-            iol_volume: iolData.iol_volume,
-            iol_bid: iolData.iol_bid,
-            iol_ask: iolData.iol_ask,
-            iol_avg_daily_volume: iolData.iol_avg_daily_volume,
-            iol_status: iolData.iol_status,
-            iol_liquidity_alert: iolData.iol_liquidity_alert,
-          });
-          if (iolData.iol_status === 'online') iolSuccess++;
-          if (iolData.iol_liquidity_alert) iolAlerts++;
-        } else {
-          enriched.push({ ...inst, iol_status: 'offline' });
-        }
-      } else {
-        // Promise rejected — keep instrument without IOL data
-        const failedInst = batch[results.indexOf(result)];
-        enriched.push({ ...failedInst, iol_status: 'offline' });
-      }
-    }
-
-    // ── Rate-limit delay between batches ──
-    if (i + config.batchSize < instruments.length) {
-      await new Promise((r) => setTimeout(r, config.batchDelayMs));
-    }
-  }
-
-  return {
-    enriched,
-    iolOnline: iolSuccess > 0,
-    stats: {
-      queried: instruments.length,
-      success: iolSuccess,
-      alerts: iolAlerts,
-    },
-  };
-}
-
-// ── Reset (useful for testing) ─────────────────────────────────────────
-
-/**
- * Clear the cached token and reset bridge state.
- * Primarily intended for testing; production code should not need this.
- */
-export function resetIOLBridge(): void {
-  cachedToken = null;
-  tokenExpiryTimestamp = 0;
-  lastTokenRefreshDate = null;
-  tokenRefreshPromise = null;
+  return result;
 }

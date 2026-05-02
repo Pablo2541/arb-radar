@@ -5,6 +5,10 @@
 // LIVE data is persisted via debounced writes (every 60s)
 // to avoid exhausting Vercel serverless function quotas.
 //
+// V3.2: Added PriceSnapshot + DailyOHLC for historical accumulation.
+// The Cerebro Táctico script saves every price tick to PriceSnapshot
+// and aggregates daily OHLC data into DailyOHLC for charting.
+//
 // FALLBACK: If DATABASE_URL is not configured, the app
 // automatically falls back to localStorage — zero config needed.
 // ════════════════════════════════════════════════════════════════════════
@@ -14,7 +18,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -81,24 +85,42 @@ model User {
   updatedAt DateTime @updatedAt
 }
 
-/// V3.2: Historical price snapshots — accumulated from data912 + ArgentinaDatos
-/// Builds our OWN historical dataset since no public LECAP/BONCAP history exists
+/// ════════════════════════════════════════════════════════════════════════
+/// V3.2 — MÓDULO DE ACUMULACIÓN HISTÓRICA
+///
+/// PriceSnapshot: Every price tick from the Cerebro Táctico motor.
+/// Each row = one instrument at one point in time.
+/// This is the RAW data that fuels the Historico tab charts.
+///
+/// DailyOHLC: Aggregated daily Open/High/Low/Close per ticker.
+/// Built from PriceSnapshot data — one row per ticker per trading day.
+/// Used for candlestick-style charts and technical analysis.
+/// ════════════════════════════════════════════════════════════════════════
+
+/// Raw price snapshot — one row per instrument per tick (~60s during market hours)
 model PriceSnapshot {
   id        String   @id @default(cuid())
-  ticker    String   // e.g. T30J6, S17A6
-  type      String   // LECAP or BONCAP
-  timestamp DateTime // When the snapshot was captured
-  price     Float    // Last price per $1 VN (data912 close / 100)
-  bid       Float?   // Best bid per $1 VN
-  ask       Float?   // Best ask per $1 VN
-  volume    Float    @default(0)  // Notional ARS volume
-  pctChange Float    @default(0)  // Daily change %
-  vpv       Float?   // Valor al vencimiento from ArgentinaDatos
-  tem       Float?   // Monthly TEM (decimal, e.g. 0.0197)
-  tir       Float?   // Annualized TIR (decimal)
-  tna       Float?   // Annualized from TEM
-  daysToExpiry Int?  // Days to maturity
-  source    String   @default("data912") // data912, argentinadatos, manual
+  ticker    String                // e.g. "S30O6", "T30J7"
+  type      String                // "LECAP" or "BONCAP"
+  price     Float                 // last_price per $1 VN
+  bid       Float    @default(0)  // bid price per $1 VN
+  ask       Float    @default(0)  // ask price per $1 VN
+  tem       Float                 // Monthly TEM (percentage, e.g. 2.15)
+  tir       Float    @default(0)  // TIR (equals TEM in our model)
+  tna       Float    @default(0)  // Annualized TNA (percentage)
+  spread    Float    @default(0)  // spread vs caución (percentage points)
+  days      Int                   // days to expiry
+  volume    Float    @default(0)  // notional ARS volume from data912
+  change    Float    @default(0)  // daily change %
+  // IOL Level 2 fields
+  iolVolume        Float?         // cantidadOperada from IOL
+  iolBid           Float?         // best bid from IOL
+  iolAsk           Float?         // best ask from IOL
+  iolStatus        String?        // "online" | "offline" | "no_data"
+  iolLiquidityAlert Boolean?      // True when volume < 10% avg daily
+  // Metadata
+  source    String   @default("cerebro") // "cerebro" | "api_letras" | "manual"
+  timestamp DateTime               // Exact time of the snapshot
   createdAt DateTime @default(now())
 
   @@index([ticker])
@@ -106,21 +128,24 @@ model PriceSnapshot {
   @@index([ticker, timestamp])
 }
 
-/// V3.2: Daily aggregated OHLC for efficient historical charting
+/// Daily OHLC aggregation — one row per ticker per trading day
 model DailyOHLC {
   id        String   @id @default(cuid())
-  ticker    String
-  date      String   // YYYY-MM-DD
-  open      Float    // First price of day
-  high      Float    // Max price of day
-  low       Float    // Min price of day
-  close     Float    // Last price of day
-  volume    Float    @default(0)  // Total daily volume
-  avgTem    Float?   // Average TEM of the day
-  avgTir    Float?   // Average TIR of the day
-  vpv       Float?   // VPV at end of day
-  snapshotCount Int  @default(0) // Number of snapshots that day
+  ticker    String                // e.g. "S30O6", "T30J7"
+  date      String                // YYYY-MM-DD (Argentina timezone)
+  open      Float                 // First price of the day
+  high      Float                 // Max price of the day
+  low       Float                 // Min price of the day
+  close     Float                 // Last price of the day
+  openTEM   Float                 // First TEM of the day
+  highTEM   Float                 // Max TEM of the day
+  lowTEM    Float                 // Min TEM of the day
+  closeTEM  Float                 // Last TEM of the day
+  avgVolume Float    @default(0)  // Average notional volume
+  avgIOLVolume Float?             // Average IOL volume (if available)
+  tickCount Int       @default(0) // Number of PriceSnapshot ticks that day
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([ticker, date])
   @@index([ticker])

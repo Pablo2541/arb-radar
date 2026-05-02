@@ -226,11 +226,6 @@ function HomeContent() {
           handleTabChange(TAB_CONFIG[idx].id);
         }
       }
-      if (e.altKey && e.key === '0') {
-        e.preventDefault();
-        // Config tab is last (index 9)
-        handleTabChange(TAB_CONFIG[TAB_CONFIG.length - 1].id);
-      }
       if (e.altKey && e.key.toLowerCase() === 't') {
         e.preventDefault();
         toggleTheme();
@@ -446,7 +441,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V3.0...
+            Cargando V3.2...
           </p>
         </div>
       </div>
@@ -514,7 +509,7 @@ function HomeContent() {
         />;
       }
       case 'historico':
-        return <HistoricoTab instruments={effectiveInstruments} liveDataMap={liveDataMap} isLive={liveData.active} />;
+        return <HistoricoTab instruments={effectiveInstruments} />;
       case 'configuracion':
         return <ConfiguracionTab rawInput={rawInput} setRawInput={updateRawInput} config={config} setConfig={updateConfig} instruments={instruments} setInstruments={updateInstruments} setLastUpdate={updateLastUpdate} position={position} setPosition={updatePosition} transactions={transactions} setTransactions={updateTransactions} simulations={simulations} setSimulations={setSimulations} externalHistory={externalHistory} setExternalHistory={updateExternalHistory} priceHistory={priceHistory} setPriceHistory={updatePriceHistory} snapshots={sessionHistory.getSnapshots()} onRestoreSnapshots={(snaps) => sessionHistory.restoreSnapshots(snaps)} />;
     }
@@ -532,7 +527,7 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.1</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.2</span>
             {/* V3.0: DB Sync indicator dot */}
             <div className="w-1.5 h-1.5 rounded-full hidden sm:block" style={{ backgroundColor: dbSyncDotColor }} title={dbAvailable ? `DB: ${lastDbSyncStatus}` : 'DB: no configurado'} />
             {/* V3.1: IOL Level 2 indicator dot */}

@@ -93,9 +93,6 @@ export interface RadarState {
   persistToDb: () => Promise<void>;
   loadFromDb: () => Promise<boolean>;
   nukeAll: () => void;
-
-  // ── IOL Level 2 Actions ────────────────────────────────────────────
-  setIolLevel2Online: (v: boolean) => void;
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -461,11 +458,6 @@ export const useRadarStore = create<RadarState>((set, get) => ({
     if (typeof window !== 'undefined') {
       window.location.reload();
     }
-  },
-
-  // ── V3.2: IOL Level 2 Status Setter ──
-  setIolLevel2Online: (v: boolean) => {
-    set({ iolLevel2Online: v });
   },
 }));
 

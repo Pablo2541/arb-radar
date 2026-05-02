@@ -209,34 +209,6 @@
   border-radius: 12px;
 }
 
-/* ══════════════════════════════════════════════════════════════
-   SELECT DROPDOWN — Black background, white text, gray hover
-   ══════════════════════════════════════════════════════════════ */
-select option {
-  background-color: #000000;
-  color: #ffffff;
-  padding: 8px 12px;
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
-  font-size: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-select option:hover,
-select option:checked {
-  background-color: #2a2a2a;
-  color: #ffffff;
-}
-
-select option:active {
-  background-color: #333333;
-}
-
-select optgroup {
-  background-color: #000000;
-  color: #aaaaaa;
-  font-weight: 600;
-}
-
 :root[data-theme="light"] select option {
   background-color: #1e293b;
   color: #ffffff;

@@ -103,25 +103,10 @@ export function useLiveInstruments(): LiveInstrumentsState {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
-  // V2.0.2: Wrap setActive to persist to localStorage + check IOL status
+  // V2.0.2: Wrap setActive to persist to localStorage
   const setActive = useCallback((value: boolean) => {
     persistActive(value);
     setActiveRaw(value);
-
-    // V3.2: When LIVE is activated, check IOL Level 2 status
-    if (value) {
-      fetch('/api/iol/status')
-        .then(res => res.ok ? res.json() : null)
-        .then(data => {
-          if (data?.ok) {
-            // Import store dynamically to avoid circular deps
-            import('@/lib/store').then(({ useRadarStore }) => {
-              useRadarStore.getState().setIolLevel2Online(data.online === true);
-            });
-          }
-        })
-        .catch(() => { /* IOL status check failed silently */ });
-    }
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -196,29 +181,6 @@ export function useLiveInstruments(): LiveInstrumentsState {
 
       // Then poll every 60 seconds
       intervalRef.current = setInterval(fetchData, POLL_INTERVAL);
-
-      // V3.2: Check IOL Level 2 status every 5 minutes while LIVE
-      const iolInterval = setInterval(() => {
-        fetch('/api/iol/status')
-          .then(res => res.ok ? res.json() : null)
-          .then(data => {
-            if (data?.ok) {
-              import('@/lib/store').then(({ useRadarStore }) => {
-                useRadarStore.getState().setIolLevel2Online(data.online === true);
-              });
-            }
-          })
-          .catch(() => { /* ignore */ });
-      }, 300_000); // 5 minutes
-
-      return () => {
-        mountedRef.current = false;
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
-        clearInterval(iolInterval);
-      };
     } else {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
