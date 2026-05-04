@@ -20,6 +20,10 @@ export interface Instrument {
   iolStatus?: 'online' | 'offline' | 'no_data'; // IOL data availability
   iolLiquidityAlert?: boolean;     // True when volume < 10% avg daily
   iolHuntingAdjustment?: number;   // Score adjustment from Filtro de Verdad
+  iolBidDepth?: number;          // V3.2.1: Total quantity across all compra puntas
+  iolAskDepth?: number;          // V3.2.1: Total quantity across all venta puntas
+  iolMarketPressure?: number;    // V3.2.1: bid_depth / ask_depth ratio (>1 = buying pressure)
+  iolVerdict?: string;           // V3.2.1: Human-readable Filtro de Verdad verdict
 }
 
 export interface Config {

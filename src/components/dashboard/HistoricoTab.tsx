@@ -1,555 +1,538 @@
 'use client';
 
-// ════════════════════════════════════════════════════════════════════════
-// V3.2 — HistoricoTab: Price History Visualization
-//
-// Shows historical price/TEM data from PriceSnapshot + DailyOHLC tables.
-// Uses AreaChart for TEM/Price evolution and supports ticker selection.
-//
-// Data source: /api/price-history (reads from Neon PostgreSQL)
-// ════════════════════════════════════════════════════════════════════════
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import type { Instrument } from '@/lib/types';
+import {
+  AreaChart, Area, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+} from 'recharts';
+import { Instrument } from '@/lib/types';
 
-// ── Types ──────────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════
+// V3.2 — HistoricoTab: Price History with OHLC Charts
+//
+// Shows historical price/TEM evolution from the Hybrid Data Motor.
+// Data comes from /api/price-history (Prisma DailyOHLC + PriceSnapshot).
+// ════════════════════════════════════════════════════════════════════════
+
 interface OHLCRecord {
-  id: string;
   ticker: string;
-  date: string;         // YYYY-MM-DD
+  date: string;
   open: number;
   high: number;
   low: number;
   close: number;
-  openTEM: number;
-  highTEM: number;
-  lowTEM: number;
-  closeTEM: number;
-  avgVolume: number;
-  avgIOLVolume: number | null;
-  tickCount: number;
+  temOpen: number;
+  temClose: number;
+  temHigh: number;
+  temLow: number;
+  volume: number;
+  iolVolume?: number;
+  spreadAvg: number;
 }
 
-interface PriceHistoryResponse {
-  format: string;
-  tickers: string[];
-  data: OHLCRecord[];
+interface SnapshotRecord {
+  id: string;
+  ticker: string;
+  price: number;
+  tem: number;
+  tna: number;
+  spread: number;
+  volume: number;
+  source: string;
+  iolVolume?: number;
+  iolBid?: number;
+  iolAsk?: number;
+  timestamp: string;
+}
+
+interface TickerInfo {
+  ticker: string;
   count: number;
-  snapshotCount: number;
-  lastSnapshot: string | null;
-  since: string;
+  latestDate: string;
+  latestClose: number;
 }
 
-type MetricType = 'tem' | 'precio' | 'spread' | 'volumen';
-type PeriodType = '7' | '15' | '30' | '90';
+type ChartMode = 'area' | 'bar' | 'ohlc';
+type DateRange = 7 | 15 | 30 | 60 | 90;
 
-// ── Helpers ────────────────────────────────────────────────────────
+interface HistoricoTabProps {
+  instruments: Instrument[];
+}
+
+// ── Helpers ──
+function formatPct(v: number): string {
+  return (v * 100).toFixed(2) + '%';
+}
+
 function formatDate(dateStr: string): string {
-  try {
-    const [y, m, d] = dateStr.split('-');
-    return `${d}/${m}`;
-  } catch {
-    return dateStr;
+  if (dateStr.includes('-')) {
+    const parts = dateStr.split('-');
+    return `${parts[2]}/${parts[1]}`;
   }
+  return dateStr;
 }
 
-function formatTEM(value: number): string {
-  return value.toFixed(2) + '%';
-}
-
-function formatPrice(value: number): string {
-  return '$' + value.toFixed(4);
-}
-
-function formatVolume(value: number): string {
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(0)}K`;
-  return `$${value.toFixed(0)}`;
-}
-
-// ── CSV Export ──────────────────────────────────────────────────────
-function exportCSV(data: OHLCRecord[], ticker: string) {
-  const header = 'Fecha,Ticker,Open,High,Low,Close,OpenTEM,HighTEM,LowTEM,CloseTEM,AvgVolume,TickCount\n';
+// ── CSV Export ──
+function exportOHCLCSV(data: OHLCRecord[], ticker: string) {
+  const today = new Date().toISOString().split('T')[0];
+  const header = 'Fecha,Open,High,Low,Close,TEM_Open,TEM_Close,Volume,Spread_Avg\n';
   const rows = data.map(d =>
-    `${d.date},${d.ticker},${d.open.toFixed(4)},${d.high.toFixed(4)},${d.low.toFixed(4)},${d.close.toFixed(4)},${d.openTEM.toFixed(2)},${d.highTEM.toFixed(2)},${d.lowTEM.toFixed(2)},${d.closeTEM.toFixed(2)},${d.avgVolume.toFixed(0)},${d.tickCount}`
+    `${d.date},${d.open.toFixed(4)},${d.high.toFixed(4)},${d.low.toFixed(4)},${d.close.toFixed(4)},${(d.temOpen * 100).toFixed(2)},${(d.temClose * 100).toFixed(2)},${d.volume.toFixed(0)},${(d.spreadAvg * 100).toFixed(3)}`
   ).join('\n');
   const csv = header + rows;
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `historico_${ticker}_${new Date().toISOString().split('T')[0]}.csv`;
+  link.download = `historico_${ticker}_${today}.csv`;
   link.click();
   URL.revokeObjectURL(url);
 }
 
-// ── Props ──────────────────────────────────────────────────────────
-interface HistoricoTabProps {
-  instruments: Instrument[];
+// ── Custom Tooltip ──
+function CustomTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ name: string; value: number; color: string }>; label?: string }) {
+  if (!active || !payload || payload.length === 0) return null;
+  return (
+    <div className="bg-black/90 border border-app-border/60 rounded-lg px-3 py-2 text-xs backdrop-blur-sm">
+      <div className="text-app-text4 font-mono mb-1">{label}</div>
+      {payload.map((entry, idx) => (
+        <div key={idx} className="flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+          <span className="text-app-text3">{entry.name}:</span>
+          <span className="font-mono text-app-text">
+            {entry.name.includes('TEM') || entry.name.includes('Spread')
+              ? (entry.value * 100).toFixed(3) + '%'
+              : entry.value.toFixed(4)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
-// ── Main Component ─────────────────────────────────────────────────
+// ── Main Component ──
 export default function HistoricoTab({ instruments }: HistoricoTabProps) {
-  const [tickers, setTickers] = useState<string[]>([]);
   const [selectedTicker, setSelectedTicker] = useState<string>('');
-  const [period, setPeriod] = useState<PeriodType>('30');
-  const [metric, setMetric] = useState<MetricType>('tem');
+  const [chartMode, setChartMode] = useState<ChartMode>('area');
+  const [dateRange, setDateRange] = useState<DateRange>(30);
   const [ohlcData, setOhlcData] = useState<OHLCRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [lastSnapshot, setLastSnapshot] = useState<string | null>(null);
-  const [snapshotCount, setSnapshotCount] = useState(0);
+  const [snapshots, setSnapshots] = useState<SnapshotRecord[]>([]);
+  const [tickers, setTickers] = useState<TickerInfo[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>('');
 
-  // Load available tickers on mount
+  // ── Fetch available tickers on mount ──
   useEffect(() => {
-    async function loadTickers() {
+    async function fetchTickers() {
       try {
-        const res = await fetch(`/api/price-history?days=${period}&format=ohlc`);
+        const res = await fetch('/api/price-history?type=tickers');
         if (res.ok) {
-          const data: PriceHistoryResponse = await res.json();
-          setTickers(data.tickers);
-          setSnapshotCount(data.snapshotCount);
-          setLastSnapshot(data.lastSnapshot);
-          if (data.tickers.length > 0 && !selectedTicker) {
-            setSelectedTicker(data.tickers[0]);
+          const data = await res.json();
+          setTickers(data.tickers || []);
+          if (data.tickers?.length > 0 && !selectedTicker) {
+            setSelectedTicker(data.tickers[0].ticker);
           }
         }
       } catch {
-        // API unavailable
+        // Silently fail — tickers will be empty
       }
     }
-    loadTickers();
+    fetchTickers();
   }, []);
 
-  // Load data when ticker or period changes
+  // ── If no OHLC tickers available, use live instruments as fallback ──
+  const availableTickers = useMemo(() => {
+    if (tickers.length > 0) return tickers;
+    return instruments.map(i => ({
+      ticker: i.ticker,
+      count: 0,
+      latestDate: '',
+      latestClose: i.price,
+    })).sort((a, b) => a.ticker.localeCompare(b.ticker));
+  }, [tickers, instruments]);
+
+  // ── Auto-select first ticker if none selected ──
+  useEffect(() => {
+    if (!selectedTicker && availableTickers.length > 0) {
+      setSelectedTicker(availableTickers[0].ticker);
+    }
+  }, [availableTickers, selectedTicker]);
+
+  // ── Fetch OHLC data when ticker or range changes ──
   useEffect(() => {
     if (!selectedTicker) return;
-    async function loadData() {
+
+    async function fetchData() {
       setLoading(true);
+      setError('');
       try {
-        const res = await fetch(`/api/price-history?ticker=${selectedTicker}&days=${period}&format=ohlc`);
-        if (res.ok) {
-          const data: PriceHistoryResponse = await res.json();
-          setOhlcData(data.data);
-          setSnapshotCount(data.snapshotCount);
-          setLastSnapshot(data.lastSnapshot);
+        const [ohlcRes, snapRes] = await Promise.all([
+          fetch(`/api/price-history?type=ohlc&ticker=${encodeURIComponent(selectedTicker)}&days=${dateRange}`),
+          fetch(`/api/price-history?type=snapshots&ticker=${encodeURIComponent(selectedTicker)}&hours=${dateRange * 24}`),
+        ]);
+
+        if (ohlcRes.ok) {
+          const ohlcJson = await ohlcRes.json();
+          setOhlcData(ohlcJson.ohlc || []);
+        } else {
+          setOhlcData([]);
         }
-      } catch {
+
+        if (snapRes.ok) {
+          const snapJson = await snapRes.json();
+          setSnapshots(snapJson.snapshots || []);
+        } else {
+          setSnapshots([]);
+        }
+      } catch (err) {
+        setError('Error cargando datos históricos');
         setOhlcData([]);
+        setSnapshots([]);
       } finally {
         setLoading(false);
       }
     }
-    loadData();
-  }, [selectedTicker, period]);
 
-  // Build chart data based on selected metric
+    fetchData();
+  }, [selectedTicker, dateRange]);
+
+  // ── Chart data transformation ──
   const chartData = useMemo(() => {
-    if (ohlcData.length === 0) return [];
-
-    return ohlcData.map(d => ({
-      date: formatDate(d.date),
-      dateFull: d.date,
-      // TEM metrics
-      tem: d.closeTEM,
-      temHigh: d.highTEM,
-      temLow: d.lowTEM,
-      // Price metrics
-      precio: d.close,
-      precioHigh: d.high,
-      precioLow: d.low,
-      // Volume
-      volumen: d.avgVolume,
-      iolVolumen: d.avgIOLVolume || 0,
-    }));
-  }, [ohlcData]);
-
-  // Compute stats
-  const stats = useMemo(() => {
-    if (ohlcData.length === 0) return null;
-    const latest = ohlcData[ohlcData.length - 1];
-    const first = ohlcData[0];
-    const temChange = latest.closeTEM - first.openTEM;
-    const priceChange = ((latest.close - first.open) / first.open) * 100;
-    const avgTEM = ohlcData.reduce((s, d) => s + d.closeTEM, 0) / ohlcData.length;
-    const maxTEM = Math.max(...ohlcData.map(d => d.highTEM));
-    const minTEM = Math.min(...ohlcData.map(d => d.lowTEM));
-    const avgVolume = ohlcData.reduce((s, d) => s + d.avgVolume, 0) / ohlcData.length;
-
-    return {
-      latestTEM: latest.closeTEM,
-      latestPrice: latest.close,
-      temChange,
-      priceChange,
-      avgTEM,
-      maxTEM,
-      minTEM,
-      avgVolume,
-      days: ohlcData.length,
-    };
-  }, [ohlcData]);
-
-  // Chart config based on metric
-  const chartConfig = useMemo(() => {
-    switch (metric) {
-      case 'tem':
-        return {
-          dataKey: 'tem',
-          highKey: 'temHigh',
-          lowKey: 'temLow',
-          label: 'TEM (%)',
-          color: '#2eebc8',
-          colorHigh: 'rgba(46, 235, 200, 0.3)',
-          formatter: formatTEM,
-          domain: ['dataMin - 0.1', 'dataMax + 0.1'] as [string, string],
-        };
-      case 'precio':
-        return {
-          dataKey: 'precio',
-          highKey: 'precioHigh',
-          lowKey: 'precioLow',
-          label: 'Precio ($)',
-          color: '#f472b6',
-          colorHigh: 'rgba(244, 114, 182, 0.3)',
-          formatter: formatPrice,
-          domain: ['dataMin - 0.002', 'dataMax + 0.002'] as [string, string],
-        };
-      case 'volumen':
-        return {
-          dataKey: 'volumen',
-          highKey: 'volumen',
-          lowKey: 'volumen',
-          label: 'Volumen (ARS)',
-          color: '#fbbf24',
-          colorHigh: 'rgba(251, 191, 36, 0.3)',
-          formatter: formatVolume,
-          domain: [0, 'dataMax'] as [number, string],
-        };
-      default: // spread — use TEM as proxy for now
-        return {
-          dataKey: 'tem',
-          highKey: 'temHigh',
-          lowKey: 'temLow',
-          label: 'Spread vs Caución (%)',
-          color: '#22d3ee',
-          colorHigh: 'rgba(34, 211, 238, 0.3)',
-          formatter: formatTEM,
-          domain: ['dataMin - 0.1', 'dataMax + 0.1'] as [string, string],
-        };
+    if (ohlcData.length > 0) {
+      return ohlcData.map(d => ({
+        date: formatDate(d.date),
+        price: d.close,
+        tem: d.temClose,
+        spread: d.spreadAvg,
+        volume: d.volume,
+        high: d.high,
+        low: d.low,
+        open: d.open,
+      }));
     }
-  }, [metric]);
+    // Fallback: use snapshots if no OHLC
+    if (snapshots.length > 0) {
+      return snapshots
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+        .map(s => ({
+          date: new Date(s.timestamp).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
+          price: s.price,
+          tem: s.tem,
+          spread: s.spread,
+          volume: s.volume,
+        }));
+    }
+    return [];
+  }, [ohlcData, snapshots]);
 
-  // All available tickers: from API + from current instruments
-  const allTickers = useMemo(() => {
-    const apiSet = new Set(tickers);
-    const instTickers = instruments.map(i => i.ticker);
-    for (const t of instTickers) apiSet.add(t);
-    return Array.from(apiSet).sort();
-  }, [tickers, instruments]);
+  // ── Stats ──
+  const stats = useMemo(() => {
+    if (chartData.length === 0) return null;
+    const prices = chartData.map(d => d.price);
+    const tems = chartData.map(d => d.tem);
+    const spreads = chartData.map(d => d.spread);
+    return {
+      priceMin: Math.min(...prices),
+      priceMax: Math.max(...prices),
+      priceAvg: prices.reduce((s, v) => s + v, 0) / prices.length,
+      temMin: Math.min(...tems),
+      temMax: Math.max(...tems),
+      temAvg: tems.reduce((s, v) => s + v, 0) / tems.length,
+      spreadMin: Math.min(...spreads),
+      spreadMax: Math.max(...spreads),
+      dataPoints: chartData.length,
+      hasOHLC: ohlcData.length > 0,
+    };
+  }, [chartData, ohlcData]);
+
+  // ── Selected instrument info ──
+  const selectedInstrument = useMemo(() => {
+    return instruments.find(i => i.ticker === selectedTicker);
+  }, [instruments, selectedTicker]);
 
   return (
     <div className="space-y-5 animate-fadeInUp">
       {/* ── Header ── */}
       <div>
-        <h2 className="text-lg font-light text-app-text mb-1">📜 Histórico</h2>
-        <p className="text-sm text-app-text3">
-          Evolución de precios y tasas · Datos acumulados por Cerebro Táctico
-          {lastSnapshot && (
-            <span className="text-[9px] text-app-text4 ml-2 font-mono">
-              Último snapshot: {new Date(lastSnapshot).toLocaleString('es-AR')}
-            </span>
-          )}
-        </p>
+        <h2 className="text-lg font-light text-app-text mb-1">📈 Histórico de Precios</h2>
+        <p className="text-sm text-app-text3">Evolución de precios y TEM · Motor Híbrido de Datos V3.2</p>
       </div>
 
-      {/* ── Controls Row 1: Ticker + Period + Export ── */}
+      {/* ── Controls Bar ── */}
       <div className="glass-card p-4">
         <div className="flex flex-wrap items-center gap-3">
-          {/* Ticker Selector — Black bg, white text */}
-          <div className="flex items-center gap-2">
-            <label className="text-[10px] text-app-text4 uppercase tracking-wider shrink-0">Ticker</label>
+          {/* Ticker Selector — Dark Style (V3.2 fix) */}
+          <div className="relative">
             <select
               value={selectedTicker}
               onChange={e => setSelectedTicker(e.target.value)}
-              className="max-w-[140px] px-2.5 py-1.5 bg-black text-white border border-app-border rounded-lg text-xs font-mono focus:border-[#2eebc8]/40 focus:ring-0 cursor-pointer"
+              className="appearance-none bg-black text-white border border-white/20 rounded-lg px-4 py-2 text-sm font-mono pr-8 cursor-pointer focus:outline-none focus:border-[#2eebc8]/60 focus:ring-1 focus:ring-[#2eebc8]/30 transition-colors"
               style={{ colorScheme: 'dark' }}
             >
-              {allTickers.map(t => (
-                <option key={t} value={t} style={{ background: '#000', color: '#fff' }}>
-                  {t}
+              {availableTickers.map(t => (
+                <option key={t.ticker} value={t.ticker} style={{ background: '#000', color: '#fff' }}>
+                  {t.ticker}
+                  {t.count > 0 ? ` (${t.count}d)` : ''}
                 </option>
               ))}
-              {allTickers.length === 0 && (
-                <option value="" style={{ background: '#000', color: '#fff' }}>Sin datos</option>
-              )}
             </select>
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-white/40 text-xs pointer-events-none">▾</span>
           </div>
 
-          {/* Period Selector */}
-          <div className="flex items-center gap-1.5">
-            <label className="text-[10px] text-app-text4 uppercase tracking-wider shrink-0">Período</label>
-            {(['7', '15', '30', '90'] as PeriodType[]).map(p => (
+          {/* Chart Mode Selector */}
+          <div className="flex items-center gap-1">
+            {([
+              { mode: 'area' as ChartMode, label: 'Área', icon: '📈' },
+              { mode: 'bar' as ChartMode, label: 'Barras', icon: '📊' },
+            ]).map(opt => (
               <button
-                key={p}
-                onClick={() => setPeriod(p)}
-                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
-                  period === p
+                key={opt.mode}
+                onClick={() => setChartMode(opt.mode)}
+                className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 ${
+                  chartMode === opt.mode
                     ? 'bg-[#2eebc8]/15 text-[#2eebc8] border border-[#2eebc8]/30'
                     : 'bg-app-subtle/60 text-app-text3 border border-app-border/60 hover:bg-app-hover'
                 }`}
               >
-                {p}d
+                {opt.icon} {opt.label}
               </button>
             ))}
           </div>
 
-          {/* Export */}
+          {/* Date Range Selector */}
+          <div className="flex items-center gap-1">
+            {([
+              { days: 7 as DateRange, label: '7d' },
+              { days: 15 as DateRange, label: '15d' },
+              { days: 30 as DateRange, label: '30d' },
+              { days: 60 as DateRange, label: '60d' },
+              { days: 90 as DateRange, label: '90d' },
+            ]).map(opt => (
+              <button
+                key={opt.days}
+                onClick={() => setDateRange(opt.days)}
+                className={`px-2.5 py-1.5 rounded-lg text-[11px] font-mono font-medium transition-all duration-200 ${
+                  dateRange === opt.days
+                    ? 'bg-[#22d3ee]/10 text-[#22d3ee] border border-[#22d3ee]/30'
+                    : 'bg-app-subtle/60 text-app-text3 border border-app-border/60 hover:bg-app-hover'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Export Button */}
           <button
-            onClick={() => ohlcData.length > 0 && exportCSV(ohlcData, selectedTicker)}
+            onClick={() => ohlcData.length > 0 && exportOHCLCSV(ohlcData, selectedTicker)}
             disabled={ohlcData.length === 0}
-            className="ml-auto px-3 py-1.5 rounded-lg text-[11px] font-medium bg-app-subtle/60 text-app-text3 border border-app-border/60 hover:bg-app-hover hover:text-app-text2 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-app-subtle/60 text-app-text3 border border-app-border/60 hover:bg-app-hover hover:text-app-text2 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 ml-auto"
+            title="Exportar CSV"
           >
             📥 CSV
           </button>
         </div>
-
-        {/* Controls Row 2: Metric Selector */}
-        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-app-border/30">
-          <label className="text-[10px] text-app-text4 uppercase tracking-wider shrink-0">Métrica</label>
-          {([
-            { key: 'tem' as MetricType, label: 'TEM', icon: '📈' },
-            { key: 'precio' as MetricType, label: 'Precio', icon: '💲' },
-            { key: 'volumen' as MetricType, label: 'Volumen', icon: '📊' },
-            { key: 'spread' as MetricType, label: 'Spread', icon: '🔄' },
-          ]).map(m => (
-            <button
-              key={m.key}
-              onClick={() => setMetric(m.key)}
-              className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all ${
-                metric === m.key
-                  ? m.key === 'tem'
-                    ? 'bg-[#2eebc8]/15 text-[#2eebc8] border border-[#2eebc8]/30'
-                    : m.key === 'precio'
-                      ? 'bg-[#f472b6]/15 text-[#f472b6] border border-[#f472b6]/30'
-                      : m.key === 'volumen'
-                        ? 'bg-[#fbbf24]/15 text-[#fbbf24] border border-[#fbbf24]/30'
-                        : 'bg-[#22d3ee]/15 text-[#22d3ee] border border-[#22d3ee]/30'
-                  : 'bg-app-subtle/60 text-app-text3 border border-app-border/60 hover:bg-app-hover'
-              }`}
-            >
-              {m.icon} {m.label}
-            </button>
-          ))}
-        </div>
       </div>
 
-      {/* ── Stats Cards ── */}
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="glass-card-accent p-3">
-            <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-1">TEM Actual</div>
-            <div className="font-mono text-lg font-medium text-[#2eebc8]">
-              {stats.latestTEM.toFixed(2)}%
-            </div>
-            <div className={`text-[9px] font-mono mt-0.5 ${stats.temChange >= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
-              {stats.temChange >= 0 ? '+' : ''}{stats.temChange.toFixed(2)}% en {stats.days}d
-            </div>
-          </div>
-          <div className="glass-card-accent p-3">
-            <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-1">Precio</div>
-            <div className="font-mono text-lg font-medium text-[#f472b6]">
-              ${stats.latestPrice.toFixed(4)}
-            </div>
-            <div className={`text-[9px] font-mono mt-0.5 ${stats.priceChange >= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
-              {stats.priceChange >= 0 ? '+' : ''}{stats.priceChange.toFixed(2)}%
-            </div>
-          </div>
-          <div className="glass-card-accent p-3">
-            <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-1">Rango TEM</div>
-            <div className="font-mono text-sm font-medium text-app-text">
-              {stats.minTEM.toFixed(2)}% — {stats.maxTEM.toFixed(2)}%
-            </div>
-            <div className="text-[9px] text-app-text4 mt-0.5">Prom: {stats.avgTEM.toFixed(2)}%</div>
-          </div>
-          <div className="glass-card-accent p-3">
-            <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-1">Volumen Prom</div>
-            <div className="font-mono text-lg font-medium text-[#fbbf24]">
-              {formatVolume(stats.avgVolume)}
-            </div>
-            <div className="text-[9px] text-app-text4 mt-0.5">{snapshotCount} snapshots</div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Chart ── */}
-      <div className="glass-card p-4">
-        {loading ? (
-          <div className="h-64 flex items-center justify-center">
-            <div className="text-center">
-              <div className="text-2xl mb-2 animate-pulse">📜</div>
-              <p className="text-sm text-app-text3">Cargando datos históricos...</p>
-            </div>
-          </div>
-        ) : chartData.length === 0 ? (
-          <div className="h-64 flex items-center justify-center">
-            <div className="text-center">
-              <div className="text-3xl mb-3 opacity-40">📭</div>
-              <p className="text-sm text-app-text3 mb-1">Sin datos históricos disponibles</p>
-              <p className="text-[11px] text-app-text4">
-                Ejecutá <code className="px-1.5 py-0.5 bg-app-subtle/60 rounded text-[#2eebc8] font-mono">npm run prices:daemon</code> para empezar a acumular datos
-              </p>
-            </div>
-          </div>
-        ) : metric === 'volumen' ? (
-          /* Bar chart for volume */
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.08)" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 10, fill: '#7a8599' }}
-                tickLine={false}
-                axisLine={{ stroke: 'rgba(148, 163, 184, 0.1)' }}
-              />
-              <YAxis
-                tick={{ fontSize: 10, fill: '#7a8599' }}
-                tickLine={false}
-                axisLine={{ stroke: 'rgba(148, 163, 184, 0.1)' }}
-                tickFormatter={(v: number) => formatVolume(v)}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#151d2e',
-                  border: '1px solid rgba(46, 235, 200, 0.2)',
-                  borderRadius: '8px',
-                  fontSize: '11px',
-                  color: '#e2e8f0',
-                }}
-                formatter={(value: number) => [formatVolume(value), 'Volumen']}
-                labelFormatter={(label: string) => `📅 ${label}`}
-              />
-              <Bar dataKey="volumen" fill="#fbbf24" fillOpacity={0.6} radius={[2, 2, 0, 0]} />
-              {chartData.some(d => d.iolVolumen > 0) && (
-                <Bar dataKey="iolVolumen" fill="#a78bfa" fillOpacity={0.6} radius={[2, 2, 0, 0]} />
-              )}
-            </BarChart>
-          </ResponsiveContainer>
-        ) : (
-          /* Area chart for TEM/Price/Spread */
-          <ResponsiveContainer width="100%" height={320}>
-            <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-              <defs>
-                <linearGradient id={`gradient-${metric}`} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={chartConfig.color} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={chartConfig.color} stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.08)" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 10, fill: '#7a8599' }}
-                tickLine={false}
-                axisLine={{ stroke: 'rgba(148, 163, 184, 0.1)' }}
-              />
-              <YAxis
-                domain={chartConfig.domain}
-                tick={{ fontSize: 10, fill: '#7a8599' }}
-                tickLine={false}
-                axisLine={{ stroke: 'rgba(148, 163, 184, 0.1)' }}
-                tickFormatter={(v: number) => chartConfig.formatter(v)}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#151d2e',
-                  border: '1px solid rgba(46, 235, 200, 0.2)',
-                  borderRadius: '8px',
-                  fontSize: '11px',
-                  color: '#e2e8f0',
-                }}
-                formatter={(value: number, name: string) => [
-                  chartConfig.formatter(value),
-                  name === chartConfig.dataKey ? chartConfig.label : name,
-                ]}
-                labelFormatter={(label: string) => `📅 ${label}`}
-              />
-              {/* High-Low band */}
-              <Area
-                type="monotone"
-                dataKey={chartConfig.highKey}
-                stroke="none"
-                fill={chartConfig.colorHigh}
-                fillOpacity={0.4}
-              />
-              {/* Main line */}
-              <Area
-                type="monotone"
-                dataKey={chartConfig.dataKey}
-                stroke={chartConfig.color}
-                strokeWidth={2}
-                fill={`url(#gradient-${metric})`}
-                dot={chartData.length < 30 ? { fill: chartConfig.color, strokeWidth: 0, r: 3 } : false}
-                activeDot={{ r: 5, fill: chartConfig.color, stroke: '#0c1220', strokeWidth: 2 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        )}
-      </div>
-
-      {/* ── OHLC Data Table ── */}
-      {ohlcData.length > 0 && (
+      {/* ── Instrument Info Card ── */}
+      {selectedInstrument && (
         <div className="glass-card p-4">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-app-text2">
-              Datos OHLC Diarios
-              <span className="text-[10px] text-app-text4 ml-1.5 font-mono">({ohlcData.length} días)</span>
-            </h3>
-          </div>
-          <div className="overflow-x-auto max-h-48 overflow-y-auto custom-scrollbar">
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-app-card z-10">
-                <tr className="border-b border-app-border/60">
-                  <th className="px-3 py-2 text-left text-[10px] uppercase tracking-wider font-medium text-app-text3">Fecha</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase tracking-wider font-medium text-app-text3">Open</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase tracking-wider font-medium text-app-text3">High</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase tracking-wider font-medium text-app-text3">Low</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase tracking-wider font-medium text-app-text3">Close</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase tracking-wider font-medium text-app-text3">TEM</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase tracking-wider font-medium text-app-text3">Vol</th>
-                  <th className="px-3 py-2 text-right text-[10px] uppercase tracking-wider font-medium text-app-text3">Ticks</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...ohlcData].reverse().map((d) => (
-                  <tr key={d.id} className="border-b border-app-border/30 table-row-highlight">
-                    <td className="px-3 py-2 font-mono text-app-text3">{formatDate(d.date)}</td>
-                    <td className="px-3 py-2 font-mono text-app-text2 text-right">{d.open.toFixed(4)}</td>
-                    <td className="px-3 py-2 font-mono text-app-text3 text-right">{d.high.toFixed(4)}</td>
-                    <td className="px-3 py-2 font-mono text-app-text3 text-right">{d.low.toFixed(4)}</td>
-                    <td className="px-3 py-2 font-mono text-app-text2 text-right">{d.close.toFixed(4)}</td>
-                    <td className="px-3 py-2 font-mono text-right">
-                      <span className={`${d.closeTEM >= d.openTEM ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
-                        {d.closeTEM.toFixed(2)}%
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 font-mono text-app-text4 text-right">{formatVolume(d.avgVolume)}</td>
-                    <td className="px-3 py-2 font-mono text-app-text4 text-right">{d.tickCount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex items-center gap-4">
+            <div>
+              <span className="text-sm font-mono font-medium text-app-text">{selectedTicker}</span>
+              <span className={`ml-2 text-[9px] px-1.5 py-0.5 rounded border ${
+                selectedInstrument.type === 'LECAP'
+                  ? 'bg-[#2eebc8]/10 text-[#2eebc8] border-[#2eebc8]/20'
+                  : 'bg-[#f472b6]/10 text-[#f472b6] border-[#f472b6]/20'
+              }`}>
+                {selectedInstrument.type}
+              </span>
+            </div>
+            <div className="text-[10px] text-app-text4 font-mono">
+              {selectedInstrument.days}d al vto. · TEM {(selectedInstrument.tem).toFixed(2)}% · Precio ${selectedInstrument.price.toFixed(4)}
+            </div>
+            {selectedInstrument.iolStatus === 'online' && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#a78bfa]/10 text-[#a78bfa] border border-[#a78bfa]/20">
+                ✓ VOL IOL
+              </span>
+            )}
+            {selectedInstrument.iolLiquidityAlert && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#fbbf24]/10 text-[#fbbf24] border border-[#fbbf24]/20">
+                ⚠️ BAJA LIQUIDEZ
+              </span>
+            )}
           </div>
         </div>
       )}
 
-      {/* ── Info Banner ── */}
-      <div className="glass-card p-3">
-        <div className="flex items-start gap-2">
-          <span className="text-sm">💡</span>
-          <div className="text-[10px] text-app-text4 leading-relaxed">
-            <strong className="text-app-text3">Módulo de Acumulación V3.2</strong> — Los datos históricos se acumulan automáticamente cuando el Cerebro Táctico corre en modo daemon (<code className="px-1 py-0.5 bg-app-subtle/60 rounded text-[#2eebc8] font-mono">npm run prices:daemon</code>). Cada tick genera un PriceSnapshot y se agrega un DailyOHLC por día por ticker. Los snapshots se limpian automáticamente después de 7 días; los OHLC se conservan indefinidamente.
+      {/* ── Stats Summary ── */}
+      {stats && (
+        <div className="glass-card p-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+            <div>
+              <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-0.5">Precio Min</div>
+              <div className="font-mono text-sm font-medium text-[#f87171]">${stats.priceMin.toFixed(4)}</div>
+            </div>
+            <div>
+              <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-0.5">Precio Max</div>
+              <div className="font-mono text-sm font-medium text-[#2eebc8]">${stats.priceMax.toFixed(4)}</div>
+            </div>
+            <div>
+              <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-0.5">TEM Prom</div>
+              <div className="font-mono text-sm font-medium text-app-accent-text">{(stats.temAvg * 100).toFixed(2)}%</div>
+            </div>
+            <div>
+              <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-0.5">TEM Rango</div>
+              <div className="font-mono text-sm font-medium text-app-text3">{(stats.temMin * 100).toFixed(2)}%-{(stats.temMax * 100).toFixed(2)}%</div>
+            </div>
+            <div>
+              <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-0.5">Spread Max</div>
+              <div className={`font-mono text-sm font-medium ${stats.spreadMax > 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
+                {(stats.spreadMax * 100).toFixed(3)}%
+              </div>
+            </div>
+            <div>
+              <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-0.5">Datos</div>
+              <div className="font-mono text-sm font-medium text-app-text">
+                {stats.dataPoints} puntos
+                {stats.hasOHLC ? ' · OHLC' : ' · Snap'}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* ── Charts ── */}
+      {loading ? (
+        <div className="glass-card p-8 text-center">
+          <div className="animate-pulse text-2xl mb-2">📈</div>
+          <p className="text-sm text-app-text3">Cargando datos históricos...</p>
+        </div>
+      ) : chartData.length === 0 ? (
+        <div className="glass-card p-8 text-center">
+          <div className="text-3xl mb-2 opacity-40">📭</div>
+          <p className="text-sm text-app-text3">Sin datos históricos disponibles</p>
+          <p className="text-[10px] text-app-text4 mt-1">
+            Ejecutá el Cerebro Táctico (<code className="text-[#2eebc8]/70">npm run prices:update</code>) para generar datos OHLC
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {/* ── Price Chart ── */}
+          <div className="glass-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-app-text2">Precio de Cierre</h3>
+              <span className="text-[9px] text-app-text4 font-mono">{selectedTicker} · {dateRange}d</span>
+            </div>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                {chartMode === 'area' ? (
+                  <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                    <defs>
+                      <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#2eebc8" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#2eebc8" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => v.toFixed(3)} domain={['auto', 'auto']} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Area type="monotone" dataKey="price" name="Precio" stroke="#2eebc8" fill="url(#priceGradient)" strokeWidth={2} />
+                  </AreaChart>
+                ) : (
+                  <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => v.toFixed(3)} domain={['auto', 'auto']} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="price" name="Precio" fill="#2eebc8" radius={[2, 2, 0, 0]} opacity={0.8} />
+                  </BarChart>
+                )}
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* ── TEM Chart ── */}
+          <div className="glass-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-app-text2">TEM (Tasa Efectiva Mensual)</h3>
+              <span className="text-[9px] text-app-text4 font-mono">{selectedTicker}</span>
+            </div>
+            <div className="h-56">
+              <ResponsiveContainer width="100%" height="100%">
+                {chartMode === 'area' ? (
+                  <AreaChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                    <defs>
+                      <linearGradient id="temGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f472b6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#f472b6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => (v * 100).toFixed(2)} domain={['auto', 'auto']} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Area type="monotone" dataKey="tem" name="TEM" stroke="#f472b6" fill="url(#temGradient)" strokeWidth={2} />
+                  </AreaChart>
+                ) : (
+                  <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => (v * 100).toFixed(2)} domain={['auto', 'auto']} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="tem" name="TEM" fill="#f472b6" radius={[2, 2, 0, 0]} opacity={0.8} />
+                  </BarChart>
+                )}
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* ── Spread vs Caución Chart ── */}
+          <div className="glass-card p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-app-text2">Spread vs Caución</h3>
+              <span className="text-[9px] text-app-text4 font-mono">{selectedTicker}</span>
+            </div>
+            <div className="h-48">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => (v * 100).toFixed(3)} domain={['auto', 'auto']} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="spread" name="Spread" radius={[2, 2, 0, 0]}>
+                    {chartData.map((entry, index) => (
+                      <rect key={index} fill={entry.spread >= 0 ? '#2eebc8' : '#f87171'} opacity={0.8} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* ── Volume Chart ── */}
+          {chartData.some(d => d.volume > 0) && (
+            <div className="glass-card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-app-text2">Volumen</h3>
+                <span className="text-[9px] text-app-text4 font-mono">{selectedTicker}</span>
+              </div>
+              <div className="h-36">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v.toFixed(0)} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="volume" name="Volumen" fill="#a78bfa" radius={[2, 2, 0, 0]} opacity={0.6} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

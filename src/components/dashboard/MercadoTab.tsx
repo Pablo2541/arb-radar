@@ -12,6 +12,7 @@ import {
 } from '@/lib/calculations';
 import { getLatestDM, calculateSR } from '@/lib/priceHistory';
 import ChartContainer from './ChartContainer';
+import MarketPressureBadge from './MarketPressureBadge';
 import type { LiveInstrumentsState } from '@/hooks/useLiveInstruments';
 import InstrumentDetail from './InstrumentDetail';
 import InstrumentCompare from './InstrumentCompare';
@@ -765,12 +766,13 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                 {renderSortHeader("DM", "dm")}
                 {renderSortHeader("Cambio %", "change")}
                 <th className="px-4 py-3 text-left whitespace-nowrap text-app-text3 font-medium text-[11px] uppercase tracking-wider">S/R</th>
+                <th className="px-4 py-3 text-left whitespace-nowrap text-app-text3 font-medium text-[11px] uppercase tracking-wider">Presión</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center">
+                  <td colSpan={12} className="px-4 py-8 text-center">
                     <div className="text-app-text4 text-sm">Sin resultados</div>
                     <div className="text-app-text4 text-[10px] mt-1">No hay instrumentos que coincidan con los filtros seleccionados</div>
                     <button
@@ -906,6 +908,9 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                           </div>
                         );
                       })()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <MarketPressureBadge ticker={inst.ticker} compact />
                     </td>
                   </tr>
                 );

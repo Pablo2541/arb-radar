@@ -1,191 +1,206 @@
-// ═══════════════════════════════════════════════════════════════════════
-// ARB//RADAR V3.2 — Filtro de Verdad
-// Shared data validation module for cross-referencing Level 1 prices
-// (data912 / ArgentinaDatos) with Level 2 volume data (IOL).
-//
-// This module is used by both the Cerebro Táctico script and the frontend.
-// Pure TypeScript — no React or Node-specific APIs.
-// ═══════════════════════════════════════════════════════════════════════
+/**
+ * ARB//RADAR V3.2.1 — Filtro de Verdad (Truth Filter)
+ *
+ * Adjusts Hunting Scores based on data quality and IOL Level 2 validation.
+ * Applies 6 priority-ordered rules to produce an adjustment from -15 to +8.
+ */
 
-// ── Types ─────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
 
-/** Result of applying the Filtro de Verdad to a single instrument. */
-export interface FiltroVerdadResult {
+export interface TruthFilterInput {
   ticker: string;
-  spreadPct: number;              // spread vs caución in percentage points
-  upsidePct: number;              // estimated upside from current price
-  iolVolumeConfirmed: boolean;    // True if IOL shows growing volume
-  liquidityAlert: boolean;        // True if volume < 10% avg daily
-  huntingAdjustment: number;      // Score adjustment from IOL data
-  verdict: string;                // Human-readable verdict in Spanish
-}
-
-/** Input instrument shape for applyFiltroVerdad. */
-export interface FiltroVerdadInput {
-  ticker: string;
-  tem: number;                    // percentage (e.g. 2.15)
-  spread_neto: number;            // decimal (e.g. 0.005)
-  change_pct: number;             // daily change %
+  spread_neto: number;
+  change_pct: number;
   iol_status?: 'online' | 'offline' | 'no_data';
-  iol_volume?: number;
   iol_liquidity_alert?: boolean;
+  iol_volume?: number;
 }
 
-// ── Constants ─────────────────────────────────────────────────────────
-
-/** Spread threshold (in percentage points) for "attractive upside" check. */
-const SPREAD_HIGH_THRESHOLD_PCT = 0.50;
-
-/** Spread threshold (in percentage points) for "confirmed" check. */
-const SPREAD_CONFIRMED_THRESHOLD_PCT = 0.25;
-
-/** Hunting score adjustments from Filtro de Verdad rules. */
-const ADJUSTMENT = {
-  LOW_LIQUIDITY_HIGH_SPREAD: -15,   // Attractive upside but no real volume
-  CONFIRMED: +8,                     // Positive spread with growing IOL volume
-  VOLUME_OK: +3,                     // Marginal spread but liquidity backs it
-  LIQUIDITY_ALERT: -8,               // Insufficient IOL volume
-  NEUTRAL: 0,                        // No clear signal
-} as const;
-
-// ── Verdict messages (Spanish) ────────────────────────────────────────
-
-const VERDICT = {
-  LOW_LIQUIDITY_HIGH_SPREAD:
-    '⚠️ BAJA LIQUIDEZ — Upside atractivo pero sin volumen real que lo respalde',
-  CONFIRMED:
-    '✅ CONFIRMADO — Spread positivo con volumen creciente en IOL',
-  VOLUME_OK:
-    '📊 Volumen OK — Spread marginal pero liquidez respalda',
-  LIQUIDITY_ALERT:
-    '⚠️ ALERTA LIQUIDEZ — Volumen insuficiente en IOL',
-  ONLINE_NO_SIGNAL:
-    '📡 IOL Online — Sin señal clara de volumen',
-  NO_DATA:
-    '📭 IOL: Ticker no disponible en IOL',
-  OFFLINE:
-    '🔌 IOL Offline — Sin datos de Nivel 2',
-} as const;
-
-// ── Helper ────────────────────────────────────────────────────────────
-
-/**
- * Returns only the numeric hunting-score adjustment for a single instrument
- * without building the full FiltroVerdadResult.
- *
- * Useful when you need the adjustment value quickly (e.g. inside a larger
- * scoring pipeline) without allocating the verdict string.
- */
-export function getHuntingScoreAdjustment(instrument: FiltroVerdadInput): number {
-  const { iol_status, iol_volume, iol_liquidity_alert, spread_neto } = instrument;
-
-  // Only the 'online' branch produces non-zero adjustments
-  if (iol_status !== 'online') return ADJUSTMENT.NEUTRAL;
-
-  const spreadPct = spread_neto * 100;
-  const hasVolume = (iol_volume ?? 0) > 0;
-  const hasLiquidityAlert = iol_liquidity_alert === true;
-
-  // Rule 1: High spread + low liquidity → heavy penalty
-  if (spreadPct > SPREAD_HIGH_THRESHOLD_PCT && hasLiquidityAlert) {
-    return ADJUSTMENT.LOW_LIQUIDITY_HIGH_SPREAD;
-  }
-
-  // Rule 2: Positive spread with confirmed growing volume → boost
-  if (hasVolume && !hasLiquidityAlert && spreadPct > SPREAD_CONFIRMED_THRESHOLD_PCT) {
-    return ADJUSTMENT.CONFIRMED;
-  }
-
-  // Rule 3: Volume present, no alert, but marginal spread → mild boost
-  if (hasVolume && !hasLiquidityAlert) {
-    return ADJUSTMENT.VOLUME_OK;
-  }
-
-  // Rule 4: Liquidity alert (but not high-spread case) → penalty
-  if (hasLiquidityAlert) {
-    return ADJUSTMENT.LIQUIDITY_ALERT;
-  }
-
-  // Rule 5: Online but no clear volume signal
-  return ADJUSTMENT.NEUTRAL;
+export interface TruthFilterResult {
+  ticker: string;
+  spread_neto: number;       // TEM - TEM_caucion (decimal)
+  upside_pct: number;        // estimated upside from current price
+  iol_volume_confirmed: boolean;
+  liquidity_alert: boolean;
+  hunting_adjustment: number; // Score adjustment from -15 to +8
+  verdict: string;           // Human-readable verdict
+  rules_triggered: string[]; // Which of the 6 rules were triggered
 }
 
-// ── Main function ─────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Rule definitions (evaluated in priority order — first match wins)
+// ---------------------------------------------------------------------------
 
-/**
- * Apply the "Filtro de Verdad" to a list of instruments.
- *
- * Cross-references Level 1 price data (data912 / ArgentinaDatos) with
- * Level 2 volume data (IOL) to produce quality verdicts and hunting-score
- * adjustments for each instrument.
- *
- * @param instruments  - Array of instruments with Level 1 + Level 2 fields
- * @param temCaucion   - Current caución TEM in percentage (e.g. 1.60)
- * @returns Array of FiltroVerdadResult, one per input instrument
- */
-export function applyFiltroVerdad(
-  instruments: FiltroVerdadInput[],
+interface RuleResult {
+  name: string;
+  adjustment: number;
+  verdict: string;
+}
+
+const RULES: Array<{
+  id: string;
+  priority: number;
+  match: (input: TruthFilterInput) => boolean;
+  result: (input: TruthFilterInput) => RuleResult;
+}> = [
+  // Rule 1 — BAJA LIQUIDEZ (-15)
+  {
+    id: 'BAJA_LIQUIDEZ',
+    priority: 1,
+    match: (input) => input.spread_neto > 0.50 && input.iol_liquidity_alert === true,
+    result: () => ({
+      name: 'BAJA_LIQUIDEZ',
+      adjustment: -15,
+      verdict: '⚠️ BAJA LIQUIDEZ — Upside atractivo pero sin volumen real que lo respalde',
+    }),
+  },
+
+  // Rule 2 — CONFIRMADO POR VOLUMEN (+8)
+  {
+    id: 'CONFIRMADO_POR_VOLUMEN',
+    priority: 2,
+    match: (input) =>
+      input.iol_status === 'online' &&
+      (input.iol_volume ?? 0) > 0 &&
+      input.iol_liquidity_alert !== true &&
+      input.spread_neto > 0.25,
+    result: () => ({
+      name: 'CONFIRMADO_POR_VOLUMEN',
+      adjustment: 8,
+      verdict: '✅ CONFIRMADO — Spread positivo con volumen creciente en IOL',
+    }),
+  },
+
+  // Rule 3 — VOLUMEN OK, SPREAD MARGINAL (+3)
+  {
+    id: 'VOLUMEN_OK_SPREAD_MARGINAL',
+    priority: 3,
+    match: (input) =>
+      input.iol_status === 'online' &&
+      (input.iol_volume ?? 0) > 0 &&
+      input.iol_liquidity_alert !== true &&
+      input.spread_neto <= 0.25,
+    result: () => ({
+      name: 'VOLUMEN_OK_SPREAD_MARGINAL',
+      adjustment: 3,
+      verdict: '📊 Volumen OK — Spread marginal pero liquidez respalda',
+    }),
+  },
+
+  // Rule 4 — ALERTA LIQUIDEZ GENERAL (-8)
+  {
+    id: 'ALERTA_LIQUIDEZ_GENERAL',
+    priority: 4,
+    match: (input) => input.iol_liquidity_alert === true,
+    result: () => ({
+      name: 'ALERTA_LIQUIDEZ_GENERAL',
+      adjustment: -8,
+      verdict: '⚠️ ALERTA LIQUIDEZ — Volumen insuficiente en IOL',
+    }),
+  },
+
+  // Rule 5 — SIN VOLUMEN OPERADO (0) — IOL online but zero trades
+  {
+    id: 'SIN_VOLUMEN_OPERADO',
+    priority: 5,
+    match: (input) =>
+      input.iol_status === 'online' &&
+      (input.iol_volume ?? 0) === 0 &&
+      !input.iol_liquidity_alert,
+    result: () => ({
+      name: 'SIN_VOLUMEN_OPERADO',
+      adjustment: -3,
+      verdict: '📡 IOL Online — Sin volumen operado en la rueda (0 ops)',
+    }),
+  },
+
+  // Rule 6 — IOL OFFLINE / NO DATA (0)
+  {
+    id: 'IOL_OFFLINE_NO_DATA',
+    priority: 6,
+    match: (input) => input.iol_status !== 'online',
+    result: (input) => ({
+      name: 'IOL_OFFLINE_NO_DATA',
+      adjustment: 0,
+      verdict:
+        input.iol_status === 'offline'
+          ? '🔌 IOL Offline — Sin datos de Nivel 2'
+          : '📭 IOL: Ticker no disponible',
+    }),
+  },
+];
+
+// ---------------------------------------------------------------------------
+// applyTruthFilter
+// ---------------------------------------------------------------------------
+
+export function applyTruthFilter(
+  instruments: TruthFilterInput[],
   temCaucion: number,
-): FiltroVerdadResult[] {
-  return instruments.map((inst) => {
-    // ── Derived metrics ──
-    const spreadPct = inst.spread_neto * 100;           // decimal → percentage points
-    const upsidePct = inst.tem - temCaucion;             // percentage points
+): TruthFilterResult[] {
+  return instruments.map((input) => {
+    const triggered: string[] = [];
+    let adjustment = 0;
+    let verdict = '— Sin reglas aplicables';
 
-    // ── IOL state extraction (with safe defaults) ──
-    const iolStatus = inst.iol_status;
-    const iolVolume = inst.iol_volume ?? 0;
-    const iolLiquidityAlert = inst.iol_liquidity_alert === true;
-    const hasVolume = iolVolume > 0;
-
-    // ── Determine verdict & adjustment ──
-    let verdict: string;
-    let huntingAdjustment: number;
-
-    if (iolStatus === 'online') {
-      // Rule 1: High spread + low liquidity → heavy penalty
-      if (spreadPct > SPREAD_HIGH_THRESHOLD_PCT && iolLiquidityAlert) {
-        verdict = VERDICT.LOW_LIQUIDITY_HIGH_SPREAD;
-        huntingAdjustment = ADJUSTMENT.LOW_LIQUIDITY_HIGH_SPREAD;
+    // Evaluate rules in priority order — first match wins
+    for (const rule of RULES) {
+      if (rule.match(input)) {
+        const result = rule.result(input);
+        adjustment = result.adjustment;
+        verdict = result.verdict;
+        triggered.push(result.name);
+        break;
       }
-      // Rule 2: Positive spread with confirmed growing volume → boost
-      else if (hasVolume && !iolLiquidityAlert && spreadPct > SPREAD_CONFIRMED_THRESHOLD_PCT) {
-        verdict = VERDICT.CONFIRMED;
-        huntingAdjustment = ADJUSTMENT.CONFIRMED;
-      }
-      // Rule 3: Volume present, no alert, but marginal spread → mild boost
-      else if (hasVolume && !iolLiquidityAlert) {
-        verdict = VERDICT.VOLUME_OK;
-        huntingAdjustment = ADJUSTMENT.VOLUME_OK;
-      }
-      // Rule 4: Liquidity alert (but not high-spread case) → penalty
-      else if (iolLiquidityAlert) {
-        verdict = VERDICT.LIQUIDITY_ALERT;
-        huntingAdjustment = ADJUSTMENT.LIQUIDITY_ALERT;
-      }
-      // Rule 5: Online but no clear volume signal
-      else {
-        verdict = VERDICT.ONLINE_NO_SIGNAL;
-        huntingAdjustment = ADJUSTMENT.NEUTRAL;
-      }
-    } else if (iolStatus === 'no_data') {
-      verdict = VERDICT.NO_DATA;
-      huntingAdjustment = ADJUSTMENT.NEUTRAL;
-    } else {
-      // offline or no status
-      verdict = VERDICT.OFFLINE;
-      huntingAdjustment = ADJUSTMENT.NEUTRAL;
     }
 
-    // ── Build result ──
+    // Derive computed fields
+    const upside_pct = input.spread_neto - temCaucion;
+    const iol_volume_confirmed =
+      input.iol_status === 'online' &&
+      (input.iol_volume ?? 0) > 0 &&
+      input.iol_liquidity_alert !== true;
+
     return {
-      ticker: inst.ticker,
-      spreadPct,
-      upsidePct,
-      iolVolumeConfirmed: iolStatus === 'online' && hasVolume && !iolLiquidityAlert,
-      liquidityAlert: iolLiquidityAlert,
-      huntingAdjustment,
+      ticker: input.ticker,
+      spread_neto: input.spread_neto,
+      upside_pct,
+      iol_volume_confirmed,
+      liquidity_alert: input.iol_liquidity_alert ?? false,
+      hunting_adjustment: adjustment,
       verdict,
+      rules_triggered: triggered,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// getHuntingScoreV2
+// ---------------------------------------------------------------------------
+
+export function getHuntingScoreV2(
+  baseScore: number,
+  filterResult: TruthFilterResult,
+  srPosition?: 'CERCANO_MIN' | 'CERCANO_MAX' | 'MEDIO',
+): number {
+  // 70 / 30 split
+  const truthComponent =
+    (filterResult.iol_volume_confirmed ? 30 : 10) +
+    (filterResult.liquidity_alert ? -20 : 0) +
+    filterResult.hunting_adjustment;
+
+  let score = baseScore * 0.7 + truthComponent * 0.3;
+
+  // S/R proximity penalty
+  if (srPosition === 'CERCANO_MAX' && filterResult.liquidity_alert) {
+    score -= 10; // >90% S/R penalty
+  }
+
+  // Direct adjustment
+  score += filterResult.hunting_adjustment;
+
+  // Clamp to 0–100
+  return Math.round(Math.max(0, Math.min(100, score)) * 100) / 100;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { Instrument, Config, Position, MomentumData, SRData, RotationScoreV17, LiveInstrument } from '@/lib/types';
 import { PriceHistoryFile, calculateSR } from '@/lib/priceHistory';
 import {
@@ -215,6 +215,93 @@ function calculateHuntingScore(
   }
 
   return Math.max(0, Math.min(100, score));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// V3.2.1: Market Pressure Summary — compact header widget
+// ═══════════════════════════════════════════════════════════════
+interface PressureData {
+  market_pressure: number;
+  status: string;
+}
+
+function MarketPressureSummary({ instruments }: { instruments: Instrument[] }) {
+  const [pressureMap, setPressureMap] = useState<Record<string, PressureData>>({});
+  const [iolAvailable, setIolAvailable] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Pick top 3 by spread (highest spread = most interesting)
+  const topTickers = useMemo(() => {
+    return [...instruments]
+      .sort((a, b) => b.tem - a.tem)
+      .slice(0, 3)
+      .map(i => i.ticker);
+  }, [instruments]);
+
+  const fetchPressure = useCallback(async () => {
+    if (topTickers.length === 0) return;
+    try {
+      const res = await fetch(`/api/iol-level2?tickers=${encodeURIComponent(topTickers.join(','))}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      setIolAvailable(json.iol_available === true);
+      if (json.iol_available && json.data) {
+        const map: Record<string, PressureData> = {};
+        for (const t of topTickers) {
+          if (json.data[t]) {
+            map[t] = {
+              market_pressure: json.data[t].market_pressure,
+              status: json.data[t].status,
+            };
+          }
+        }
+        setPressureMap(map);
+      }
+    } catch {
+      // silent
+    }
+  }, [topTickers]);
+
+  useEffect(() => {
+    // Defer initial fetch to avoid synchronous setState within effect body
+    const initialTimeout = setTimeout(() => fetchPressure(), 0);
+    intervalRef.current = setInterval(fetchPressure, 60_000);
+    return () => {
+      clearTimeout(initialTimeout);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [fetchPressure]);
+
+  if (!iolAvailable || Object.keys(pressureMap).length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-app-text4 uppercase tracking-wider text-[10px]">Presión</span>
+      <span className="text-[9px]">🎯</span>
+      {topTickers.map(ticker => {
+        const pd = pressureMap[ticker];
+        if (!pd) return (
+          <span key={ticker} className="font-mono text-[9px] text-app-text4">
+            {ticker} —
+          </span>
+        );
+        const mp = pd.market_pressure;
+        const color = mp > 1.3 ? '#2eebc8' : mp < 0.7 ? '#f87171' : '#fbbf24';
+        const emoji = mp > 1.3 ? '🟢' : mp < 0.7 ? '🔴' : '🟡';
+        return (
+          <span key={ticker} className="font-mono text-[9px]" style={{ color }}>
+            {ticker} {mp.toFixed(1)}{emoji}
+          </span>
+        );
+      }).reduce<React.ReactNode[]>((acc, el, i) => {
+        if (i > 0) acc.push(<span key={`sep-${i}`} className="text-app-text4 mx-0.5">|</span>);
+        acc.push(el);
+        return acc;
+      }, [])}
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -603,6 +690,9 @@ export default function OportunidadesTab({
                 </>
               ) : null;
             })()}
+            {/* V3.2.1: Market Pressure Quick View */}
+            <div className="w-px h-3 bg-app-border/40" />
+            <MarketPressureSummary instruments={instruments} />
           </div>
         </div>
       )}

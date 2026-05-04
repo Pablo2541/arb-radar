@@ -1,6 +1,7 @@
 // ════════════════════════════════════════════════════════════════════════
-// CEREBRO TÁCTICO — ARB//RADAR V3.2
-// Motor de actualización de precios con validación IOL Nivel 2 + acumulación histórica
+// CEREBRO TÁCTICO — ARB//RADAR V3.2.1
+// Motor de actualización de precios con validación IOL Nivel 2
+// + Acumulación Histórica (PriceSnapshot + DailyOHLC)
 //
 // ARQUITECTURA:
 //   Nivel 1 (Precios):  data912.com + ArgentinaDatos (estable, broker-focused)
@@ -57,7 +58,7 @@ const IOL_HUNTING_BOOST = 8;     // Points added to Hunting Score when IOL confi
 
 // Daemon settings
 const DAEMON_INTERVAL_MS = 60_000; // 60 seconds
-const IOL_TOKEN_REFRESH_MS = 14 * 60 * 1000; // 14 minutes (token expires at 15)
+const IOL_TOKEN_REFRESH_MS = 12 * 60 * 1000; // 12 minutes (token expires at 15) — avoid blind spots
 
 // ── Types ──────────────────────────────────────────────────────────────
 interface Data912Note {
@@ -118,6 +119,9 @@ interface LiveInstrument {
   iol_avg_daily_volume?: number;// estimated average daily volume
   iol_status?: 'online' | 'offline' | 'no_data'; // IOL data availability per instrument
   iol_liquidity_alert?: boolean;// True when volume < 10% of avg daily
+  iol_bid_depth?: number;       // Total bid depth from IOL puntas
+  iol_ask_depth?: number;       // Total ask depth from IOL puntas
+  iol_market_pressure?: number; // bid_depth / ask_depth ratio
 }
 
 interface IOLCotizacion {
@@ -217,8 +221,8 @@ async function getIOLToken(): Promise<string | null> {
     return null;
   }
 
-  // Check if current token is still valid (with 60s buffer)
-  if (iolAccessToken && Date.now() < iolTokenExpiry - 60_000) {
+  // Check if current token is still valid (with 120s buffer — avoid blind spots)
+  if (iolAccessToken && Date.now() < iolTokenExpiry - 120_000) {
     return iolAccessToken;
   }
 
@@ -267,6 +271,9 @@ interface IOLLevel2Data {
   iol_avg_daily_volume: number;
   iol_status: 'online' | 'offline' | 'no_data';
   iol_liquidity_alert: boolean;
+  iol_bid_depth: number;
+  iol_ask_depth: number;
+  iol_market_pressure: number;
 }
 
 async function getIOLCotizacion(ticker: string): Promise<IOLLevel2Data | null> {
@@ -293,6 +300,9 @@ async function getIOLCotizacion(ticker: string): Promise<IOLLevel2Data | null> {
           iol_avg_daily_volume: 0,
           iol_status: 'no_data',
           iol_liquidity_alert: false,
+          iol_bid_depth: 0,
+          iol_ask_depth: 0,
+          iol_market_pressure: 0,
         };
       }
       return null;
@@ -311,6 +321,19 @@ async function getIOLCotizacion(ticker: string): Promise<IOLLevel2Data | null> {
         iolAsk = data.puntas.venta[0].precio;
       }
     }
+
+    // Calculate bid/ask depth from puntas (order book)
+    let iolBidDepth = 0;
+    let iolAskDepth = 0;
+    if (data.puntas) {
+      if (data.puntas.compra) {
+        iolBidDepth = data.puntas.compra.reduce((sum, p) => sum + p.cantidad, 0);
+      }
+      if (data.puntas.venta) {
+        iolAskDepth = data.puntas.venta.reduce((sum, p) => sum + p.cantidad, 0);
+      }
+    }
+    const iolMarketPressure = iolAskDepth > 0 ? iolBidDepth / iolAskDepth : (iolBidDepth > 0 ? 99 : 0);
 
     // cantidadOperada = number of nominal units traded today
     const cantidadOperada = data.cantidadOperada || 0;
@@ -338,6 +361,9 @@ async function getIOLCotizacion(ticker: string): Promise<IOLLevel2Data | null> {
       iol_avg_daily_volume: Math.round(estimatedAvgDaily),
       iol_status: 'online',
       iol_liquidity_alert: liquidityAlert,
+      iol_bid_depth: iolBidDepth,
+      iol_ask_depth: iolAskDepth,
+      iol_market_pressure: parseFloat(iolMarketPressure.toFixed(2)),
     };
   } catch (error) {
     // Don't log every failed IOL request (too noisy)
@@ -556,6 +582,9 @@ async function enrichWithIOL(instruments: LiveInstrument[]): Promise<{
             iol_avg_daily_volume: iolData.iol_avg_daily_volume,
             iol_status: iolData.iol_status,
             iol_liquidity_alert: iolData.iol_liquidity_alert,
+            iol_bid_depth: iolData.iol_bid_depth,
+            iol_ask_depth: iolData.iol_ask_depth,
+            iol_market_pressure: iolData.iol_market_pressure,
           });
           if (iolData.iol_status === 'online') iolSuccess++;
           if (iolData.iol_liquidity_alert) iolAlerts++;
@@ -631,7 +660,14 @@ function applyFiltroVerdad(instruments: LiveInstrument[], temCaucion: number): F
         huntingAdjustment = -8;
         verdict = '⚠️ ALERTA LIQUIDEZ — Volumen insuficiente en IOL';
       } else {
-        verdict = '📡 IOL Online — Sin señal clara de volumen';
+        const vol = inst.iol_volume ?? 0;
+        if (vol === 0) {
+          verdict = '📡 IOL Online — Sin volumen operado (0 ops en la rueda)';
+        } else if (vol > 0 && inst.spread_neto <= 0.25) {
+          verdict = `📡 IOL Online — Vol: ${vol.toLocaleString()} nominales pero spread marginal (≤0.25%)`;
+        } else {
+          verdict = `📡 IOL Online — Vol: ${vol.toLocaleString()} — Sin señal direccional clara`;
+        }
       }
     } else if (inst.iol_status === 'no_data') {
       verdict = '📭 IOL: Ticker no disponible en IOL';
@@ -649,6 +685,118 @@ function applyFiltroVerdad(instruments: LiveInstrument[], temCaucion: number): F
       verdict,
     };
   });
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// V3.2 — HISTORICAL ACCUMULATION
+// Write PriceSnapshot + DailyOHLC for the Histórico tab
+// ════════════════════════════════════════════════════════════════════════
+
+async function writeHistoricalData(
+  prisma: PrismaClient,
+  instruments: LiveInstrument[],
+  caucionProxy: { tnaPromedio: number; temCaucion: number },
+): Promise<void> {
+  const now = new Date();
+  const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+  let snapshotCount = 0;
+  let ohlcCount = 0;
+
+  for (const inst of instruments) {
+    // ── 1. Write PriceSnapshot ──
+    try {
+      await prisma.priceSnapshot.create({
+        data: {
+          ticker: inst.ticker,
+          price: inst.last_price,
+          tem: inst.tem,
+          tna: inst.tna,
+          spread: inst.spread_neto,
+          volume: inst.volume,
+          source: inst.iol_status === 'online' ? 'level2' : 'level1',
+          iolVolume: inst.iol_volume ?? null,
+          iolBid: inst.iol_bid ?? null,
+          iolAsk: inst.iol_ask ?? null,
+          timestamp: now,
+        },
+      });
+      snapshotCount++;
+    } catch {
+      // Skip if snapshot write fails (non-critical)
+    }
+
+    // ── 2. Upsert DailyOHLC ──
+    try {
+      const existingOHLC = await prisma.dailyOHLC.findUnique({
+        where: { ticker_date: { ticker: inst.ticker, date: today } },
+      });
+
+      if (existingOHLC) {
+        // Update: recalculate high/low/close from all snapshots today
+        const newHigh = Math.max(existingOHLC.high, inst.last_price);
+        const newLow = Math.min(existingOHLC.low, inst.last_price);
+        const newTemHigh = Math.max(existingOHLC.temHigh, inst.tem);
+        const newTemLow = Math.min(existingOHLC.temLow, inst.tem);
+        const totalVolume = existingOHLC.volume + inst.volume;
+        const iolTotalVolume = (existingOHLC.iolVolume ?? 0) + (inst.iol_volume ?? 0);
+        // Update running average spread
+        const newSpreadAvg = (existingOHLC.spreadAvg * existingOHLC.volume + inst.spread_neto * inst.volume) / totalVolume;
+
+        await prisma.dailyOHLC.update({
+          where: { id: existingOHLC.id },
+          data: {
+            high: newHigh,
+            low: newLow,
+            close: inst.last_price,
+            temHigh: newTemHigh,
+            temLow: newTemLow,
+            temClose: inst.tem,
+            volume: totalVolume,
+            iolVolume: iolTotalVolume > 0 ? iolTotalVolume : null,
+            spreadAvg: newSpreadAvg,
+          },
+        });
+        ohlcCount++;
+      } else {
+        // First observation of the day → create OHLC record
+        await prisma.dailyOHLC.create({
+          data: {
+            ticker: inst.ticker,
+            date: today,
+            open: inst.last_price,
+            high: inst.last_price,
+            low: inst.last_price,
+            close: inst.last_price,
+            temOpen: inst.tem,
+            temClose: inst.tem,
+            temHigh: inst.tem,
+            temLow: inst.tem,
+            volume: inst.volume,
+            iolVolume: inst.iol_volume ?? null,
+            spreadAvg: inst.spread_neto,
+          },
+        });
+        ohlcCount++;
+      }
+    } catch {
+      // Skip if OHLC write fails (non-critical)
+    }
+  }
+
+  log('OK', `📊 Histórico: ${snapshotCount} snapshots + ${ohlcCount} OHLC registros para ${today}`);
+
+  // ── 3. Cleanup: keep only last 90 days of snapshots (prevent DB bloat) ──
+  try {
+    const cutoff = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    const deleted = await prisma.priceSnapshot.deleteMany({
+      where: { timestamp: { lt: cutoff } },
+    });
+    if (deleted.count > 0) {
+      log('INFO', `🧹 Cleanup: ${deleted.count} snapshots >90d eliminados`);
+    }
+  } catch {
+    // Non-critical
+  }
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -729,6 +877,10 @@ async function writeToNeon(
       iolStatus: inst.iol_status,
       iolLiquidityAlert: inst.iol_liquidity_alert,
       iolHuntingAdjustment: filtroResults.find(f => f.ticker === inst.ticker)?.hunting_adjustment || 0,
+      iolBidDepth: inst.iol_bid_depth,
+      iolAskDepth: inst.iol_ask_depth,
+      iolMarketPressure: inst.iol_market_pressure,
+      iolVerdict: filtroResults.find(f => f.ticker === inst.ticker)?.verdict || '',
       // data912 fields
       vpv: inst.vpv,
       bid: inst.bid,
@@ -776,131 +928,13 @@ async function writeToNeon(
     });
 
     log('OK', `✅ Neon DB actualizado: ${storeInstruments.length} instrumentos | IOL Nivel 2: ${iolOnline ? 'ONLINE' : 'OFFLINE'}`);
+
+    // V3.2: Write historical accumulation data (snapshots + OHLC)
+    await writeHistoricalData(prisma, instruments, caucionProxy);
+
     return true;
   } catch (error) {
     log('ERROR', `Neon DB write failed: ${error instanceof Error ? error.message : String(error)}`);
-    return false;
-  } finally {
-    await prisma.$disconnect();
-  }
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// V3.2 — HISTORICAL DATA ACCUMULATION
-// PriceSnapshot (raw ticks) + DailyOHLC (aggregated) + Cleanup
-// ════════════════════════════════════════════════════════════════════════
-
-async function saveHistoricalData(enriched: LiveInstrument[]): Promise<boolean> {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    log('ERROR', 'DATABASE_URL not configured. Cannot save historical data.');
-    return false;
-  }
-
-  const prisma = new PrismaClient({
-    datasources: { db: { url: databaseUrl } },
-  });
-
-  try {
-    const now = new Date();
-
-    // ── 1. Save PriceSnapshot for each instrument ──────────────────────
-    let snapshotCount = 0;
-    for (const inst of enriched) {
-      try {
-        await prisma.priceSnapshot.create({
-          data: {
-            ticker: inst.ticker,
-            type: inst.type,
-            price: inst.last_price,
-            bid: inst.bid,
-            ask: inst.ask,
-            tem: inst.tem * 100,       // Convert from decimal to percentage
-            tir: inst.tem * 100,
-            tna: inst.tna * 100,
-            spread: inst.spread_neto * 100,
-            days: inst.days_to_expiry,
-            volume: inst.volume,
-            change: inst.change_pct,
-            iolVolume: inst.iol_volume || null,
-            iolBid: inst.iol_bid || null,
-            iolAsk: inst.iol_ask || null,
-            iolStatus: inst.iol_status || null,
-            iolLiquidityAlert: inst.iol_liquidity_alert || null,
-            source: 'cerebro',
-            timestamp: now,
-          },
-        });
-        snapshotCount++;
-      } catch (err) {
-        log('WARN', `PriceSnapshot failed for ${inst.ticker}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-    log('OK', `📸 Saved ${snapshotCount} PriceSnapshot records`);
-
-    // ── 2. Upsert DailyOHLC ────────────────────────────────────────────
-    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' }); // YYYY-MM-DD
-    let ohlcCount = 0;
-
-    for (const inst of enriched) {
-      try {
-        const existingOHLC = await prisma.dailyOHLC.findUnique({
-          where: { ticker_date: { ticker: inst.ticker, date: today } },
-        });
-
-        if (existingOHLC) {
-          // Update: high = max(existing.high, price), low = min(existing.low, price), close = current, tickCount++
-          await prisma.dailyOHLC.update({
-            where: { id: existingOHLC.id },
-            data: {
-              high: Math.max(existingOHLC.high, inst.last_price),
-              low: Math.min(existingOHLC.low, inst.last_price),
-              close: inst.last_price,
-              highTEM: Math.max(existingOHLC.highTEM, inst.tem * 100),
-              lowTEM: Math.min(existingOHLC.lowTEM, inst.tem * 100),
-              closeTEM: inst.tem * 100,
-              avgVolume: (existingOHLC.avgVolume * existingOHLC.tickCount + inst.volume) / (existingOHLC.tickCount + 1),
-              tickCount: existingOHLC.tickCount + 1,
-            },
-          });
-        } else {
-          // Create: open=high=low=close=current price
-          await prisma.dailyOHLC.create({
-            data: {
-              ticker: inst.ticker,
-              date: today,
-              open: inst.last_price,
-              high: inst.last_price,
-              low: inst.last_price,
-              close: inst.last_price,
-              openTEM: inst.tem * 100,
-              highTEM: inst.tem * 100,
-              lowTEM: inst.tem * 100,
-              closeTEM: inst.tem * 100,
-              avgVolume: inst.volume,
-              tickCount: 1,
-            },
-          });
-        }
-        ohlcCount++;
-      } catch (err) {
-        log('WARN', `DailyOHLC upsert failed for ${inst.ticker}: ${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-    log('OK', `📊 Upserted ${ohlcCount} DailyOHLC records`);
-
-    // ── 3. Cleanup old snapshots (>7 days) ─────────────────────────────
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const deleted = await prisma.priceSnapshot.deleteMany({
-      where: { timestamp: { lt: sevenDaysAgo } },
-    });
-    if (deleted.count > 0) {
-      log('OK', `🗑️ Cleaned up ${deleted.count} old PriceSnapshot records (>7d)`);
-    }
-
-    return true;
-  } catch (error) {
-    log('ERROR', `Historical data save failed: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   } finally {
     await prisma.$disconnect();
@@ -968,15 +1002,6 @@ async function runOnce(): Promise<boolean> {
   // Step 5: Write to Neon DB
   log('INFO', 'Escribiendo a Neon PostgreSQL...');
   const dbOk = await writeToNeon(enriched, caucionProxy, iolOnline, filtroResults);
-
-  // Step 6: Save historical data (V3.2)
-  if (dbOk) {
-    log('INFO', 'V3.2: Guardando datos históricos (PriceSnapshot + DailyOHLC)...');
-    const histOk = await saveHistoricalData(enriched);
-    if (!histOk) {
-      log('WARN', 'V3.2: Falló el guardado de datos históricos.');
-    }
-  }
 
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log('');

@@ -56,8 +56,8 @@ const TAB_CONFIG: { id: TabId; icon: string; label: string; shortcut: string }[]
   { id: 'cartera', icon: '💼', label: 'Cartera', shortcut: '6' },
   { id: 'diagnostico', icon: '🩺', label: 'Diagnóstico', shortcut: '7' },
   { id: 'historial', icon: '📋', label: 'Historial', shortcut: '8' },
-  { id: 'historico', icon: '📜', label: 'Histórico', shortcut: '9' },
-  { id: 'configuracion', icon: '⚙️', label: 'Config', shortcut: '0' },
+  { id: 'historico', icon: '📈', label: 'Histórico', shortcut: 'H' },
+  { id: 'configuracion', icon: '⚙️', label: 'Config', shortcut: '9' },
 ];
 
 // ── Inner Content ──
@@ -441,7 +441,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V3.2...
+            Cargando V3.2.1...
           </p>
         </div>
       </div>
@@ -527,7 +527,7 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.2</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.2.1</span>
             {/* V3.0: DB Sync indicator dot */}
             <div className="w-1.5 h-1.5 rounded-full hidden sm:block" style={{ backgroundColor: dbSyncDotColor }} title={dbAvailable ? `DB: ${lastDbSyncStatus}` : 'DB: no configurado'} />
             {/* V3.1: IOL Level 2 indicator dot */}
@@ -603,8 +603,8 @@ function HomeContent() {
               {activeTab === 'cartera' && '💼 Cartera'}
               {activeTab === 'diagnostico' && '🩺 Diagnóstico'}
               {activeTab === 'historial' && '📋 Historial'}
-              {activeTab === 'historico' && '📜 Histórico'}
               {activeTab === 'configuracion' && '⚙️ Configuración'}
+              {activeTab === 'historico' && '📈 Histórico'}
             </h2>
             {lastUpdate && (
               <span className="text-[9px] text-app-text4 font-mono">

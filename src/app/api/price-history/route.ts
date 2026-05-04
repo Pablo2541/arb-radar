@@ -1,106 +1,163 @@
-// ════════════════════════════════════════════════════════════════════════
-// V3.2 — /api/price-history: Historical Price Data for Historico Tab
-//
-// GET → Load price history from PriceSnapshot + DailyOHLC tables
-//
-// Query params:
-//   ticker    — Filter by ticker (optional, default: all)
-//   days      — Number of days to look back (default: 30)
-//   format    — "ohlc" | "snapshots" (default: "ohlc")
-// ════════════════════════════════════════════════════════════════════════
+import { db } from '@/lib/db'
+import { NextResponse } from 'next/server'
 
-import { NextRequest, NextResponse } from 'next/server';
-
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
-
-// ── GET: Load price history ─────────────────────────────────────────
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
-    const { db } = await import('@/lib/db');
-    const searchParams = request.nextUrl.searchParams;
-    const ticker = searchParams.get('ticker');
-    const days = parseInt(searchParams.get('days') || '30', 10);
-    const format = searchParams.get('format') || 'ohlc';
+    const { searchParams } = new URL(request.url)
+    const type = searchParams.get('type')
+    const ticker = searchParams.get('ticker')
 
-    const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const sinceDateStr = sinceDate.toLocaleDateString('sv-SE', { timeZone: 'America/Argentina/Buenos_Aires' });
+    // ── OHLC ──────────────────────────────────────────────────────────
+    if (type === 'ohlc') {
+      const days = Math.max(1, Number(searchParams.get('days')) || 30)
+      const fromDate = formatDate(subDays(new Date(), days))
 
-    if (format === 'snapshots') {
-      // Return raw PriceSnapshot data
-      const where = {
-        ...(ticker ? { ticker } : {}),
-        timestamp: { gte: sinceDate },
-      };
+      const where: Record<string, unknown> = {
+        date: { gte: fromDate },
+      }
+      if (ticker) {
+        where.ticker = ticker
+      }
+
+      const ohlc = await db.dailyOHLC.findMany({
+        where,
+        orderBy: [{ ticker: 'asc' }, { date: 'asc' }],
+      })
+
+      return NextResponse.json({
+        ohlc: ohlc.map((r) => ({
+          ticker: r.ticker,
+          date: r.date,
+          open: r.open,
+          high: r.high,
+          low: r.low,
+          close: r.close,
+          temOpen: r.temOpen,
+          temClose: r.temClose,
+          temHigh: r.temHigh,
+          temLow: r.temLow,
+          volume: r.volume,
+          iolVolume: r.iolVolume,
+          spreadAvg: r.spreadAvg,
+        })),
+      })
+    }
+
+    // ── Snapshots ─────────────────────────────────────────────────────
+    if (type === 'snapshots') {
+      const hours = Math.max(1, Number(searchParams.get('hours')) || 24)
+      const fromTimestamp = subHours(new Date(), hours)
+
+      const where: Record<string, unknown> = {
+        timestamp: { gte: fromTimestamp },
+      }
+      if (ticker) {
+        where.ticker = ticker
+      }
 
       const snapshots = await db.priceSnapshot.findMany({
         where,
-        orderBy: { timestamp: 'asc' },
-        take: 5000, // Safety limit
-      });
-
-      // Get available tickers
-      const tickers = await db.priceSnapshot.findMany({
-        where: { timestamp: { gte: sinceDate } },
-        select: { ticker: true },
-        distinct: ['ticker'],
-        orderBy: { ticker: 'asc' },
-      });
+        orderBy: { timestamp: 'desc' },
+        take: 500,
+      })
 
       return NextResponse.json({
-        format: 'snapshots',
-        tickers: tickers.map(t => t.ticker),
-        data: snapshots,
-        count: snapshots.length,
-        since: sinceDate.toISOString(),
-      });
+        snapshots: snapshots.map((s) => ({
+          id: s.id,
+          ticker: s.ticker,
+          price: s.price,
+          tem: s.tem,
+          tna: s.tna,
+          spread: s.spread,
+          volume: s.volume,
+          source: s.source,
+          iolVolume: s.iolVolume,
+          iolBid: s.iolBid,
+          iolAsk: s.iolAsk,
+          timestamp: s.timestamp,
+        })),
+      })
     }
 
-    // Default: OHLC format
-    const where = {
-      ...(ticker ? { ticker } : {}),
-      date: { gte: sinceDateStr },
-    };
+    // ── Tickers ───────────────────────────────────────────────────────
+    if (type === 'tickers') {
+      const raw = await db.dailyOHLC.groupBy({
+        by: ['ticker'],
+        _count: { ticker: true },
+        _max: { date: true },
+      })
 
-    const ohlcData = await db.dailyOHLC.findMany({
-      where,
-      orderBy: [{ ticker: 'asc' }, { date: 'asc' }],
-      take: 5000,
-    });
+      // Fetch latest close for each ticker
+      const tickers = await Promise.all(
+        raw.map(async (row) => {
+          const latest = await db.dailyOHLC.findFirst({
+            where: { ticker: row.ticker, date: row._max.date! },
+            select: { close: true },
+          })
+          return {
+            ticker: row.ticker,
+            count: row._count.ticker,
+            latestDate: row._max.date!,
+            latestClose: latest?.close ?? 0,
+          }
+        }),
+      )
 
-    // Get available tickers
-    const tickers = await db.dailyOHLC.findMany({
-      where: { date: { gte: sinceDateStr } },
-      select: { ticker: true },
-      distinct: ['ticker'],
-      orderBy: { ticker: 'asc' },
-    });
+      return NextResponse.json({ tickers })
+    }
 
-    // Get date range
-    const latestSnapshot = await db.priceSnapshot.findFirst({
-      orderBy: { timestamp: 'desc' },
-      select: { timestamp: true },
-    });
-
-    // Snapshot count stats
-    const snapshotCount = await db.priceSnapshot.count({
-      where: { timestamp: { gte: sinceDate } },
-    });
+    // ── Default / Summary ─────────────────────────────────────────────
+    const [totalOHLC, totalSnapshots, ohlcTickers, dateRange] =
+      await Promise.all([
+        db.dailyOHLC.count(),
+        db.priceSnapshot.count(),
+        db.dailyOHLC.findMany({
+          distinct: ['ticker'],
+          select: { ticker: true },
+          orderBy: { ticker: 'asc' },
+        }),
+        db.dailyOHLC.aggregate({
+          _min: { date: true },
+          _max: { date: true },
+        }),
+      ])
 
     return NextResponse.json({
-      format: 'ohlc',
-      tickers: tickers.map(t => t.ticker),
-      data: ohlcData,
-      count: ohlcData.length,
-      snapshotCount,
-      lastSnapshot: latestSnapshot?.timestamp?.toISOString() || null,
-      since: sinceDateStr,
-    });
+      available: totalOHLC > 0,
+      tickers: ohlcTickers.map((t) => t.ticker),
+      totalOHLC,
+      totalSnapshots,
+      dateRange: {
+        from: dateRange._min.date ?? '',
+        to: dateRange._max.date ?? '',
+      },
+    })
   } catch (error) {
-    console.error('[/api/price-history GET] Error:', error);
+    console.error('[price-history] Error:', error)
     return NextResponse.json(
-      { fallback: true, error: 'Database unavailable', data: [], tickers: [], count: 0 },
-      { status: 200 } // Return 200 with empty data so frontend can show "no data" state
-    );
+      { error: 'Failed to fetch price history data' },
+      { status: 500 },
+    )
   }
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+
+function subDays(date: Date, days: number): Date {
+  const d = new Date(date)
+  d.setDate(d.getDate() - days)
+  return d
+}
+
+function subHours(date: Date, hours: number): Date {
+  const d = new Date(date)
+  d.setTime(d.getTime() - hours * 60 * 60 * 1000)
+  return d
+}
+
+function formatDate(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
 }
