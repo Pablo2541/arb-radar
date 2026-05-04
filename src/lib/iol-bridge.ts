@@ -1,9 +1,12 @@
 // ════════════════════════════════════════════════════════════════════════
-// IOL BRIDGE — ARB//RADAR V3.2.1
+// IOL BRIDGE — ARB//RADAR V3.2.2-PRO
 // InvertirOnline authentication & Level-2 data fetching
 //
 // Extracted from scripts/update-prices.ts and adapted for Next.js
 // API routes (server-side only).
+//
+// V3.2.2-PRO: Now calculates bid_depth / ask_depth / market_pressure
+// from puntas_detalle order-book levels.
 //
 // ⚠️  SERVER-SIDE MODULE — never import in client components.
 //
@@ -67,6 +70,12 @@ export interface IOLLevel2Data {
   iol_avg_daily_volume: number;
   iol_status: 'online' | 'offline' | 'no_data';
   iol_liquidity_alert: boolean;
+  /** Total quantity across all compra puntas — bid depth. */
+  iol_bid_depth: number;
+  /** Total quantity across all venta puntas — ask depth. */
+  iol_ask_depth: number;
+  /** bid_depth / ask_depth ratio (>1 = buying pressure). */
+  iol_market_pressure: number;
   /** Raw order-book levels for detailed display / depth calculation. */
   puntas_detalle?: {
     compra: IOLPunta[];
@@ -94,6 +103,27 @@ function tradingHoursElapsed(): number {
   return Math.max(1, arTime.getHours() - 10);
 }
 
+/**
+ * Calculate total quantity across all order book levels.
+ */
+function calcDepth(levels: IOLPunta[]): number {
+  if (!levels || levels.length === 0) return 0;
+  return levels.reduce((sum, p) => sum + (p.cantidad || 0), 0);
+}
+
+/**
+ * Calculate market pressure ratio from bid/ask depth.
+ *   > 1 → buying pressure (more bid depth)
+ *   = 1 → balanced
+ *   < 1 → selling pressure (more ask depth)
+ */
+function calcMarketPressure(bidDepth: number, askDepth: number): number {
+  if (bidDepth === 0 && askDepth === 0) return 0;
+  if (askDepth === 0) return bidDepth > 0 ? 99 : 0;
+  const ratio = bidDepth / askDepth;
+  return parseFloat(ratio.toFixed(2));
+}
+
 // ── Public API ─────────────────────────────────────────────────────────
 
 /**
@@ -101,7 +131,7 @@ function tradingHoursElapsed(): number {
  *
  * Uses `IOL_USERNAME` / `IOL_PASSWORD` env vars.  The token is cached
  * at module level and auto-refreshed when it approaches expiry
- * (refresh at 14 min, token expires at 15 min).
+ * (refresh at 12 min, token expires at 15 min).
  *
  * @returns The Bearer access token, or `null` if credentials are missing
  *          or authentication failed.
@@ -167,7 +197,8 @@ export async function getIOLToken(): Promise<string | null> {
  *
  * Automatically obtains / refreshes the Bearer token before making
  * the request.  Returns processed `IOLLevel2Data` with volume,
- * bid/ask, estimated average daily volume, and liquidity alert.
+ * bid/ask, depth, market pressure, estimated average daily volume,
+ * and liquidity alert.
  *
  * @param ticker - Instrument ticker (e.g. "T5W3" or "LECAPX9S").
  * @returns `IOLLevel2Data` with status, or `null` on unrecoverable error.
@@ -199,6 +230,9 @@ export async function getIOLCotizacion(
           iol_avg_daily_volume: 0,
           iol_status: 'no_data',
           iol_liquidity_alert: false,
+          iol_bid_depth: 0,
+          iol_ask_depth: 0,
+          iol_market_pressure: 0,
           puntas_detalle: { compra: [], venta: [] },
         };
       }
@@ -245,6 +279,11 @@ export async function getIOLCotizacion(
         }
       : { compra: [], venta: [] };
 
+    // V3.2.2-PRO: Calculate depth & market pressure from puntas
+    const bidDepth = calcDepth(puntasDetalle.compra);
+    const askDepth = calcDepth(puntasDetalle.venta);
+    const marketPressure = calcMarketPressure(bidDepth, askDepth);
+
     return {
       iol_volume: cantidadOperada,
       iol_bid: iolBid,
@@ -252,6 +291,9 @@ export async function getIOLCotizacion(
       iol_avg_daily_volume: Math.round(estimatedAvgDaily),
       iol_status: 'online',
       iol_liquidity_alert: liquidityAlert,
+      iol_bid_depth: bidDepth,
+      iol_ask_depth: askDepth,
+      iol_market_pressure: marketPressure,
       puntas_detalle: puntasDetalle,
     };
   } catch {

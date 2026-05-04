@@ -11,6 +11,8 @@ import {
   analyzeRotation,
   calculateRotationScoreV17,
 } from '@/lib/calculations';
+import MarketPressureBadge from './MarketPressureBadge';
+import { isHighPriorityTicker } from '@/lib/absorption-rule';
 
 // ─── Props ───
 interface OportunidadesTabProps {
@@ -542,7 +544,7 @@ export default function OportunidadesTab({
 
     const carryRows = topCarry.map((row, idx) => [
       'Carry', idx + 1, row.instrument.ticker, row.instrument.type,
-      row.instrument.days, row.instrument.tem.toFixed(2),
+      row.instrument.days, (row?.instrument?.tem ?? 0).toFixed(2),
       row.spread.toFixed(3), row.spreadNeto.toFixed(3),
       row.upsideCapital.toFixed(2), row.posicionEnCanal.toFixed(0),
       row.huntingScore.toFixed(0),
@@ -563,7 +565,7 @@ export default function OportunidadesTab({
 
     const riskRows = riskAdjustedRanking.map((row, idx) => [
       'Riesgo-Ajustado', idx + 1, row.instrument.ticker, row.instrument.type,
-      row.instrument.days, row.instrument.tem.toFixed(2),
+      row.instrument.days, (row?.instrument?.tem ?? 0).toFixed(2),
       row.spread.toFixed(3), row.spreadNeto.toFixed(3),
       row.upsideCapital.toFixed(2), row.posicionEnCanal.toFixed(0),
       row.huntingScore.toFixed(0),
@@ -804,6 +806,11 @@ export default function OportunidadesTab({
                   }`}>
                     {bestOpportunity.instrument.type}
                   </span>
+                  {isHighPriorityTicker(bestOpportunity.instrument.ticker, bestOpportunity.instrument.tem) && (
+                    <span className="px-2 py-0.5 rounded-lg text-[9px] font-bold bg-[#fbbf24]/15 text-[#fbbf24] border border-[#fbbf24]/40 animate-pulse">
+                      ⚡ ABSORCIÓN PRIORITARIA
+                    </span>
+                  )}
                   <span className="text-app-text4 text-[10px] font-mono">
                     {bestOpportunity.instrument.days}d
                   </span>
@@ -1101,6 +1108,9 @@ export default function OportunidadesTab({
                       <span className="font-mono font-bold text-app-text text-base">
                         {row.instrument.ticker}
                       </span>
+                      {isHighPriorityTicker(row.instrument.ticker, row.instrument.tem) && (
+                        <span className="text-[8px] text-[#fbbf24] ml-1">⚡</span>
+                      )}
                       <span className={`px-1.5 py-0.5 rounded text-[8px] font-semibold ${
                         row.instrument.type === 'LECAP'
                           ? 'bg-app-accent-dim text-[#2eebc8]'
@@ -1143,7 +1153,7 @@ export default function OportunidadesTab({
                   <div className="min-w-[70px]">
                     <div className="text-[9px] text-app-text4 uppercase">TEM</div>
                     <div className={`font-mono font-medium text-sm ${row.isTrampa ? 'text-[#f87171]' : 'text-app-text'}`}>
-                      {row.instrument.tem.toFixed(2)}%
+                      {(row?.instrument?.tem ?? 0).toFixed(2)}%
                     </div>
                   </div>
 
@@ -1173,6 +1183,21 @@ export default function OportunidadesTab({
                     }`}>
                       {row.posicionEnCanal.toFixed(0)}%
                     </div>
+                  </div>
+
+                  {/* V3.2.1: Volume + IOL */}
+                  <div className="min-w-[60px]">
+                    <div className="text-[9px] text-app-text4 uppercase">Vol</div>
+                    <span className="font-mono text-[11px] text-app-text3">{row?.instrument?.iolVolume ? (row.instrument.iolVolume / 1000).toFixed(0) + 'K' : '—'}</span>
+                    {row?.instrument?.iolVolume != null && row.instrument.iolVolume > 0 && (
+                      <span className="text-[6px] ml-0.5 px-0.5 rounded bg-[#a78bfa]/10 text-[#a78bfa] font-mono">IOL</span>
+                    )}
+                  </div>
+
+                  {/* V3.2.1: Market Pressure */}
+                  <div className="min-w-[50px]">
+                    <div className="text-[9px] text-app-text4 uppercase">Presión</div>
+                    <MarketPressureBadge ticker={row?.instrument?.ticker ?? ''} compact />
                   </div>
 
                   {/* V1.9: Momentum */}

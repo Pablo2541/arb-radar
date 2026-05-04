@@ -6,6 +6,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { Instrument } from '@/lib/types';
+import { formatPriceAxis, formatTEMAxis, formatSpreadAxis, formatVolumeAxis, formatPriceTooltip, formatTEMTooltip, formatSpreadTooltip } from '@/lib/chart-formatters';
 
 // ════════════════════════════════════════════════════════════════════════
 // V3.2 — HistoricoTab: Price History with OHLC Charts
@@ -101,8 +102,10 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
           <span className="text-app-text3">{entry.name}:</span>
           <span className="font-mono text-app-text">
             {entry.name.includes('TEM') || entry.name.includes('Spread')
-              ? (entry.value * 100).toFixed(3) + '%'
-              : entry.value.toFixed(4)}
+              ? formatSpreadTooltip(entry.value * 100)
+              : entry.name.includes('Volumen') || entry.name.includes('Vol')
+                ? formatVolumeAxis(entry.value)
+                : formatPriceTooltip(entry.value)}
           </span>
         </div>
       ))}
@@ -205,6 +208,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
         tem: d.temClose,
         spread: d.spreadAvg,
         volume: d.volume,
+        iolVolume: d.iolVolume,
         high: d.high,
         low: d.low,
         open: d.open,
@@ -220,6 +224,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
           tem: s.tem,
           spread: s.spread,
           volume: s.volume,
+          iolVolume: s.iolVolume,
         }));
     }
     return [];
@@ -349,7 +354,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
               </span>
             </div>
             <div className="text-[10px] text-app-text4 font-mono">
-              {selectedInstrument.days}d al vto. · TEM {(selectedInstrument.tem).toFixed(2)}% · Precio ${selectedInstrument.price.toFixed(4)}
+              {selectedInstrument.days}d al vto. · TEM {((selectedInstrument?.tem ?? 0)).toFixed(2)}% · Precio ${(selectedInstrument?.price ?? 0).toFixed(4)}
             </div>
             {selectedInstrument.iolStatus === 'online' && (
               <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#a78bfa]/10 text-[#a78bfa] border border-[#a78bfa]/20">
@@ -436,7 +441,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                     <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
-                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => v.toFixed(3)} domain={['auto', 'auto']} />
+                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={formatPriceAxis} domain={['auto', 'auto']} />
                     <Tooltip content={<CustomTooltip />} />
                     <Area type="monotone" dataKey="price" name="Precio" stroke="#2eebc8" fill="url(#priceGradient)" strokeWidth={2} />
                   </AreaChart>
@@ -444,7 +449,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
                   <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                     <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
-                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => v.toFixed(3)} domain={['auto', 'auto']} />
+                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={formatPriceAxis} domain={['auto', 'auto']} />
                     <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="price" name="Precio" fill="#2eebc8" radius={[2, 2, 0, 0]} opacity={0.8} />
                   </BarChart>
@@ -471,7 +476,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                     <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
-                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => (v * 100).toFixed(2)} domain={['auto', 'auto']} />
+                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => formatTEMAxis(v * 100)} domain={['auto', 'auto']} />
                     <Tooltip content={<CustomTooltip />} />
                     <Area type="monotone" dataKey="tem" name="TEM" stroke="#f472b6" fill="url(#temGradient)" strokeWidth={2} />
                   </AreaChart>
@@ -479,7 +484,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
                   <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                     <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
-                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => (v * 100).toFixed(2)} domain={['auto', 'auto']} />
+                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => formatTEMAxis(v * 100)} domain={['auto', 'auto']} />
                     <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="tem" name="TEM" fill="#f472b6" radius={[2, 2, 0, 0]} opacity={0.8} />
                   </BarChart>
@@ -499,7 +504,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
                 <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
-                  <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => (v * 100).toFixed(3)} domain={['auto', 'auto']} />
+                  <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => formatSpreadAxis(v * 100)} domain={['auto', 'auto']} />
                   <Tooltip content={<CustomTooltip />} />
                   <Bar dataKey="spread" name="Spread" radius={[2, 2, 0, 0]}>
                     {chartData.map((entry, index) => (
@@ -523,9 +528,30 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
                   <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                     <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
-                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={v => v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v.toFixed(0)} />
+                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={formatVolumeAxis} />
                     <Tooltip content={<CustomTooltip />} />
                     <Bar dataKey="volume" name="Volumen" fill="#a78bfa" radius={[2, 2, 0, 0]} opacity={0.6} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* ── IOL Volume Chart (when available) ── */}
+          {ohlcData.some(d => (d?.iolVolume ?? 0) > 0) && (
+            <div className="glass-card p-5">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-app-text2">Volumen IOL</h3>
+                <span className="text-[9px] text-app-text4 font-mono">{selectedTicker}</span>
+              </div>
+              <div className="h-36">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData.filter(d => (d?.iolVolume ?? 0) > 0)} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#6b7280' }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickFormatter={formatVolumeAxis} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar dataKey="iolVolume" name="Vol IOL" fill="#a78bfa" radius={[2, 2, 0, 0]} opacity={0.8} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>

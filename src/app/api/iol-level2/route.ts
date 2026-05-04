@@ -1,12 +1,15 @@
 // ════════════════════════════════════════════════════════════════════════
-// ARB//RADAR V3.2.1 — /api/iol-level2
+// ARB//RADAR V3.2.2-PRO — /api/iol-level2
 // Real-time IOL Level 2 data for frontend queries
 //
 // Accepts GET requests with ?tickers=T15E7,S1L5 (comma-separated)
-// Returns enriched Level-2 data including Market Pressure (bid/ask depth).
+// Returns enriched Level-2 data including Market Pressure (bid/ask depth)
+// and Absorption Rule alerts for wall detection.
 //
 // Uses iol-bridge.ts (server-side only) for IOL authentication & data.
 // Results are cached for 30 seconds in memory.
+//
+// V3.2.2-PRO: Added absorption_alert field with Dynamic Absorption Rule.
 //
 // ⚠️  SERVER-SIDE ONLY — iol-bridge uses env vars IOL_USERNAME / IOL_PASSWORD
 // ════════════════════════════════════════════════════════════════════════
@@ -19,6 +22,7 @@ import {
   type IOLLevel2Data,
   type IOLPunta,
 } from '@/lib/iol-bridge';
+import { detectAbsorption, type AbsorptionAlert } from '@/lib/absorption-rule';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 30; // cache for 30 seconds
@@ -53,6 +57,8 @@ interface TickerLevel2Data {
     compra: IOLPunta[];
     venta: IOLPunta[];
   };
+  /** V3.2.2-PRO: Absorption Rule alert (null if no wall detected) */
+  absorption_alert: AbsorptionAlert | null;
 }
 
 interface Level2Response {
@@ -64,6 +70,7 @@ interface Level2Response {
     tickers_requested: number;
     tickers_resolved: number;
     tickers_failed: number;
+    alert_count: number;
   };
 }
 
@@ -76,6 +83,32 @@ interface CacheEntry {
 }
 
 let cachedEntry: CacheEntry | null = null;
+
+// ── In-Memory Depth History (for rolling averages) ─────────────────────
+
+const depthHistory: Map<string, Array<{ askDepth: number; timestamp: number }>> = new Map();
+
+const HISTORY_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+/**
+ * Update the depth history for a ticker and return the rolling average.
+ */
+function updateDepthHistory(ticker: string, askDepth: number): number {
+  const now = Date.now();
+  const history = depthHistory.get(ticker) || [];
+
+  // Add new entry
+  history.push({ askDepth, timestamp: now });
+
+  // Prune entries older than 15 minutes
+  const cutoff = now - HISTORY_WINDOW_MS;
+  const recentHistory = history.filter(h => h.timestamp >= cutoff);
+  depthHistory.set(ticker, recentHistory);
+
+  // Calculate rolling average (need at least 2 data points for meaningful average)
+  if (recentHistory.length < 2) return 0;
+  return recentHistory.reduce((sum, h) => sum + h.askDepth, 0) / recentHistory.length;
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -110,14 +143,31 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Process a single ticker's IOL data into enriched Level-2 data.
+ * Includes absorption detection using the Dynamic Absorption Rule.
  */
-function enrichLevel2Data(l2: IOLLevel2Data): TickerLevel2Data {
+function enrichLevel2Data(ticker: string, l2: IOLLevel2Data): TickerLevel2Data {
   const compraPuntas = l2.puntas_detalle?.compra ?? [];
   const ventaPuntas = l2.puntas_detalle?.venta ?? [];
 
   const bidDepth = calcDepth(compraPuntas);
   const askDepth = calcDepth(ventaPuntas);
   const marketPressure = calcMarketPressure(bidDepth, askDepth);
+
+  // Update depth history and get rolling average
+  const avgAskDepth15min = updateDepthHistory(ticker, askDepth);
+
+  // Run absorption detection
+  const absorptionAlert = detectAbsorption({
+    ticker,
+    bidDepth,
+    askDepth,
+    marketPressure: marketPressure ?? 0,
+    puntasCompra: compraPuntas,
+    puntasVenta: ventaPuntas,
+    avgAskDepth15min,
+    instrumentType: ticker.startsWith('T') ? 'BONCAP' : 'LECAP',
+    tem: 0, // TEM not available in Level-2 data; frontend can supplement
+  });
 
   return {
     volume: l2.iol_volume,
@@ -133,6 +183,7 @@ function enrichLevel2Data(l2: IOLLevel2Data): TickerLevel2Data {
       compra: compraPuntas,
       venta: ventaPuntas,
     },
+    absorption_alert: absorptionAlert,
   };
 }
 
@@ -153,7 +204,7 @@ async function fetchTickersInBatches(
         try {
           const l2Data = await getIOLCotizacion(ticker);
           if (l2Data) {
-            return { ticker, data: enrichLevel2Data(l2Data) };
+            return { ticker, data: enrichLevel2Data(ticker, l2Data) };
           }
           // getIOLCotizacion returned null — token or network error
           return {
@@ -169,6 +220,7 @@ async function fetchTickersInBatches(
               status: 'error' as const,
               liquidity_alert: false,
               puntas_detalle: { compra: [], venta: [] },
+              absorption_alert: null,
             },
           };
         } catch {
@@ -185,6 +237,7 @@ async function fetchTickersInBatches(
               status: 'error' as const,
               liquidity_alert: false,
               puntas_detalle: { compra: [], venta: [] },
+              absorption_alert: null,
             },
           };
         }
@@ -261,6 +314,7 @@ export async function GET(request: NextRequest) {
           tickers_requested: tickers.length,
           tickers_resolved: 0,
           tickers_failed: tickers.length,
+          alert_count: 0,
         },
       });
     }
@@ -277,6 +331,7 @@ export async function GET(request: NextRequest) {
           tickers_requested: tickers.length,
           tickers_resolved: 0,
           tickers_failed: tickers.length,
+          alert_count: 0,
         },
       });
     }
@@ -304,6 +359,7 @@ export async function GET(request: NextRequest) {
         tickers_requested: tickers.length,
         tickers_resolved: 0,
         tickers_failed: tickers.length,
+        alert_count: 0,
       },
     });
   }
@@ -314,6 +370,7 @@ export async function GET(request: NextRequest) {
   // ── Build response ─────────────────────────────────────────────────
   const tickersResolved = Object.values(data).filter((d) => d.status !== 'error').length;
   const tickersFailed = Object.values(data).filter((d) => d.status === 'error').length;
+  const alertCount = Object.values(data).filter((d) => d.absorption_alert !== null).length;
 
   const response: Level2Response = {
     iol_available: true,
@@ -324,6 +381,7 @@ export async function GET(request: NextRequest) {
       tickers_requested: tickers.length,
       tickers_resolved: tickersResolved,
       tickers_failed: tickersFailed,
+      alert_count: alertCount,
     },
   };
 

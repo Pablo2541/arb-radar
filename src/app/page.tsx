@@ -60,6 +60,109 @@ const TAB_CONFIG: { id: TabId; icon: string; label: string; shortcut: string }[]
   { id: 'configuracion', icon: '⚙️', label: 'Config', shortcut: '9' },
 ];
 
+// ════════════════════════════════════════════════════════════════════════
+// V3.2.2-PRO — Global Absorption Alert Banner
+// Polls /api/market-pressure for wall detection alerts
+// ════════════════════════════════════════════════════════════════════════
+
+interface AbsorptionAlertData {
+  ticker: string;
+  wallSize: number;
+  wallAvgMultiple: number;
+  absorbedPct: number;
+  alertType: 'WALL_DETECTED' | 'ABSORPTION_IMMINENT' | 'ABSORPTION_COMPLETE';
+  alertMessage: string;
+  priority: boolean;
+}
+
+function AbsorptionAlertBanner() {
+  const [alerts, setAlerts] = useState<AbsorptionAlertData[]>([]);
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchAlerts = useCallback(async () => {
+    try {
+      // Query top instruments by TEM (most likely to have walls)
+      const tickers = 'T15E7,T30J7,T5W3,S1L5';
+      const res = await fetch(`/api/market-pressure?tickers=${tickers}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (json.iol_available && json.alerts && json.alerts.length > 0) {
+        setAlerts(json.alerts);
+      } else {
+        setAlerts([]);
+      }
+    } catch {
+      // Silent fail
+    }
+  }, []);
+
+  useEffect(() => {
+    const initialTimeout = setTimeout(() => fetchAlerts(), 0);
+    intervalRef.current = setInterval(fetchAlerts, 60_000);
+    return () => {
+      clearTimeout(initialTimeout);
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [fetchAlerts]);
+
+  const visibleAlerts = alerts.filter(a => !dismissed.has(a.ticker + a.alertType));
+
+  if (visibleAlerts.length === 0) return null;
+
+  return (
+    <div className="px-4 md:px-6 lg:px-8 space-y-1">
+      {visibleAlerts.map((alert, idx) => {
+        const isImminent = alert.alertType === 'ABSORPTION_IMMINENT';
+        const isComplete = alert.alertType === 'ABSORPTION_COMPLETE';
+        const bgClass = isImminent 
+          ? 'bg-[#f87171]/10 border-[#f87171]/30' 
+          : isComplete 
+            ? 'bg-[#2eebc8]/10 border-[#2eebc8]/30'
+            : 'bg-[#fbbf24]/8 border-[#fbbf24]/20';
+        const textClass = isImminent 
+          ? 'text-[#f87171]' 
+          : isComplete 
+            ? 'text-[#2eebc8]'
+            : 'text-[#fbbf24]';
+        const emoji = isImminent ? '🚨' : isComplete ? '✅' : '🧱';
+
+        return (
+          <div 
+            key={`${alert.ticker}-${alert.alertType}-${idx}`}
+            className={`flex items-center justify-between p-2.5 rounded-lg border ${bgClass} ${isImminent ? 'animate-pulse' : ''}`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-sm">{emoji}</span>
+              <span className={`text-[10px] font-bold uppercase tracking-wider ${textClass}`}>
+                {alert.alertType.replace('_', ' ')}
+              </span>
+              <span className="text-[10px] font-mono text-app-text">
+                {alert.ticker}
+              </span>
+              {alert.priority && (
+                <span className="text-[8px] px-1.5 py-0.5 rounded bg-[#fbbf24]/10 text-[#fbbf24] border border-[#fbbf24]/30 font-bold">
+                  ⚡ PRIORIDAD
+                </span>
+              )}
+              <span className="text-[9px] text-app-text3 font-mono">
+                {alert.wallAvgMultiple.toFixed(1)}x avg · {alert.absorbedPct.toFixed(0)}% absorbed
+              </span>
+            </div>
+            <button
+              onClick={() => setDismissed(prev => new Set([...prev, alert.ticker + alert.alertType]))}
+              className="text-app-text4 hover:text-app-text2 text-xs transition-colors ml-2"
+              title="Descartar alerta"
+            >
+              ✕
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Inner Content ──
 
 function HomeContent() {
@@ -441,7 +544,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V3.2.1...
+            Cargando V3.2.2...
           </p>
         </div>
       </div>
@@ -527,7 +630,7 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.2.1</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.2.2</span>
             {/* V3.0: DB Sync indicator dot */}
             <div className="w-1.5 h-1.5 rounded-full hidden sm:block" style={{ backgroundColor: dbSyncDotColor }} title={dbAvailable ? `DB: ${lastDbSyncStatus}` : 'DB: no configurado'} />
             {/* V3.1: IOL Level 2 indicator dot */}
@@ -669,6 +772,9 @@ function HomeContent() {
         <div className="px-4 md:px-6 lg:px-8 pt-2">
           <ThresholdAlerts instruments={sanitizedInstruments} config={config} position={position} momentumMap={momentumMap} />
         </div>
+
+        {/* V3.2.2-PRO: Global Absorption Alert Banner */}
+        <AbsorptionAlertBanner />
 
         {/* ── Market Summary Widget (Enhanced V1.6.2) ── */}
         <div className="px-4 md:px-6 lg:px-8 py-1">

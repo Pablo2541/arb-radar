@@ -20,6 +20,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   BarChart, Bar, Cell, ReferenceLine,
 } from 'recharts';
+import { roundTo, formatTEMAxis, formatSpreadAxis, formatTEMTooltip, formatSpreadTooltip } from '@/lib/chart-formatters';
 
 interface MercadoTabProps {
   instruments: Instrument[];         // V2.0.3: already instruments from page.tsx
@@ -767,12 +768,13 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                 {renderSortHeader("Cambio %", "change")}
                 <th className="px-4 py-3 text-left whitespace-nowrap text-app-text3 font-medium text-[11px] uppercase tracking-wider">S/R</th>
                 <th className="px-4 py-3 text-left whitespace-nowrap text-app-text3 font-medium text-[11px] uppercase tracking-wider">Presión</th>
+                <th className="px-4 py-3 text-left whitespace-nowrap text-app-text3 font-medium text-[11px] uppercase tracking-wider">Vol</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="px-4 py-8 text-center">
+                  <td colSpan={14} className="px-4 py-8 text-center">
                     <div className="text-app-text4 text-sm">Sin resultados</div>
                     <div className="text-app-text4 text-[10px] mt-1">No hay instrumentos que coincidan con los filtros seleccionados</div>
                     <button
@@ -823,7 +825,7 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                     <td className="px-4 py-3 font-mono text-app-text2">{inst.days}</td>
                     {/* V2.0.5: Price cell — reduced opacity when LIVE is off (stale data warning) */}
                     <td className={`px-4 py-3 font-mono ${liveData.active ? 'text-app-text' : 'text-app-text4 opacity-60'}`}>
-                      {inst.price.toFixed(4)}
+                      {(inst?.price ?? 0).toFixed(4)}
                       {!liveData.active && (
                         <span className="text-[7px] text-app-text4 ml-1 uppercase tracking-wider">cierre ant.</span>
                       )}
@@ -835,15 +837,15 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                     <td className={`px-4 py-3 ${temLow ? 'bg-[#f87171]/12' : ''}`}>
                       <div className="group relative">
                         <span className={`font-mono font-medium ${temLow ? 'text-[#f87171]' : liveData.active ? 'text-app-text' : 'text-app-text4 opacity-60'}`}>
-                          {inst.tem.toFixed(2)}%
+                          {(inst?.tem ?? 0).toFixed(2)}%
                           {temLow && <span className="ml-1 text-[8px]">⚠</span>}
                         </span>
-                        {inst.tirHistory.length >= 2 && (
+                        {(inst?.tirHistory ?? []).length >= 2 && (
                           <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50 bg-app-card border border-app-border rounded-xl p-4 shadow-2xl min-w-[220px]">
-                            <div className="text-[9px] text-app-text4 mb-2 font-mono">Evolución TIR ({inst.tirHistory.length} snapshots)</div>
-                            <div className="flex items-center justify-center mb-2"><Sparkline data={inst.tirHistory} width={120} height={40} /></div>
+                            <div className="text-[9px] text-app-text4 mb-2 font-mono">Evolución TIR ({(inst?.tirHistory ?? []).length} snapshots)</div>
+                            <div className="flex items-center justify-center mb-2"><Sparkline data={inst?.tirHistory ?? []} width={120} height={40} /></div>
                             <div className="text-[9px] text-app-text3 font-mono">
-                              {inst.tirHistory.map((t, i) => (<span key={i}>{t.toFixed(2)}%{i < inst.tirHistory.length - 1 ? ' → ' : ''}</span>))}
+                              {(inst?.tirHistory ?? []).map((t, i) => (<span key={i}>{(t ?? 0).toFixed(2)}%{i < (inst?.tirHistory?.length ?? 0) - 1 ? ' → ' : ''}</span>))}
                             </div>
                           </div>
                         )}
@@ -854,7 +856,7 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                       {inst.deltaTIR !== null ? (
                         <div className="flex items-center gap-1">
                           <span className={`font-mono font-medium text-[11px] ${inst.deltaTIR > 0.02 ? 'text-[#2eebc8]' : inst.deltaTIR < -0.02 ? 'text-[#f87171]' : 'text-app-text4'}`}>
-                            {inst.deltaTIR >= 0 ? '+' : ''}{inst.deltaTIR.toFixed(3)}%
+                            {(inst?.deltaTIR ?? 0) >= 0 ? '+' : ''}{(inst?.deltaTIR ?? 0).toFixed(3)}%
                           </span>
                           {arrowInfo.arrow && <span style={{ color: arrowInfo.color }} className="text-[10px]">{arrowInfo.arrow}</span>}
                           {/* V2.0.2: Show "vs cierre" badge when delta comes from live data */}
@@ -866,35 +868,35 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                         <span className="text-app-text4 text-[10px]">—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-app-text2">{isFinite(inst.paridad) ? inst.paridad.toFixed(1) : '—'}%</td>
+                    <td className="px-4 py-3 font-mono text-app-text2">{isFinite(inst?.paridad ?? 0) ? (inst?.paridad ?? 0).toFixed(1) : '—'}%</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <span className={`font-mono font-medium ${inst.spread > 0 ? 'text-[#2eebc8]' : inst.spread > -0.1 ? 'text-app-gold' : 'text-[#f87171]'}`}>
-                          {inst.spread >= 0 ? '+' : ''}{inst.spread.toFixed(3)}%
+                          {(inst?.spread ?? 0) >= 0 ? '+' : ''}{(inst?.spread ?? 0).toFixed(3)}%
                         </span>
                         <span className="text-[8px] text-app-text4">vs {inst.caucionLabel}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 font-mono text-app-text2">{inst.dm != null ? inst.dm.toFixed(4) : '—'}</td>
+                    <td className="px-4 py-3 font-mono text-app-text2">{inst?.dm != null ? (inst?.dm ?? 0).toFixed(4) : '—'}</td>
                     <td className={`px-4 py-3 font-mono font-medium ${inst.change >= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
-                      {inst.change >= 0 ? '+' : ''}{inst.change.toFixed(2)}%
+                      {(inst?.change ?? 0) >= 0 ? '+' : ''}{(inst?.change ?? 0).toFixed(2)}%
                     </td>
                     <td className="px-4 py-3">
                       {(() => {
                         const sr = srDataMap.get(inst.ticker);
-                        if (!sr || !isFinite(sr.soporte) || !isFinite(sr.resistencia)) return <span className="text-app-text4 text-[10px]">—</span>;
+                        if (!sr || !isFinite(sr?.soporte ?? 0) || !isFinite(sr?.resistencia ?? 0)) return <span className="text-app-text4 text-[10px]">—</span>;
                         // V1.8.4: Color the % badge based on position in channel
-                        const pct = sr.posicionEnCanal;
+                        const pct = sr?.posicionEnCanal ?? 50;
                         const pctColor = pct >= 90 ? '#f87171' : pct >= 70 ? '#fbbf24' : '#2eebc8';
                         return (
                           <div className="flex flex-col gap-0.5">
                             <div className="flex items-center gap-1">
                               <span className="text-[8px] text-[#2eebc8]">S</span>
-                              <span className="text-[9px] font-mono text-[#2eebc8]/70">{sr.soporte.toFixed(4)}</span>
+                              <span className="text-[9px] font-mono text-[#2eebc8]/70">{(sr?.soporte ?? 0).toFixed(4)}</span>
                             </div>
                             <div className="flex items-center gap-1">
                               <span className="text-[8px] text-[#f87171]">R</span>
-                              <span className="text-[9px] font-mono text-[#f87171]/70">{sr.resistencia.toFixed(4)}</span>
+                              <span className="text-[9px] font-mono text-[#f87171]/70">{(sr?.resistencia ?? 0).toFixed(4)}</span>
                             </div>
                             {/* V1.8.4: % badge showing channel position */}
                             <div className="mt-0.5">
@@ -911,6 +913,14 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                     </td>
                     <td className="px-4 py-3">
                       <MarketPressureBadge ticker={inst.ticker} compact />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-mono text-[10px] text-app-text3">{inst?.iolVolume ? (inst.iolVolume / 1000).toFixed(0) + 'K' : '—'}</span>
+                        {inst?.iolVolume != null && inst.iolVolume > 0 && (
+                          <span className="text-[7px] px-1 py-0.5 rounded bg-[#a78bfa]/10 text-[#a78bfa] font-mono">IOL</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -953,8 +963,8 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
               <LineChart width={width} height={height} margin={{ top: 5, right: 20, left: 10, bottom: 5 }} key={`yc-${width}-${height}`}>
                 <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
                 <XAxis dataKey="days" type="number" domain={[0, 'dataMax']} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'Días', position: 'insideBottomRight', offset: -5, fill: chartLabelFill, fontSize: 11 }} />
-                <YAxis domain={['dataMin - 0.1', 'dataMax + 0.1']} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'TEM %', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
-                <Tooltip contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: '12px', fontSize: 12, color: tooltipText }} labelStyle={{ color: '#9CA3AF' }} itemStyle={{ color: tooltipText }} formatter={((value: number, name: string) => [`${Number(value).toFixed(2)}%`, name]) as never} labelFormatter={(label: number) => `${label} días`} />
+                <YAxis domain={['dataMin - 0.1', 'dataMax + 0.1']} tickFormatter={formatTEMAxis} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'TEM %', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
+                <Tooltip contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: '12px', fontSize: 12, color: tooltipText }} labelStyle={{ color: '#9CA3AF' }} itemStyle={{ color: tooltipText }} formatter={((value: number, name: string) => [formatTEMTooltip(Number(value)), name]) as never} labelFormatter={(label: number) => `${label} días`} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line data={lecapYield} dataKey="tem" name="LECAPs" stroke="#2eebc8" strokeWidth={2} dot={{ fill: '#2eebc8', r: 4 }} />
                 <Line data={boncapYield} dataKey="tem" name="BONCAPs" stroke="#f472b6" strokeWidth={2} dot={{ fill: '#f472b6', r: 4 }} />
@@ -972,8 +982,8 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
               <BarChart width={width} height={height} data={spreadData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }} key={`sp-${width}-${height}`}>
                 <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
                 <XAxis dataKey="ticker" tick={{ fill: chartTickFill, fontSize: 10 }} angle={-45} textAnchor="end" height={60} />
-                <YAxis tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'Spread %', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
-                <Tooltip contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: '12px', fontSize: 12, color: tooltipText }} itemStyle={{ color: tooltipText }} labelStyle={{ color: '#9CA3AF' }} formatter={((value: number) => [`${Number(value).toFixed(3)}%`, 'Spread']) as never} />
+                <YAxis tickFormatter={formatSpreadAxis} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'Spread %', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
+                <Tooltip contentStyle={{ backgroundColor: tooltipBg, border: `1px solid ${tooltipBorder}`, borderRadius: '12px', fontSize: 12, color: tooltipText }} itemStyle={{ color: tooltipText }} labelStyle={{ color: '#9CA3AF' }} formatter={((value: number) => [formatSpreadTooltip(Number(value)), 'Spread']) as never} />
                 <ReferenceLine y={0} stroke="rgba(148,163,184,0.15)" />
                 <Bar dataKey="spread" radius={[4, 4, 0, 0]}>
                   {spreadData.map((entry, index) => {

@@ -1,9 +1,12 @@
 // ════════════════════════════════════════════════════════════════════════
-// V3.0 — ARB//RADAR Prisma Schema
+// V3.2.2-PRO — ARB//RADAR Prisma Schema
 //
 // PostgreSQL-compatible schema for data persistence.
 // LIVE data is persisted via debounced writes (every 60s)
 // to avoid exhausting Vercel serverless function quotas.
+//
+// V3.2.2-PRO adds depth/pressure fields to PriceSnapshot & DailyOHLC
+// for Market Pressure visualization and Absorption Rule detection.
 //
 // FALLBACK: If DATABASE_URL is not configured, the app
 // automatically falls back to localStorage — zero config needed.
@@ -14,7 +17,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -85,6 +88,9 @@ model PriceSnapshot {
   iolVolume Float?   // IOL cantidadOperada (Level 2 only)
   iolBid    Float?   // IOL best bid (Level 2 only)
   iolAsk    Float?   // IOL best ask (Level 2 only)
+  iolBidDepth      Float?   // V3.2.2-PRO: Total quantity across all compra puntas
+  iolAskDepth      Float?   // V3.2.2-PRO: Total quantity across all venta puntas
+  iolMarketPressure Float?  // V3.2.2-PRO: bid_depth / ask_depth ratio (>1 = buying pressure)
   timestamp DateTime @default(now())
 
   @@index([ticker])
@@ -107,6 +113,9 @@ model DailyOHLC {
   volume    Float    @default(0) // total notional ARS volume
   iolVolume Float?   // IOL total volume for day
   spreadAvg Float    @default(0) // average spread vs caución
+  iolBidDepthAvg       Float    @default(0) // V3.2.2-PRO: Average bid depth for the day
+  iolAskDepthAvg       Float    @default(0) // V3.2.2-PRO: Average ask depth for the day
+  iolMarketPressureAvg Float    @default(0) // V3.2.2-PRO: Average market pressure for the day
   createdAt DateTime @default(now())
 
   @@unique([ticker, date])

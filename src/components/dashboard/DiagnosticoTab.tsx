@@ -231,10 +231,10 @@ export default function DiagnosticoTab({ instruments, config, position, mepRate,
             {pnlData ? (
               <>
                 <div className="text-xl font-mono font-bold" style={{ color: pnlData.pnl >= 0 ? '#2eebc8' : '#f87171' }}>
-                  {pnlData.pnl >= 0 ? '+' : ''}${pnlData.pnl.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                  {pnlData.pnl >= 0 ? '+' : ''}${(pnlData?.pnl ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                 </div>
                 <div className="text-[10px] font-mono" style={{ color: pnlData.pnlPct >= 0 ? '#2eebc8' : '#f87171' }}>
-                  {pnlData.pnlPct >= 0 ? '+' : ''}{pnlData.pnlPct.toFixed(2)}%
+                  {pnlData.pnlPct >= 0 ? '+' : ''}{(pnlData?.pnlPct ?? 0).toFixed(2)}%
                 </div>
               </>
             ) : (
@@ -261,7 +261,7 @@ export default function DiagnosticoTab({ instruments, config, position, mepRate,
             <div className="flex flex-wrap gap-2">
               {redZoneInstruments.map(inst => (
                 <span key={inst.ticker} className="px-2.5 py-1 rounded-lg text-[10px] font-mono font-medium bg-[#f87171]/10 text-[#f87171] border border-[#f87171]/20">
-                  {inst.ticker} ({inst.tem.toFixed(2)}% TEM)
+                  {inst.ticker} ({(inst?.tem ?? 0).toFixed(2)}% TEM)
                 </span>
               ))}
             </div>

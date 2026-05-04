@@ -1,9 +1,12 @@
 // ════════════════════════════════════════════════════════════════════════
-// V3.1 — ARB//RADAR Prisma Schema (PostgreSQL for Neon)
+// V3.2.1-PRO — ARB//RADAR Prisma Schema (PostgreSQL for Neon)
 //
 // CEREBRO TÁCTICO — Motor de precios + validación IOL Nivel 2
 // LIVE data is persisted via debounced writes (every 60s)
 // to avoid exhausting Vercel serverless function quotas.
+//
+// V3.2.1-PRO adds depth/pressure fields to PriceSnapshot & DailyOHLC
+// for Market Pressure visualization and Absorption Rule detection.
 //
 // FALLBACK: If DATABASE_URL is not configured, the app
 // automatically falls back to localStorage — zero config needed.
@@ -70,6 +73,54 @@ model Simulation {
   capitalNetoSalida Float
   capitalSobrante   Float
   createdAt         DateTime @default(now())
+}
+
+/// V3.2: Price snapshots — every price observation from the Hybrid Data Motor
+model PriceSnapshot {
+  id        String   @id @default(cuid())
+  ticker    String
+  price     Float    // price per $1 VN
+  tem       Float    // TEM at snapshot time (decimal)
+  tna       Float    // TNA at snapshot time (decimal)
+  spread    Float    // spread vs caución (decimal)
+  volume    Float    @default(0) // notional ARS volume
+  source    String   @default("level1") // "level1" or "level2"
+  iolVolume Float?   // IOL cantidadOperada (Level 2 only)
+  iolBid    Float?   // IOL best bid (Level 2 only)
+  iolAsk    Float?   // IOL best ask (Level 2 only)
+  iolBidDepth       Float?   // V3.2.1-PRO: Total quantity across all compra puntas
+  iolAskDepth       Float?   // V3.2.1-PRO: Total quantity across all venta puntas
+  iolMarketPressure Float?   // V3.2.1-PRO: bid_depth / ask_depth ratio (>1 = buying pressure)
+  timestamp DateTime @default(now())
+
+  @@index([ticker])
+  @@index([timestamp])
+}
+
+/// V3.2: Daily OHLC — aggregated candle per ticker per day
+model DailyOHLC {
+  id        String   @id @default(cuid())
+  ticker    String
+  date      String   // YYYY-MM-DD
+  open      Float    // first price of day
+  high      Float    // max price of day
+  low       Float    // min price of day
+  close     Float    // last price of day
+  temOpen   Float    @default(0) // TEM at open
+  temClose  Float    @default(0) // TEM at close
+  temHigh   Float    @default(0) // max TEM of day
+  temLow    Float    @default(0) // min TEM of day
+  volume    Float    @default(0) // total notional ARS volume
+  iolVolume Float?   // IOL total volume for day
+  spreadAvg Float    @default(0) // average spread vs caución
+  iolBidDepthAvg       Float    @default(0) // V3.2.1-PRO: Average bid depth for the day
+  iolAskDepthAvg       Float    @default(0) // V3.2.1-PRO: Average ask depth for the day
+  iolMarketPressureAvg Float    @default(0) // V3.2.1-PRO: Average market pressure for the day
+  createdAt DateTime @default(now())
+
+  @@unique([ticker, date])
+  @@index([ticker])
+  @@index([date])
 }
 
 /// Keep User model for potential auth

@@ -35,7 +35,7 @@ export default function ThresholdAlerts({ instruments, config, position, momentu
           type: isHeld ? 'danger' : 'warning',
           icon: isHeld ? '🚨' : '⚠️',
           title: isHeld ? 'TRAMPA en Cartera' : 'TRAMPA Detectada',
-          message: `${inst.ticker} TEM ${inst.tem.toFixed(2)}% < Caución ${caucionTEM.toFixed(2)}%`,
+          message: `${inst.ticker} TEM ${(inst?.tem ?? 0).toFixed(2)}% < Caución ${caucionTEM.toFixed(2)}%`,
           ticker: inst.ticker,
         });
       }
@@ -52,7 +52,7 @@ export default function ThresholdAlerts({ instruments, config, position, momentu
             type: 'warning',
             icon: '📉',
             title: 'Momentum Negativo en Cartera',
-            message: `${inst.ticker} ΔTIR: ${momentum.deltaTIR >= 0 ? '+' : ''}${momentum.deltaTIR.toFixed(3)}%`,
+            message: `${inst.ticker} ΔTIR: ${momentum.deltaTIR >= 0 ? '+' : ''}${(momentum?.deltaTIR ?? 0).toFixed(3)}%`,
             ticker: inst.ticker,
           });
         }

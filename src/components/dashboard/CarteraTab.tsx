@@ -3,6 +3,7 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { Instrument, Config, Position, Transaction, SimulationRecord, ExternalHistoryRecord, MomentumData, SRData, LiveInstrument } from '@/lib/types';
 import { calculatePnL, analyzeRotation, durationMod } from '@/lib/calculations';
+import { roundTo } from '@/lib/chart-formatters';
 import { saveToStorage, STORAGE_KEYS } from '@/lib/sampleData';
 import { calculateSR, PriceHistoryFile } from '@/lib/priceHistory';
 import { parseCSVLine, parseNumber, excelSerialToDate, isExcelDateSerial, cellToString, cellToNumber, parseXlsxRows } from '@/lib/parsers';
@@ -784,7 +785,7 @@ export default function CarteraTab({
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-3 pt-3 border-t border-app-border">
             <div>
               <div className="text-[10px] text-app-text3 mb-1">Precio Entrada</div>
-              <div className="font-mono text-app-text2 text-sm">${position.entryPrice.toFixed(4)}</div>
+              <div className="font-mono text-app-text2 text-sm">${(position?.entryPrice ?? 0).toFixed(4)}</div>
             </div>
             <div>
               <div className="text-[10px] text-app-text3 mb-1 flex items-center gap-1">
@@ -798,7 +799,7 @@ export default function CarteraTab({
                 )}
               </div>
               <div className={`font-mono text-sm ${isLive && livePrice !== null ? 'text-app-accent-text' : 'text-app-text4'}`}>
-                ${(livePrice ?? currentInstrument.price).toFixed(4)}
+                {(livePrice ?? currentInstrument?.price ?? 0).toFixed(4)}
               </div>
             </div>
             <div>
@@ -812,7 +813,7 @@ export default function CarteraTab({
             <div>
               <div className="text-[10px] text-app-text3 mb-1">TEM Actual</div>
               <div className={`font-mono text-sm ${isLive && livePrice !== null ? 'text-app-accent-text' : 'text-app-text4'}`}>
-                {currentInstrument.tem.toFixed(2)}%
+                {(currentInstrument?.tem ?? 0).toFixed(2)}%
               </div>
             </div>
           </div>
@@ -877,7 +878,7 @@ export default function CarteraTab({
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-app-text3">Precio Actual</span>
-                <span className="font-mono text-app-text2">${currentInstrument.price.toFixed(4)}</span>
+                <span className="font-mono text-app-text2">${(currentInstrument?.price ?? 0).toFixed(4)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-app-text3">Venta Bruta</span>
@@ -959,7 +960,7 @@ export default function CarteraTab({
                     <optgroup label="LECAPs" className="bg-[#111827] text-[#2eebc8]">
                       {lecapOptions.filter(i => i.ticker !== position.ticker).map(inst => (
                         <option key={inst.ticker} value={inst.ticker} className="bg-[#111827] text-white">
-                          {inst.ticker} — {inst.tem.toFixed(2)}% TEM — {inst.days}d
+                          {inst.ticker} — {(inst?.tem ?? 0).toFixed(2)}% TEM — {inst.days}d
                         </option>
                       ))}
                     </optgroup>
@@ -968,7 +969,7 @@ export default function CarteraTab({
                     <optgroup label="BONCAPs" className="bg-[#111827] text-[#f472b6]">
                       {boncapOptions.filter(i => i.ticker !== position.ticker).map(inst => (
                         <option key={inst.ticker} value={inst.ticker} className="bg-[#111827] text-white">
-                          {inst.ticker} — {inst.tem.toFixed(2)}% TEM — {inst.days}d
+                          {inst.ticker} — {(inst?.tem ?? 0).toFixed(2)}% TEM — {inst.days}d
                         </option>
                       ))}
                     </optgroup>
@@ -988,7 +989,7 @@ export default function CarteraTab({
                       step="0.0001"
                       value={rotationManualSellPrice}
                       onChange={(e) => setRotationManualSellPrice(e.target.value)}
-                      placeholder={`Dashboard: ${currentInstrument.price.toFixed(4)}`}
+                      placeholder={`Dashboard: ${(currentInstrument?.price ?? 0).toFixed(4)}`}
                       className="w-full bg-app-input text-app-text font-mono text-sm border border-app-border rounded-md px-3 py-1.5 focus:outline-none focus:border-app-accent/50 placeholder:text-app-text4"
                     />
                   </div>
@@ -999,7 +1000,7 @@ export default function CarteraTab({
                       step="0.0001"
                       value={rotationManualBuyPrice}
                       onChange={(e) => setRotationManualBuyPrice(e.target.value)}
-                      placeholder={rotationTargetInstrument ? `Dashboard: ${rotationTargetInstrument.price.toFixed(4)}` : 'Seleccionar destino...'}
+                      placeholder={rotationTargetInstrument ? `Dashboard: ${(rotationTargetInstrument?.price ?? 0).toFixed(4)}` : 'Seleccionar destino...'}
                       className="w-full bg-app-input text-app-text font-mono text-sm border border-app-border rounded-md px-3 py-1.5 focus:outline-none focus:border-app-accent/50 placeholder:text-app-text4 disabled:opacity-40"
                       disabled={!rotationTarget}
                     />
@@ -1546,7 +1547,7 @@ export default function CarteraTab({
                 <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--app-text3)' }} />
                 <YAxis
                   tick={{ fontSize: 10, fill: 'var(--app-text3)' }}
-                  tickFormatter={(v: number) => `$${(v/1000).toFixed(0)}k`}
+                  tickFormatter={(v: number) => `$${roundTo(v/1000, 0).toFixed(0)}k`}
                   ticks={(() => {
                     const capitals = capitalEvolutionData.map(p => p.capital);
                     const minCap = Math.min(...capitals);

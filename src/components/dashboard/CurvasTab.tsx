@@ -10,6 +10,7 @@ import {
   analyzeCurveShape,
   detectCurveAnomalies,
 } from '@/lib/calculations';
+import { formatTEMAxis, formatSpreadAxis, formatSlopeAxis, formatDMAxis, formatTEMTooltip, formatSpreadTooltip, formatDMTooltip } from '@/lib/chart-formatters';
 import ChartContainer from './ChartContainer';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -102,11 +103,11 @@ export default function CurvasTab({ instruments, config, position, momentumMap }
   const chartTickFill = 'rgba(220, 220, 220, 0.8)';
   const chartLabelFill = 'rgba(220, 220, 220, 0.8)';
 
-  // V3.0.1: Axis formatters — limit decimals for clean labels
-  const formatTEM = (v: number) => v.toFixed(2);
-  const formatSpread = (v: number) => v.toFixed(3);
-  const formatSlope = (v: number) => v.toFixed(2);
-  const formatDM = (v: number) => v.toFixed(3);
+  // REMOVED V3.2.2: Local formatters replaced with professional chart-formatters
+  // const formatTEM = (v: number) => v.toFixed(2);
+  // const formatSpread = (v: number) => v.toFixed(3);
+  // const formatSlope = (v: number) => v.toFixed(2);
+  // const formatDM = (v: number) => v.toFixed(3);
 
   const getCurveShapeColor = (s: string) => {
     switch (s) {
@@ -239,9 +240,9 @@ export default function CurvasTab({ instruments, config, position, momentumMap }
                 ))}
 
                 {/* Y-axis TEM labels */}
-                <text x="45" y={toY(maxTEM) + 4} textAnchor="end" fill="rgba(128,128,128,0.5)" fontSize="8" fontFamily="monospace">{maxTEM.toFixed(1)}%</text>
-                <text x="45" y={toY(minTEM) + 4} textAnchor="end" fill="rgba(128,128,128,0.5)" fontSize="8" fontFamily="monospace">{minTEM.toFixed(1)}%</text>
-                <text x="45" y={toY((maxTEM + minTEM) / 2) + 4} textAnchor="end" fill="rgba(128,128,128,0.5)" fontSize="8" fontFamily="monospace">{((maxTEM + minTEM) / 2).toFixed(1)}%</text>
+                <text x="45" y={toY(maxTEM) + 4} textAnchor="end" fill="rgba(128,128,128,0.5)" fontSize="8" fontFamily="monospace">{formatTEMAxis(maxTEM)}</text>
+                <text x="45" y={toY(minTEM) + 4} textAnchor="end" fill="rgba(128,128,128,0.5)" fontSize="8" fontFamily="monospace">{formatTEMAxis(minTEM)}</text>
+                <text x="45" y={toY((maxTEM + minTEM) / 2) + 4} textAnchor="end" fill="rgba(128,128,128,0.5)" fontSize="8" fontFamily="monospace">{formatTEMAxis((maxTEM + minTEM) / 2)}</text>
 
                 {/* X-axis days labels */}
                 <text x="60" y="195" textAnchor="middle" fill="rgba(128,128,128,0.5)" fontSize="8" fontFamily="monospace">0d</text>
@@ -344,12 +345,12 @@ export default function CurvasTab({ instruments, config, position, momentumMap }
                 <LineChart width={width} height={height} margin={{ top: 10, right: 30, left: 15, bottom: 10 }} key={`tem-${width}-${height}`}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
                   <XAxis dataKey="days" type="number" domain={[-2, 'dataMax + 5']} padding={{ left: 20, right: 20 }} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'Días', position: 'insideBottomRight', offset: -5, fill: chartLabelFill, fontSize: 11 }} />
-                  <YAxis domain={['dataMin - 0.1', 'dataMax + 0.1']} tickFormatter={formatTEM} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'TEM %', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
+                  <YAxis domain={['dataMin - 0.1', 'dataMax + 0.1']} tickFormatter={formatTEMAxis} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'TEM %', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '12px', fontSize: 12, color: '#FFFFFF', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
                     labelStyle={{ color: '#9CA3AF' }}
                     itemStyle={{ color: '#FFFFFF' }}
-                    formatter={((value: number, name: string) => [`${Number(value).toFixed(2)}%`, name]) as never}
+                    formatter={((value: number, name: string) => [formatTEMTooltip(Number(value)), name]) as never}
                     labelFormatter={(label: number) => `${label} días`}
                   />
                   <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -370,12 +371,12 @@ export default function CurvasTab({ instruments, config, position, momentumMap }
                 <AreaChart width={width} height={height} data={spreadCurveData} margin={{ top: 10, right: 30, left: 15, bottom: 10 }} key={`spc-${width}-${height}`}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
                   <XAxis dataKey="days" type="number" domain={[-2, 'dataMax + 5']} padding={{ left: 20, right: 20 }} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'Días', position: 'insideBottomRight', offset: -5, fill: chartLabelFill, fontSize: 11 }} />
-                  <YAxis tickFormatter={formatSpread} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'Spread %', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
+                  <YAxis tickFormatter={formatSpreadAxis} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'Spread %', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '12px', fontSize: 12, color: '#FFFFFF', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
                     itemStyle={{ color: '#FFFFFF' }}
                     labelStyle={{ color: '#9CA3AF' }}
-                    formatter={((value: number) => [`${Number(value).toFixed(3)}%`, 'Spread']) as never}
+                    formatter={((value: number) => [formatSpreadTooltip(Number(value)), 'Spread']) as never}
                     labelFormatter={(label: number) => `${label} días`}
                   />
                   <ReferenceLine y={0} stroke="rgba(128,128,128,0.3)" strokeWidth={1} />
@@ -401,13 +402,13 @@ export default function CurvasTab({ instruments, config, position, momentumMap }
                 <BarChart width={width} height={height} data={slopeData} margin={{ top: 10, right: 30, left: 15, bottom: 10 }} key={`sl-${width}-${height}`}>
                   <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
                   <XAxis dataKey="ticker" type="category" tick={{ fill: '#FFFFFF', fontSize: 10 }} angle={-45} textAnchor="end" height={60} />
-                  <YAxis tickFormatter={formatSlope} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: '% TEM/30d', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
+                  <YAxis tickFormatter={formatSlopeAxis} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: '% TEM/30d', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '12px', fontSize: 12, color: '#FFFFFF', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
                     itemStyle={{ color: '#FFFFFF' }}
                     labelStyle={{ color: '#9CA3AF', fontWeight: 600 }}
                     cursor={{ fill: 'rgba(46, 235, 200, 0.07)' }}
-                    formatter={((value: number) => [`${Number(value).toFixed(4)}% /30d`, 'Pendiente']) as never}
+                    formatter={((value: number) => [formatSlopeAxis(Number(value)) + '/30d', 'Pendiente']) as never}
                     labelFormatter={(label: string) => `${label}`}
                   />
                   <ReferenceLine y={0} stroke="rgba(128,128,128,0.3)" />
@@ -440,13 +441,13 @@ export default function CurvasTab({ instruments, config, position, momentumMap }
             <BarChart width={width} height={height} data={durationData} margin={{ top: 5, right: 30, left: 15, bottom: 5 }} key={`dm-${width}-${height}`}>
               <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
               <XAxis dataKey="ticker" tick={{ fill: '#FFFFFF', fontSize: 9 }} angle={-45} textAnchor="end" height={60} />
-              <YAxis tickFormatter={formatDM} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'DM', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
+              <YAxis tickFormatter={formatDMAxis} tick={{ fill: chartTickFill, fontSize: 11 }} label={{ value: 'DM', angle: -90, position: 'insideLeft', fill: chartLabelFill, fontSize: 11 }} />
               <Tooltip
                 contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '12px', fontSize: 12, color: '#FFFFFF', boxShadow: '0 8px 32px rgba(0,0,0,0.4)' }}
                 itemStyle={{ color: '#FFFFFF' }}
                 labelStyle={{ color: '#9CA3AF' }}
                 cursor={{ fill: 'rgba(46, 235, 200, 0.07)' }}
-                formatter={((value: number) => [Number(value).toFixed(4), 'Duration Mod.']) as never}
+                formatter={((value: number) => [formatDMTooltip(Number(value)), 'Duration Mod.']) as never}
               />
               <Bar dataKey="dm" radius={[4, 4, 0, 0]}>
                 {durationData.map((entry, index) => (

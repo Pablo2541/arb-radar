@@ -434,11 +434,11 @@ export default function ArbitrajeTab({ instruments, config, position, momentumMa
               <div className="text-[8px] text-app-text4 uppercase tracking-wider mb-1">Rango 15d S/R</div>
               <div className="flex items-baseline gap-1">
                 <span className="font-mono text-[11px] text-[#2eebc8]">
-                  ${srDataMap.get(currentInstrument.ticker)?.soporte.toFixed(4) ?? '—'}
+                  ${srDataMap.get(currentInstrument.ticker)?.soporte?.toFixed(4) ?? '—'}
                 </span>
                 <span className="text-app-text4 text-[9px]">/</span>
                 <span className="font-mono text-[11px] text-[#f87171]">
-                  ${srDataMap.get(currentInstrument.ticker)?.resistencia.toFixed(4) ?? '—'}
+                  ${srDataMap.get(currentInstrument.ticker)?.resistencia?.toFixed(4) ?? '—'}
                 </span>
               </div>
               <div className="text-[9px] text-app-text4 mt-1">
@@ -498,12 +498,12 @@ export default function ArbitrajeTab({ instruments, config, position, momentumMa
                   <div className="grid grid-cols-3 gap-2 text-center mb-3">
                     <div>
                       <div className="text-[9px] text-app-text4 uppercase">TEM</div>
-                      <div className="text-base font-mono font-medium text-app-text">{inst.tem.toFixed(2)}%</div>
+                      <div className="text-base font-mono font-medium text-app-text">{(inst?.tem ?? 0).toFixed(2)}%</div>
                     </div>
                     <div>
                       <div className="text-[9px] text-app-text4 uppercase">ΔTIR</div>
                       <div className={`text-base font-mono font-medium ${momentum.deltaTIR !== null && momentum.deltaTIR > 0 ? 'text-[#2eebc8]' : 'text-app-text4'}`}>
-                        {momentum.deltaTIR !== null ? `${momentum.deltaTIR >= 0 ? '+' : ''}${momentum.deltaTIR.toFixed(3)}%` : '—'}
+                        {momentum.deltaTIR !== null ? `${momentum.deltaTIR >= 0 ? '+' : ''}${(momentum?.deltaTIR ?? 0).toFixed(3)}%` : '—'}
                       </div>
                     </div>
                     <div>
@@ -542,7 +542,7 @@ export default function ArbitrajeTab({ instruments, config, position, momentumMa
                     <div className="mt-3 pt-3 border-t border-app-border/60 flex items-center justify-center gap-2">
                       <Sparkline data={momentum.tirHistory} width={80} height={28} />
                       <span className="text-[8px] text-app-text4 font-mono">
-                        {momentum.tirHistory.map(t => t.toFixed(2)).join(' → ')}%
+                        {momentum.tirHistory.map(t => (t ?? 0).toFixed(2)).join(' → ')}%
                       </span>
                     </div>
                   )}
@@ -562,7 +562,7 @@ export default function ArbitrajeTab({ instruments, config, position, momentumMa
           </span>
           {currentInstrument && (
             <div className="text-sm text-app-text3 font-mono">
-              Posición: {currentInstrument.ticker} @ TEM {currentInstrument.tem.toFixed(2)}%
+              Posición: {currentInstrument.ticker} @ TEM {(currentInstrument?.tem ?? 0).toFixed(2)}%
               <span className="text-app-text4 mx-1">|</span>
               Spread: <span className="text-app-text4">{currentSpread >= 0 ? '+' : ''}{currentSpread.toFixed(3)}%</span>
               {currentScore && (
@@ -601,7 +601,7 @@ export default function ArbitrajeTab({ instruments, config, position, momentumMa
                       Oportunidad en Desarrollo
                     </span>
                     <span className="font-mono font-medium text-app-text2">{inst.ticker}</span>
-                    <span className="text-app-text4 text-xs">TEM {inst.tem.toFixed(2)}%</span>
+                    <span className="text-app-text4 text-xs">TEM {(inst?.tem ?? 0).toFixed(2)}%</span>
                     <span className="text-xs font-mono" style={{ color: arrowInfo.color || '#7a8599' }}>
                       ΔTIR {momentum.deltaTIR !== null ? `${momentum.deltaTIR >= 0 ? '+' : ''}${momentum.deltaTIR.toFixed(3)}%` : '—'} {arrowInfo.arrow}
                     </span>
