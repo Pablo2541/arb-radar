@@ -162,7 +162,7 @@ export default function MarketPressureBadge({ ticker, compact = false }: MarketP
                 <div className="text-app-text3 text-[7px] mt-0.5">{absorption?.alertMessage ?? ''}</div>
               </div>
             )}
-            {/* V3.2.2-PRO: Priority instrument indicator */}
+            {/* V3.2.3-PRO: Priority instrument indicator */}
             {ticker.match(/^T\d+[A-Z]\d+$/i) && (
               <div className="mt-1 text-[7px] text-[#fbbf24] font-mono font-bold uppercase tracking-wider">
                 ⚡ BONCAP PRIORITY — Alta tasa
@@ -280,7 +280,7 @@ export default function MarketPressureBadge({ ticker, compact = false }: MarketP
       <div className="text-[8px] text-app-text4">
         Vol: {(data?.volume ?? 0).toLocaleString()} ops | {data?.liquidity_alert ? '⚠️ Baja liquidez' : '✅ Liquidez OK'}
       </div>
-      {/* V3.2.2-PRO: Priority instrument badge */}
+      {/* V3.2.3-PRO: Priority instrument badge */}
       {ticker.match(/^T\d+[A-Z]\d+$/i) && (
         <div className="mt-1 px-2 py-1 rounded bg-[#fbbf24]/10 border border-[#fbbf24]/30 text-[8px] font-bold text-[#fbbf24] uppercase tracking-wider">
           ⚡ BONCAP PRIORITY — Detección de Absorción Prioritaria

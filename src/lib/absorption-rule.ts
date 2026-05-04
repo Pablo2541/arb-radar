@@ -1,5 +1,5 @@
 /**
- * ARB//RADAR V3.2.2-PRO — Regla de Absorción Dinámica
+ * ARB//RADAR V3.2.3-PRO — Regla de Absorción Dinámica
  *
  * Detects "walls" in the order book (ask orders 5x average volume)
  * and triggers "Fuerza Compradora Inminente" alerts when buy volume
@@ -48,7 +48,7 @@ export function detectAbsorption(input: AbsorptionInput): AbsorptionAlert | null
   // Determine priority
   const isPriority = HIGH_PRIORITY_TICKERS.includes(ticker) || tem >= HIGH_TEM_THRESHOLD;
 
-  // V3.2.2-PRO: Auto-detect BONCAP instruments (T-prefixed tickers = Bonos Capitalizables)
+  // V3.2.3-PRO: Auto-detect BONCAP instruments (T-prefixed tickers = Bonos Capitalizables)
   const isBoncap = /^T\d+[A-Z]\d+$/i.test(ticker);
   const isHighRateBoncap = isBoncap && tem >= 1.8;
   const isHighPriority = isPriority || isHighRateBoncap;
@@ -100,7 +100,7 @@ export function detectAbsorption(input: AbsorptionInput): AbsorptionAlert | null
 }
 
 /**
- * V3.2.2-PRO: Quick check if a ticker should be highlighted as high-priority
+ * V3.2.3-PRO: Quick check if a ticker should be highlighted as high-priority
  * for the "Caza de Oportunidades" module.
  */
 export function isHighPriorityTicker(ticker: string, tem: number): boolean {

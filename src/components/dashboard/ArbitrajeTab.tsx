@@ -885,9 +885,9 @@ export default function ArbitrajeTab({ instruments, config, position, momentumMa
                   <div className="flex items-center gap-2">
                     <span className="text-[#f87171] text-sm">⚠</span>
                     <span className="text-sm text-app-text2">
-                      <span className="font-mono font-medium">{inv.longer.ticker}</span> ({inv.longer.days}d, TEM {inv.longer.tem.toFixed(2)}%)
+                      <span className="font-mono font-medium">{inv.longer.ticker}</span> ({inv.longer.days}d, TEM {(inv.longer.tem ?? 0).toFixed(2)}%)
                       <span className="text-app-text3 mx-2">tiene menor TEM que</span>
-                      <span className="font-mono font-medium">{inv.shorter.ticker}</span> ({inv.shorter.days}d, TEM {inv.shorter.tem.toFixed(2)}%)
+                      <span className="font-mono font-medium">{inv.shorter.ticker}</span> ({inv.shorter.days}d, TEM {(inv.shorter.tem ?? 0).toFixed(2)}%)
                     </span>
                   </div>
                   <div className="text-xs text-[#f87171]/80 mt-1">

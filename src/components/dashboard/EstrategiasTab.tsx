@@ -382,7 +382,7 @@ export default function EstrategiasTab({
                     return inst ? (
                       <tr key={s.ticker} className="border-b border-app-border/60 hover:bg-app-subtle/30">
                         <td className="px-4 py-3 font-mono font-medium text-app-text2">{s.ticker}</td>
-                        <td className="px-4 py-3 font-mono text-app-text2 text-right">{inst.price.toFixed(4)}</td>
+                        <td className="px-4 py-3 font-mono text-app-text2 text-right">{(inst?.price ?? 0).toFixed(4)}</td>
                         <td className="px-4 py-3 font-mono text-app-text3 text-right">{s.durationMod.toFixed(4)}</td>
                         <td className="px-4 py-3 font-mono text-[#2eebc8] text-right">{s.priceMinus10bps.toFixed(4)}</td>
                         <td className="px-4 py-3 font-mono text-[#2eebc8] text-right">{s.priceMinus25bps.toFixed(4)}</td>

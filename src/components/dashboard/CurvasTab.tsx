@@ -103,7 +103,7 @@ export default function CurvasTab({ instruments, config, position, momentumMap }
   const chartTickFill = 'rgba(220, 220, 220, 0.8)';
   const chartLabelFill = 'rgba(220, 220, 220, 0.8)';
 
-  // REMOVED V3.2.2: Local formatters replaced with professional chart-formatters
+  // REMOVED V3.2.3: Local formatters replaced with professional chart-formatters
   // const formatTEM = (v: number) => v.toFixed(2);
   // const formatSpread = (v: number) => v.toFixed(3);
   // const formatSlope = (v: number) => v.toFixed(2);

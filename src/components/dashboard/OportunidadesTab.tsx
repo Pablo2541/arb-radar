@@ -294,7 +294,7 @@ function MarketPressureSummary({ instruments }: { instruments: Instrument[] }) {
         const emoji = mp > 1.3 ? '🟢' : mp < 0.7 ? '🔴' : '🟡';
         return (
           <span key={ticker} className="font-mono text-[9px]" style={{ color }}>
-            {ticker} {mp.toFixed(1)}{emoji}
+            {ticker} {(mp ?? 0).toFixed(1)}{emoji}
           </span>
         );
       }).reduce<React.ReactNode[]>((acc, el, i) => {
@@ -556,7 +556,7 @@ export default function OportunidadesTab({
 
     const rotationRows = rotationTargets.map((rot, idx) => [
       'Rotación', idx + 1, rot.target.ticker, rot.target.type,
-      rot.target.days, rot.target.tem.toFixed(2),
+      rot.target.days, (rot.target.tem ?? 0).toFixed(2),
       rot.spreadBruto.toFixed(3), rot.spreadNeto.toFixed(3),
       rot.upsideCapital.toFixed(2), rot.posicionEnCanal.toFixed(0),
       rot.huntingScore.toFixed(0), '', rot.momentumLabel,
@@ -851,7 +851,7 @@ export default function OportunidadesTab({
               <div>
                 <div className="text-[10px] text-app-text4 uppercase tracking-wider mb-1">TEM / Spread Neto</div>
                 <div className="font-mono font-bold text-2xl text-app-text">
-                  {bestOpportunity.instrument.tem.toFixed(2)}%
+                  {(bestOpportunity.instrument.tem ?? 0).toFixed(2)}%
                 </div>
                 <div className={`text-xs font-mono mt-1 ${bestOpportunity.spreadNeto >= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
                   Neto: {bestOpportunity.spreadNeto >= 0 ? '+' : ''}{bestOpportunity.spreadNeto.toFixed(3)}%

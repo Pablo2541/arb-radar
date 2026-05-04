@@ -34,6 +34,7 @@ interface MercadoTabProps {
   // V2.0.3: Live data comes from parent (page.tsx) — no more local hook
   liveData: LiveInstrumentsState;
   liveDataMap: Map<string, LiveInstrument>;
+  riesgoPaisAuto?: number | null; // V3.2.3-PRO: Auto-fetched Riesgo País value
 }
 
 function getTrendArrow(deltaTIR: number | null): { arrow: string; color: string } {
@@ -70,7 +71,7 @@ type SortDir = 'asc' | 'desc';
 type TypeFilter = 'all' | 'LECAP' | 'BONCAP';
 type DaysFilter = 'all' | 'lte30' | '31-90' | '91-180' | 'gt180';
 
-export default function MercadoTab({ instruments, config, position, momentumMap, priceHistory, onMepRate, onCclRate, onDolarUpdate, liveData, liveDataMap }: MercadoTabProps) {
+export default function MercadoTab({ instruments, config, position, momentumMap, priceHistory, onMepRate, onCclRate, onDolarUpdate, liveData, liveDataMap, riesgoPaisAuto }: MercadoTabProps) {
   // V2.0.3: Live data comes from page.tsx — instruments are already instruments
   // (merged with live prices). No more local useLiveInstruments hook.
   // The onSyncLiveInstruments callback was moved to a useEffect in page.tsx.
@@ -255,13 +256,13 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
       inst.ticker,
       inst.type,
       inst.days,
-      inst.price.toFixed(4),
-      inst.tem.toFixed(2),
+      (inst.price ?? 0).toFixed(4),
+      (inst.tem ?? 0).toFixed(2),
       inst.deltaTIR !== null ? inst.deltaTIR.toFixed(3) : '',
       isFinite(inst.paridad) ? inst.paridad.toFixed(1) : '',
       inst.spread.toFixed(3),
       inst.dm != null ? inst.dm.toFixed(4) : '',
-      inst.change.toFixed(2),
+      (inst.change ?? 0).toFixed(2),
     ].join(','));
     const csv = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -302,7 +303,10 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
   const mepAlert = mep && mep.venta > 1550;
   const mepWarning = mep && mep.venta > 1450 && mep.venta <= 1550;
 
-  const riesgoColor = config.riesgoPais > 650 ? '#f87171' : config.riesgoPais > 550 ? '#f472b6' : config.riesgoPais > 450 ? '#fbbf24' : '#2eebc8';
+  // V3.2.3-PRO: Enhanced granular Riesgo País thresholds (matching page.tsx)
+  const riesgoPaisEffective = riesgoPaisAuto ?? config.riesgoPais;
+  const riesgoColor = riesgoPaisEffective > 700 ? '#f87171' : riesgoPaisEffective > 550 ? '#f472b6' : riesgoPaisEffective > 400 ? '#fbbf24' : '#2eebc8';
+  const riesgoLabel = riesgoPaisEffective > 700 ? 'PELIGROSO' : riesgoPaisEffective > 550 ? 'ALTO' : riesgoPaisEffective > 400 ? 'MODERADO' : 'EXCELENTE';
   const caucionTEM1 = caucionTEMFromTNA(config.caucion1d);
   const caucionTEM7 = caucionTEMFromTNA(config.caucion7d);
   const caucionTEM30 = caucionTEMFromTNA(config.caucion30d);
@@ -392,7 +396,7 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
               <span className="text-app-gold text-sm">★</span>
               <span className="text-[10px] text-app-text3 uppercase tracking-wider">Mejor</span>
               <span className="font-mono font-medium text-[#2eebc8]">{bestInstrument.ticker}</span>
-              <span className="text-xs text-app-text4 font-mono">{bestInstrument.tem.toFixed(2)}% TIR</span>
+              <span className="text-xs text-app-text4 font-mono">{(bestInstrument.tem ?? 0).toFixed(2)}% TIR</span>
             </div>
           </div>
         )}
@@ -410,7 +414,7 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                 {liveData.stats && (
                   <> · <span className="text-[#2eebc8]/80">{liveData.stats.lecaps}L</span> + <span className="text-[#f472b6]/80">{liveData.stats.boncaps}B</span></>
                 )}
-                {' '}· Caución proxy: TNA {(liveData.caucionProxy.tna_promedio * 100).toFixed(1)}% → TEM {(liveData.caucionProxy.tem_caucion * 100).toFixed(2)}%
+                {' '}· Caución proxy: TNA {((liveData.caucionProxy?.tna_promedio ?? 0) * 100).toFixed(1)}% → TEM {((liveData.caucionProxy?.tem_caucion ?? 0) * 100).toFixed(2)}%
               </div>
             </div>
           </div>
@@ -493,7 +497,7 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
               <span className="text-[#f87171] text-xs">🚨</span>
               <div>
                 <div className="text-[#f87171] font-medium text-[10px]">ALERTA CAMBIARIA</div>
-                <div className="text-app-text3 text-[9px]">Dólar MEP a ${mep?.venta.toFixed(0)} supera umbral de $1,550.</div>
+                <div className="text-app-text3 text-[9px]">Dólar MEP a ${(mep?.venta ?? 0).toFixed(0)} supera umbral de $1,550.</div>
               </div>
             </div>
           </div>
@@ -637,7 +641,13 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-app-card rounded-xl border border-app-border p-4 text-center border-b-2 border-b-app-accent/20">
           <div className="text-[9px] text-app-text4 mb-1.5 uppercase tracking-wider">Riesgo País</div>
-          <div className="text-lg font-mono font-medium" style={{ color: riesgoColor }}>{config.riesgoPais} pb</div>
+          <div className="flex items-center justify-center gap-1.5">
+            <span className="text-lg font-mono font-medium" style={{ color: riesgoColor }}>{riesgoPaisEffective} pb</span>
+            <span className="text-[8px] font-bold uppercase tracking-wider" style={{ color: riesgoColor }}>{riesgoLabel}</span>
+            {riesgoPaisAuto != null && (
+              <span className="text-[7px] font-bold text-[#2eebc8] bg-[#2eebc8]/10 px-1.5 py-0.5 rounded border border-[#2eebc8]/20 leading-none">AUTO</span>
+            )}
+          </div>
         </div>
         <div className="bg-app-card rounded-xl border border-app-border p-4 text-center border-b-2 border-b-app-accent/20">
           <div className="text-[9px] text-app-text4 mb-1.5 uppercase tracking-wider">Caución 1D</div>
@@ -825,7 +835,22 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                     <td className="px-4 py-3 font-mono text-app-text2">{inst.days}</td>
                     {/* V2.0.5: Price cell — reduced opacity when LIVE is off (stale data warning) */}
                     <td className={`px-4 py-3 font-mono ${liveData.active ? 'text-app-text' : 'text-app-text4 opacity-60'}`}>
-                      {(inst?.price ?? 0).toFixed(4)}
+                      <div className="flex items-center gap-1">
+                        <span>{(inst?.price ?? 0).toFixed(4)}</span>
+                        {/* V3.2.3-PRO: VWAP indicator — simplified intraday VWAP from IOL bid/ask midpoint */}
+                        {(() => {
+                          const iolBid = inst.iolBid ?? inst.iolBid;
+                          const iolAsk = inst.iolAsk ?? inst.iolAsk;
+                          const vwap = (iolBid != null && iolAsk != null && iolBid > 0 && iolAsk > 0)
+                            ? (iolBid + iolAsk) / 2
+                            : null;
+                          if (vwap == null) return <span className="text-[7px] text-app-text4 ml-0.5">—</span>;
+                          const price = inst?.price ?? 0;
+                          if (price > vwap) return <span className="text-[8px] text-[#2eebc8] ml-0.5" title={`Precio > VWAP (${vwap.toFixed(4)}) — Bullish`}>▲</span>;
+                          if (price < vwap) return <span className="text-[8px] text-[#f87171] ml-0.5" title={`Precio < VWAP (${vwap.toFixed(4)}) — Bearish`}>▼</span>;
+                          return <span className="text-[7px] text-app-text4 ml-0.5" title={`VWAP: ${vwap.toFixed(4)}`}>→</span>;
+                        })()}
+                      </div>
                       {!liveData.active && (
                         <span className="text-[7px] text-app-text4 ml-1 uppercase tracking-wider">cierre ant.</span>
                       )}

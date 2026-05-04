@@ -1,11 +1,11 @@
 // ════════════════════════════════════════════════════════════════════════
-// IOL BRIDGE — ARB//RADAR V3.2.2-PRO
+// IOL BRIDGE — ARB//RADAR V3.2.3-PRO
 // InvertirOnline authentication & Level-2 data fetching
 //
 // Extracted from scripts/update-prices.ts and adapted for Next.js
 // API routes (server-side only).
 //
-// V3.2.2-PRO: Now calculates bid_depth / ask_depth / market_pressure
+// V3.2.3-PRO: Now calculates bid_depth / ask_depth / market_pressure
 // from puntas_detalle order-book levels.
 //
 // ⚠️  SERVER-SIDE MODULE — never import in client components.
@@ -279,7 +279,7 @@ export async function getIOLCotizacion(
         }
       : { compra: [], venta: [] };
 
-    // V3.2.2-PRO: Calculate depth & market pressure from puntas
+    // V3.2.3-PRO: Calculate depth & market pressure from puntas
     const bidDepth = calcDepth(puntasDetalle.compra);
     const askDepth = calcDepth(puntasDetalle.venta);
     const marketPressure = calcMarketPressure(bidDepth, askDepth);

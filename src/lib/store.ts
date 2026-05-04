@@ -70,6 +70,9 @@ export interface RadarState {
   // ── IOL Level 2 State ─────────────────────────────────────────────
   iolLevel2Online: boolean;    // V3.1: Whether IOL Level 2 data is available
 
+  // ── Country Risk Auto-Fetch State ───────────────────────────────────
+  riesgoPaisAuto: number | null; // V3.2.3-PRO: Auto-fetched Riesgo País value (null = not fetched yet)
+
   // ── Actions ────────────────────────────────────────────────────────
   setInstruments: (v: Instrument[]) => void;
   setConfig: (v: Config) => void;
@@ -88,6 +91,9 @@ export interface RadarState {
   setCurrentTime: (v: string) => void;
   addActivity: (item: Omit<ActivityItem, 'id' | 'timestamp'>) => void;
   clearActivityFeed: () => void;
+
+  // ── Country Risk Auto-Fetch Actions ────────────────────────────────
+  setRiesgoPaisAuto: (v: number | null) => void;
 
   // ── DB Sync Actions ────────────────────────────────────────────────
   persistToDb: () => Promise<void>;
@@ -176,6 +182,7 @@ export const useRadarStore = create<RadarState>((set, get) => ({
   lastDbSync: null,
   lastDbSyncStatus: 'idle',
   iolLevel2Online: false,
+  riesgoPaisAuto: null,
 
   // ── Setters (write to Zustand + localStorage immediately, schedule DB) ─
   setInstruments: (v: Instrument[]) => {
@@ -291,6 +298,17 @@ export const useRadarStore = create<RadarState>((set, get) => ({
 
   clearActivityFeed: () => {
     set({ activityFeed: [] });
+  },
+
+  // V3.2.3-PRO: Set auto-fetched Riesgo País and sync to config
+  setRiesgoPaisAuto: (v: number | null) => {
+    set({ riesgoPaisAuto: v });
+    if (v !== null && v > 0) {
+      const currentConfig = get().config;
+      if (currentConfig.riesgoPais !== v) {
+        get().setConfig({ ...currentConfig, riesgoPais: v });
+      }
+    }
   },
 
   // ════════════════════════════════════════════════════════════════════
@@ -435,6 +453,7 @@ export const useRadarStore = create<RadarState>((set, get) => ({
       cclRate: undefined,
       priceHistory: null,
       activityFeed: [],
+      riesgoPaisAuto: null,
     });
 
     // Clear DB via API

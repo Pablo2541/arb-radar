@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-// ARB//RADAR V3.2.2-PRO — /api/iol-level2
+// ARB//RADAR V3.2.3-PRO — /api/iol-level2
 // Real-time IOL Level 2 data for frontend queries
 //
 // Accepts GET requests with ?tickers=T15E7,S1L5 (comma-separated)
@@ -9,7 +9,7 @@
 // Uses iol-bridge.ts (server-side only) for IOL authentication & data.
 // Results are cached for 30 seconds in memory.
 //
-// V3.2.2-PRO: Added absorption_alert field with Dynamic Absorption Rule.
+// V3.2.3-PRO: Added absorption_alert field with Dynamic Absorption Rule.
 //
 // ⚠️  SERVER-SIDE ONLY — iol-bridge uses env vars IOL_USERNAME / IOL_PASSWORD
 // ════════════════════════════════════════════════════════════════════════
@@ -57,7 +57,7 @@ interface TickerLevel2Data {
     compra: IOLPunta[];
     venta: IOLPunta[];
   };
-  /** V3.2.2-PRO: Absorption Rule alert (null if no wall detected) */
+  /** V3.2.3-PRO: Absorption Rule alert (null if no wall detected) */
   absorption_alert: AbsorptionAlert | null;
 }
 

@@ -945,8 +945,8 @@ export default function CarteraTab({
               <div className="bg-app-subtle rounded-md p-3">
                 <span className="text-xs text-app-text3">Posición actual: </span>
                 <span className="font-mono font-bold text-app-text">{position.ticker}</span>
-                <span className="text-xs text-app-text3 ml-2">TEM: {currentInstrument.tem.toFixed(2)}%</span>
-                <span className="text-xs text-app-text3 ml-2">Precio: ${currentInstrument.price.toFixed(4)}</span>
+                <span className="text-xs text-app-text3 ml-2">TEM: {(currentInstrument?.tem ?? 0).toFixed(2)}%</span>
+                <span className="text-xs text-app-text3 ml-2">Precio: ${(currentInstrument?.price ?? 0).toFixed(4)}</span>
               </div>
               <div>
                 <label className="block text-xs text-app-text3 mb-1">Rotar hacia:</label>
@@ -1620,7 +1620,7 @@ export default function CarteraTab({
                 <optgroup label="LECAPs" className="bg-[#111827] text-[#2eebc8]">
                   {lecapOptions.map(inst => (
                     <option key={inst.ticker} value={inst.ticker} className="bg-[#111827] text-white">
-                      {inst.ticker} — {inst.tem.toFixed(2)}% TEM — {inst.days}d — ${inst.price.toFixed(4)}
+                      {inst.ticker} — {(inst?.tem ?? 0).toFixed(2)}% TEM — {inst.days}d — ${(inst?.price ?? 0).toFixed(4)}
                     </option>
                   ))}
                 </optgroup>
@@ -1629,7 +1629,7 @@ export default function CarteraTab({
                 <optgroup label="BONCAPs" className="bg-[#111827] text-[#f472b6]">
                   {boncapOptions.map(inst => (
                     <option key={inst.ticker} value={inst.ticker} className="bg-[#111827] text-white">
-                      {inst.ticker} — {inst.tem.toFixed(2)}% TEM — {inst.days}d — ${inst.price.toFixed(4)}
+                      {inst.ticker} — {(inst?.tem ?? 0).toFixed(2)}% TEM — {inst.days}d — ${(inst?.price ?? 0).toFixed(4)}
                     </option>
                   ))}
                 </optgroup>
@@ -1637,7 +1637,7 @@ export default function CarteraTab({
             </select>
             {selectedFormInstrument && (
               <div className="mt-1 text-[9px] text-app-text4 font-mono">
-                {selectedFormInstrument.type} | Vto: {selectedFormInstrument.expiry} | TNA: {selectedFormInstrument.tna.toFixed(1)}%
+                {selectedFormInstrument.type} | Vto: {selectedFormInstrument.expiry} | TNA: {(selectedFormInstrument?.tna ?? 0).toFixed(1)}%
               </div>
             )}
           </div>
@@ -1980,7 +1980,7 @@ export default function CarteraTab({
                       </td>
                       <td className="px-3 py-2 font-mono font-semibold text-app-text">{tx.ticker}</td>
                       <td className="px-3 py-2 font-mono text-app-text2 text-right">{tx.vn.toLocaleString()}</td>
-                      <td className="px-3 py-2 font-mono text-app-text2 text-right">${tx.price.toFixed(4)}</td>
+                      <td className="px-3 py-2 font-mono text-app-text2 text-right">{(tx?.price ?? 0).toFixed(4)}</td>
                       <td className="px-3 py-2 font-mono text-app-text2 text-right">${amount.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</td>
                       <td className={`px-3 py-2 font-mono text-right ${tx.pnl === undefined ? 'text-app-text4' : tx.pnl >= 0 ? 'text-app-accent-text' : 'text-app-danger'}`}>
                         {tx.pnl !== undefined ? `${tx.pnl >= 0 ? '+' : ''}$${tx.pnl.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` : '—'}

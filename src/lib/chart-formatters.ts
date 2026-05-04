@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-// V3.2.2-PRO — Chart Axis & Tooltip Formatters
+// V3.2.3-PRO — Chart Axis & Tooltip Formatters
 //
 // Professional formatting for Recharts axes and tooltips.
 // Eliminates floating point artifacts (e.g. 1.99999999996 → 2.00%)

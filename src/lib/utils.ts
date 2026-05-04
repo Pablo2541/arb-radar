@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// V3.2.2-PRO — NaN-Safe Utility Functions
+// V3.2.3-PRO — NaN-Safe Utility Functions
 //
 // Defensive coding layer to prevent crashes from null/undefined values
 // after DB resets or missing data. All toFixed/toLocaleString calls
