@@ -54,7 +54,7 @@ interface TickerInfo {
 }
 
 type ChartMode = 'area' | 'bar' | 'ohlc';
-type DateRange = 7 | 15 | 30 | 60 | 90;
+type DateRange = 7 | 15 | 20 | 30 | 60 | 90 | 999;
 
 interface HistoricoTabProps {
   instruments: Instrument[];
@@ -117,7 +117,7 @@ function CustomTooltip({ active, payload, label }: { active?: boolean; payload?:
 export default function HistoricoTab({ instruments }: HistoricoTabProps) {
   const [selectedTicker, setSelectedTicker] = useState<string>('');
   const [chartMode, setChartMode] = useState<ChartMode>('area');
-  const [dateRange, setDateRange] = useState<DateRange>(30);
+  const [dateRange, setDateRange] = useState<DateRange>(20);
   const [ohlcData, setOhlcData] = useState<OHLCRecord[]>([]);
   const [snapshots, setSnapshots] = useState<SnapshotRecord[]>([]);
   const [tickers, setTickers] = useState<TickerInfo[]>([]);
@@ -169,9 +169,10 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
       setLoading(true);
       setError('');
       try {
+        const effectiveDays = dateRange === 999 ? 3650 : dateRange;
         const [ohlcRes, snapRes] = await Promise.all([
-          fetch(`/api/price-history?type=ohlc&ticker=${encodeURIComponent(selectedTicker)}&days=${dateRange}`),
-          fetch(`/api/price-history?type=snapshots&ticker=${encodeURIComponent(selectedTicker)}&hours=${dateRange * 24}`),
+          fetch(`/api/price-history?type=ohlc&ticker=${encodeURIComponent(selectedTicker)}&days=${effectiveDays}`),
+          fetch(`/api/price-history?type=snapshots&ticker=${encodeURIComponent(selectedTicker)}&hours=${effectiveDays * 24}`),
         ]);
 
         if (ohlcRes.ok) {
@@ -260,7 +261,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
       {/* ── Header ── */}
       <div>
         <h2 className="text-lg font-light text-app-text mb-1">📈 Histórico de Precios</h2>
-        <p className="text-sm text-app-text3">Evolución de precios y TEM · Motor Híbrido de Datos V3.2</p>
+        <p className="text-sm text-app-text3">Evolución de precios y TEM · Motor Híbrido de Datos V3.2.4-PRO</p>
       </div>
 
       {/* ── Controls Bar ── */}
@@ -309,9 +310,11 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
             {([
               { days: 7 as DateRange, label: '7d' },
               { days: 15 as DateRange, label: '15d' },
+              { days: 20 as DateRange, label: '20d' },
               { days: 30 as DateRange, label: '30d' },
               { days: 60 as DateRange, label: '60d' },
               { days: 90 as DateRange, label: '90d' },
+              { days: 999 as DateRange, label: 'ALL' },
             ]).map(opt => (
               <button
                 key={opt.days}
@@ -370,6 +373,20 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
         </div>
       )}
 
+      {/* ── Data Source Indicator ── */}
+      {ohlcData.length > 0 && (
+        <div className="flex items-center gap-2 text-[10px] text-app-text4">
+          <span className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#2eebc8]/10 text-[#2eebc8] border border-[#2eebc8]/20">
+            📊 {ohlcData.length} registros OHLC
+          </span>
+          {ohlcData.length >= 15 && (
+            <span className="px-2 py-0.5 rounded bg-[#fbbf24]/10 text-[#fbbf24] border border-[#fbbf24]/20">
+              ✨ Tendencia 3 semanas
+            </span>
+          )}
+        </div>
+      )}
+
       {/* ── Stats Summary ── */}
       {stats && (
         <div className="glass-card p-4">
@@ -406,6 +423,45 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
           </div>
         </div>
       )}
+
+      {/* ── Tendencia 20 días Summary Card ── */}
+      {ohlcData.length >= 15 && (() => {
+        const first = ohlcData[0];
+        const last = ohlcData[ohlcData.length - 1];
+        const priceChange = (last.close ?? 0) - (first.open ?? 0);
+        const priceChangePct = (priceChange / (first.open ?? 1)) * 100;
+        const temChange = (last.temClose ?? 0) - (first.temOpen ?? 0);
+        const isUp = priceChange >= 0;
+        return (
+          <div className="glass-card p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm font-medium text-app-text2">📐 Tendencia {ohlcData.length} días</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div>
+                <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-0.5">Precio Inicio</div>
+                <div className="font-mono text-sm">${(first.open ?? 0).toFixed(4)}</div>
+              </div>
+              <div>
+                <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-0.5">Precio Fin</div>
+                <div className="font-mono text-sm">${(last.close ?? 0).toFixed(4)}</div>
+              </div>
+              <div>
+                <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-0.5">Δ Precio</div>
+                <div className={`font-mono text-sm font-medium ${isUp ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
+                  {isUp ? '+' : ''}{priceChangePct.toFixed(2)}%
+                </div>
+              </div>
+              <div>
+                <div className="text-[9px] text-app-text4 uppercase tracking-wider mb-0.5">Δ TEM</div>
+                <div className={`font-mono text-sm font-medium ${temChange <= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
+                  {temChange >= 0 ? '+' : ''}{(temChange * 100).toFixed(2)}pp
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Charts ── */}
       {loading ? (

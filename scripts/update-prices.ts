@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-// CEREBRO TÁCTICO — ARB//RADAR V3.2.1
+// CEREBRO TÁCTICO — ARB//RADAR V3.2.4-PRO
 // Motor de actualización de precios con validación IOL Nivel 2
 // + Acumulación Histórica (PriceSnapshot + DailyOHLC)
 //
@@ -51,6 +51,7 @@ const ARGDATOS_LETRAS_URL = 'https://api.argentinadatos.com/v1/finanzas/letras';
 const ARGDATOS_PF_URL = 'https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo';
 const IOL_TOKEN_URL = 'https://api.invertironline.com/token';
 const IOL_COTIZACION_URL = 'https://api.invertironline.com/api/v2/Titulos';
+const ARGDATOS_RIESGO_PAIS_URL = 'https://api.argentinadatos.com/v1/finanzas/indicadores/riesgo-pais'; // Generic fallback; intraday URL constructed dynamically
 
 // IOL Volume thresholds for "Filtro de Verdad"
 const IOL_LOW_VOLUME_PCT = 0.10; // 10% of average daily = "Baja Liquidez"
@@ -200,6 +201,57 @@ async function safeFetch<T>(url: string, timeoutMs = 8000, headers?: Record<stri
   } catch {
     const latency_ms = Date.now() - start;
     return { ok: false, data: null, latency_ms };
+  }
+}
+
+// ── Riesgo País Fetcher (V3.2.4-PRO) ──────────────────────────────────
+
+/** Build date-specific intraday URL for today */
+function getRiesgoPaisIntradayUrl(): string {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `https://api.argentinadatos.com/v1/finanzas/indicadores/riesgo-pais/${year}/${month}/${day}`;
+}
+
+/** Parse Riesgo País value from API response (handles both array and single-object formats) */
+function parseRiesgoPaisData(data: unknown): number | null {
+  // Handle array format [{fecha, valor}]
+  if (Array.isArray(data) && data.length > 0) {
+    const latest = data[data.length - 1] as Record<string, unknown>;
+    const valor = Number(latest.valor ?? latest.value ?? 0);
+    return valor > 0 && isFinite(valor) ? Math.round(valor) : null;
+  }
+  // Handle single object format {fecha, valor} (intraday endpoint)
+  if (data && typeof data === 'object') {
+    const obj = data as Record<string, unknown>;
+    const valor = Number(obj.valor ?? obj.value ?? 0);
+    return valor > 0 && isFinite(valor) ? Math.round(valor) : null;
+  }
+  return null;
+}
+
+async function fetchRiesgoPais(): Promise<number | null> {
+  // 1. Try date-specific intraday endpoint first (more reliable for current market value)
+  const intradayUrl = getRiesgoPaisIntradayUrl();
+  try {
+    const { ok, data } = await safeFetch<unknown>(intradayUrl, 10000);
+    if (ok && data) {
+      const value = parseRiesgoPaisData(data);
+      if (value !== null) return value;
+    }
+  } catch {
+    // Intraday endpoint failed, try generic fallback
+  }
+
+  // 2. Fallback to generic endpoint
+  try {
+    const { ok, data } = await safeFetch<unknown>(ARGDATOS_RIESGO_PAIS_URL, 10000);
+    if (!ok || !data) return null;
+    return parseRiesgoPaisData(data);
+  } catch {
+    return null;
   }
 }
 
@@ -931,6 +983,23 @@ async function writeToNeon(
 
     // V3.2: Write historical accumulation data (snapshots + OHLC)
     await writeHistoricalData(prisma, instruments, caucionProxy);
+
+    // V3.2.4-PRO: Fetch and persist Riesgo País every cycle
+    const riesgoPaisValue = await fetchRiesgoPais();
+    if (riesgoPaisValue !== null && riesgoPaisValue > 0) {
+      try {
+        await prisma.countryRisk.upsert({
+          where: { id: 'main' },
+          update: { value: riesgoPaisValue, source: 'argentinadatos_intraday' },
+          create: { id: 'main', value: riesgoPaisValue, source: 'argentinadatos_intraday' },
+        });
+        log('OK', `🇦🇷 Riesgo País: ${riesgoPaisValue}pb (ArgentinaDatos intraday)`);
+      } catch {
+        log('WARN', 'Riesgo País: no se pudo persistir en DB');
+      }
+    } else {
+      log('WARN', 'Riesgo País: no se pudo obtener de ArgentinaDatos');
+    }
 
     return true;
   } catch (error) {

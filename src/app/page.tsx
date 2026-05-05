@@ -46,7 +46,7 @@ const DiagnosticoTab = dynamic(() => import('@/components/dashboard/DiagnosticoT
 const HistorialTab = dynamic(() => import('@/components/dashboard/HistorialTab'), { ssr: false, loading: TabSkeleton });
 const HistoricoTab = dynamic(() => import('@/components/dashboard/HistoricoTab'), { ssr: false, loading: TabSkeleton });
 const ConfiguracionTab = dynamic(() => import('@/components/dashboard/ConfiguracionTab'), { ssr: false, loading: TabSkeleton });
-// V3.2.3-PRO: Order Flow Imbalance Alert — lazy-loaded
+// V3.2.4-PRO: Order Flow Imbalance Alert — lazy-loaded
 const OrderFlowAlert = dynamic(() => import('@/components/dashboard/OrderFlowAlert'), { ssr: false });
 
 const TAB_CONFIG: { id: TabId; icon: string; label: string; shortcut: string }[] = [
@@ -63,7 +63,7 @@ const TAB_CONFIG: { id: TabId; icon: string; label: string; shortcut: string }[]
 ];
 
 // ════════════════════════════════════════════════════════════════════════
-// V3.2.3-PRO — Global Absorption Alert Banner
+// V3.2.4-PRO — Global Absorption Alert Banner
 // Polls /api/market-pressure for wall detection alerts
 // ════════════════════════════════════════════════════════════════════════
 
@@ -216,7 +216,7 @@ function HomeContent() {
   const [showHelp, setShowHelp] = useState(false);
   const [showNukeConfirm, setShowNukeConfirm] = useState(false);
   const [dolarLastUpdateTime, setDolarLastUpdateTime] = useState<string>('');
-  // V3.2.3-PRO: Track previous Riesgo País value for trend arrow
+  // V3.2.4-PRO: Track previous Riesgo País value for trend arrow
   const prevRiesgoPaisRef = useRef<number | null>(null);
   const [riesgoPaisTrend, setRiesgoPaisTrend] = useState<'up' | 'down' | 'flat' | null>(null);
 
@@ -517,7 +517,7 @@ function HomeContent() {
     }
   }, [dbAvailable, lastDbSyncStatus]);
 
-  // V3.2.3-PRO: Auto-fetch Country Risk every 15 minutes
+  // V3.2.4-PRO: Auto-fetch Country Risk every 15 minutes
   useEffect(() => {
     const fetchCountryRisk = async () => {
       try {
@@ -525,7 +525,7 @@ function HomeContent() {
         if (!res.ok) return;
         const data = await res.json();
         if (data.value && data.value > 0) {
-          // V3.2.3-PRO: Track trend direction before updating
+          // V3.2.4-PRO: Track trend direction before updating
           const currentRP = useRadarStore.getState().riesgoPaisAuto ?? useRadarStore.getState().config.riesgoPais;
           if (prevRiesgoPaisRef.current !== null && currentRP !== data.value) {
             setRiesgoPaisTrend(data.value > currentRP ? 'up' : data.value < currentRP ? 'down' : 'flat');
@@ -585,7 +585,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V3.2.3...
+            Cargando V3.2.4...
           </p>
         </div>
       </div>
@@ -671,7 +671,7 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.2.3 — PRO</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.2.4 — PRO</span>
             {/* V3.0: DB Sync indicator dot */}
             <div className="w-1.5 h-1.5 rounded-full hidden sm:block" style={{ backgroundColor: dbSyncDotColor }} title={dbAvailable ? `DB: ${lastDbSyncStatus}` : 'DB: no configurado'} />
             {/* V3.1: IOL Level 2 indicator dot */}
@@ -764,7 +764,7 @@ function HomeContent() {
                 ${config.capitalDisponible.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
               </span>
             </div>
-            {/* Riesgo País — V3.2.3-PRO: Enhanced granular thresholds */}
+            {/* Riesgo País — V3.2.4-PRO: Enhanced granular thresholds */}
             {(() => {
               const rp = riesgoPaisAuto ?? config.riesgoPais;
               const rpColor = rp > 700 ? '#f87171' : rp > 550 ? '#f472b6' : rp > 400 ? '#fbbf24' : '#2eebc8';
@@ -829,10 +829,10 @@ function HomeContent() {
           <ThresholdAlerts instruments={sanitizedInstruments} config={config} position={position} momentumMap={momentumMap} />
         </div>
 
-        {/* V3.2.3-PRO: Global Absorption Alert Banner */}
+        {/* V3.2.4-PRO: Global Absorption Alert Banner */}
         <AbsorptionAlertBanner />
 
-        {/* V3.2.3-PRO: Order Flow Imbalance Alert */}
+        {/* V3.2.4-PRO: Order Flow Imbalance Alert */}
         <OrderFlowAlert />
 
         {/* ── Market Summary Widget (Enhanced V1.6.2) ── */}
@@ -879,7 +879,7 @@ function HomeContent() {
               );
             })()}
             <div className="w-px h-3 bg-app-border/40 shrink-0" />
-            {/* V3.2.3-PRO: Spread MEDIAN — more robust metric than best spread */}
+            {/* V3.2.4-PRO: Spread MEDIAN — more robust metric than best spread */}
             {(() => {
               const spreads = sanitizedInstruments.map(inst => spreadVsCaucion(inst.tem, config, inst.days)).filter(s => isFinite(s));
               const sorted = [...spreads].sort((a, b) => a - b);
@@ -894,7 +894,7 @@ function HomeContent() {
               );
             })()}
             <div className="w-px h-3 bg-app-border/40 shrink-0" />
-            {/* V3.2.3-PRO: Riesgo País Trend in Market Summary */}
+            {/* V3.2.4-PRO: Riesgo País Trend in Market Summary */}
             {(() => {
               const rp = riesgoPaisAuto ?? config.riesgoPais;
               const rpColor = rp > 700 ? '#f87171' : rp > 550 ? '#f472b6' : rp > 400 ? '#fbbf24' : '#2eebc8';

@@ -1,6 +1,6 @@
 {
   "name": "arb-radar",
-  "version": "3.2.3",
+  "version": "3.2.4",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
@@ -13,7 +13,8 @@
     "db:reset": "prisma migrate reset",
     "postinstall": "prisma generate",
     "prices:update": "npx tsx scripts/update-prices.ts",
-    "prices:daemon": "npx tsx scripts/update-prices.ts --daemon"
+    "prices:daemon": "npx tsx scripts/update-prices.ts --daemon",
+    "history:inject": "npx tsx scripts/inject-historical.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

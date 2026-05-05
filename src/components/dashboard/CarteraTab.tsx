@@ -43,10 +43,20 @@ export default function CarteraTab({
   isLive,
 }: CarteraTabProps) {
   const [formTicker, setFormTicker] = useState('');
+  const [formCapitalPesos, setFormCapitalPesos] = useState(''); // V3.2.4: Monto a Invertir ($)
   const [formVN, setFormVN] = useState('');
   const [formPrice, setFormPrice] = useState('');
-  const [formDate, setFormDate] = useState('');
+  const [formDate, setFormDate] = useState(() => {
+    // V3.2.4: Auto-fill with today's date
+    if (typeof window === 'undefined') return '';
+    const now = new Date();
+    const d = String(now.getDate()).padStart(2, '0');
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const y = now.getFullYear();
+    return `${d}/${m}/${y}`;
+  });
   const [formPrecioConComision, setFormPrecioConComision] = useState('');
+  const [formPrecioConComisionAuto, setFormPrecioConComisionAuto] = useState(false);
 
   // Rotation modal state
   const [showRotation, setShowRotation] = useState(false);
@@ -94,6 +104,70 @@ export default function CarteraTab({
   const selectedFormInstrument = formTicker
     ? instruments.find(i => i.ticker === formTicker)
     : null;
+
+  // ── V3.2.4: Reactive VN from Capital in Pesos ──
+  // When user types Monto a Invertir ($), auto-calculate VN = floor(monto / precio)
+  // Price is in 1.XXXX scale (per nominal unit)
+  const handleCapitalPesosChange = (capitalStr: string) => {
+    setFormCapitalPesos(capitalStr);
+    if (!capitalStr || !selectedFormInstrument) return;
+    const capital = parseFloat(capitalStr);
+    const price = parseFloat(formPrice) || selectedFormInstrument.price;
+    if (capital > 0 && price > 0) {
+      const vn = Math.floor(capital / price);
+      setFormVN(vn > 0 ? vn.toString() : '');
+    }
+  };
+
+  // When instrument changes and capital is already set, recalculate VN
+  const handleInstrumentChange = (ticker: string) => {
+    setFormTicker(ticker);
+    const inst = instruments.find(i => i.ticker === ticker);
+    if (inst) {
+      setFormPrice(inst.price.toString());
+      // Auto-fill Precio con Comisión with 0.15% buy-side commission
+      const comisionPrecio = inst.price * (1 + 0.0015);
+      setFormPrecioConComision(comisionPrecio.toFixed(4));
+      setFormPrecioConComisionAuto(true);
+      // Recalculate VN if capital is already entered
+      if (formCapitalPesos) {
+        const capital = parseFloat(formCapitalPesos);
+        if (capital > 0 && inst.price > 0) {
+          const vn = Math.floor(capital / inst.price);
+          setFormVN(vn > 0 ? vn.toString() : '');
+        }
+      }
+    }
+  };
+
+  // ── V3.2.4: Return Simulator ──
+  // Estimates the return at maturity based on TEM and days to expiry
+  const returnSimulator = useMemo(() => {
+    if (!selectedFormInstrument) return null;
+    const capitalPesos = formCapitalPesos ? parseFloat(formCapitalPesos) : 0;
+    const vn = formVN ? parseInt(formVN) : 0;
+    const price = formPrice ? parseFloat(formPrice) : selectedFormInstrument.price;
+    const effectiveCapital = capitalPesos > 0 ? capitalPesos : (vn > 0 ? vn * price : 0);
+
+    if (effectiveCapital <= 0) return null;
+
+    const tem = selectedFormInstrument.tem; // decimal (e.g. 0.0197 = 1.97%)
+    const days = selectedFormInstrument.days;
+    const months = days / 30;
+    const retornoEstimado = effectiveCapital * tem * months;
+    const retornoTotal = effectiveCapital + retornoEstimado;
+
+    return {
+      capitalInvertido: effectiveCapital,
+      tem: tem,
+      days: days,
+      months: months,
+      retornoEstimado: retornoEstimado,
+      retornoTotal: retornoTotal,
+      expiry: selectedFormInstrument.expiry,
+      ticker: selectedFormInstrument.ticker,
+    };
+  }, [selectedFormInstrument, formCapitalPesos, formVN, formPrice]);
 
   // Group instruments by type for dropdown
   const lecapOptions = instruments.filter(i => i.type === 'LECAP').sort((a, b) => a.days - b.days);
@@ -619,10 +693,12 @@ export default function CarteraTab({
     saveToStorage(STORAGE_KEYS.CONFIG, newConfig);
 
     setFormTicker('');
+    setFormCapitalPesos('');
     setFormVN('');
     setFormPrice('');
     setFormDate('');
     setFormPrecioConComision('');
+    setFormPrecioConComisionAuto(false);
   };
 
   const handleClosePosition = () => {
@@ -1596,23 +1672,23 @@ export default function CarteraTab({
       )}
 
       {/* ──────────────────────────────────────────── */}
-      {/* 7. ADD POSITION FORM                        */}
+      {/* 7. ADD POSITION FORM — V3.2.4-PRO REENGINEERED */}
       {/* ──────────────────────────────────────────── */}
       <div className="bg-app-card rounded-lg border border-app-border p-4">
-        <h3 className="text-sm font-semibold text-app-text2 mb-3">Agregar Posición</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-6 gap-3">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-app-text2">Agregar Posición</h3>
+          <span className="text-[9px] text-app-text4 font-mono">V3.2.4-PRO</span>
+        </div>
+
+        {/* Row 1: Instrument + Monto a Invertir (prioritarios) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
           <div>
-            <label className="block text-[10px] text-app-text3 mb-1">Instrumento</label>
+            <label className="block text-[10px] text-app-text3 mb-1">
+              Instrumento
+            </label>
             <select
               value={formTicker}
-              onChange={(e) => {
-                const ticker = e.target.value;
-                setFormTicker(ticker);
-                const inst = instruments.find(i => i.ticker === ticker);
-                if (inst) {
-                  setFormPrice(inst.price.toString());
-                }
-              }}
+              onChange={(e) => handleInstrumentChange(e.target.value)}
               className="w-full bg-[#111827] text-white font-mono text-sm border border-[#374151] rounded-md px-3 py-2 focus:outline-none focus:border-[#2eebc8]/50 appearance-none cursor-pointer [&>option]:bg-[#111827] [&>option]:text-white [&>optgroup]:bg-[#111827] [&>optgroup]:text-white"
             >
               <option value="" className="bg-[#111827] text-white">Seleccionar...</option>
@@ -1642,7 +1718,30 @@ export default function CarteraTab({
             )}
           </div>
           <div>
-            <label className="block text-[10px] text-app-text3 mb-1">VN</label>
+            <label className="block text-[10px] text-app-text3 mb-1">
+              Monto a Invertir ($) <span className="text-[#2eebc8] font-bold">★</span>
+            </label>
+            <input
+              type="number"
+              value={formCapitalPesos}
+              onChange={(e) => handleCapitalPesosChange(e.target.value)}
+              placeholder="500000"
+              className="w-full bg-app-input text-app-text font-mono text-sm border border-[#2eebc8]/30 rounded-md px-3 py-2 focus:outline-none focus:border-[#2eebc8]/60 placeholder:text-app-text4 ring-1 ring-[#2eebc8]/10"
+            />
+            {formCapitalPesos && selectedFormInstrument && (
+              <div className="mt-1 text-[9px] text-[#2eebc8] font-mono">
+                → VN auto: {formVN || '—'} nominales @ ${(parseFloat(formPrice) || selectedFormInstrument.price).toFixed(4)}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Row 2: VN (auto-filled) + Precio Entrada + Precio Comisión + Fecha + Botón */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+          <div>
+            <label className="block text-[10px] text-app-text3 mb-1">
+              VN {formCapitalPesos && selectedFormInstrument && <span className="text-[#2eebc8]">(auto)</span>}
+            </label>
             <input
               type="number"
               value={formVN}
@@ -1657,7 +1756,25 @@ export default function CarteraTab({
               type="number"
               step="0.0001"
               value={formPrice}
-              onChange={(e) => setFormPrice(e.target.value)}
+              onChange={(e) => {
+                setFormPrice(e.target.value);
+                // Auto-fill Precio con Comisión if it was auto-filled or empty
+                if (formPrecioConComisionAuto || !formPrecioConComision) {
+                  const newPrice = parseFloat(e.target.value);
+                  if (newPrice > 0) {
+                    setFormPrecioConComision((newPrice * 1.0015).toFixed(4));
+                    setFormPrecioConComisionAuto(true);
+                  }
+                }
+                // Recalculate VN if capital is set
+                if (formCapitalPesos && e.target.value) {
+                  const capital = parseFloat(formCapitalPesos);
+                  const price = parseFloat(e.target.value);
+                  if (capital > 0 && price > 0) {
+                    setFormVN(Math.floor(capital / price).toString());
+                  }
+                }
+              }}
               placeholder="1.1616"
               className="w-full bg-app-input text-app-text font-mono text-sm border border-app-border rounded-md px-3 py-2 focus:outline-none focus:border-app-accent/50 placeholder:text-app-text4"
             />
@@ -1668,18 +1785,23 @@ export default function CarteraTab({
               type="number"
               step="0.0001"
               value={formPrecioConComision}
-              onChange={(e) => setFormPrecioConComision(e.target.value)}
+              onChange={(e) => {
+                setFormPrecioConComision(e.target.value);
+                setFormPrecioConComisionAuto(false);
+              }}
               placeholder="Broker real"
               className="w-full bg-app-input text-app-text font-mono text-sm border border-app-border rounded-md px-3 py-2 focus:outline-none focus:border-app-accent/50 placeholder:text-app-text4"
             />
             {formPrecioConComision && (
               <div className="mt-1 text-[9px] text-app-accent-text">
-                ✓ Se usará este precio (comisión ya incluida)
+                {formPrecioConComisionAuto
+                  ? '✓ Auto: comisión 0.15% aplicada'
+                  : '✓ Se usará este precio (comisión ya incluida)'}
               </div>
             )}
           </div>
           <div>
-            <label className="block text-[10px] text-app-text3 mb-1">Fecha</label>
+            <label className="block text-[10px] text-app-text3 mb-1">Fecha <span className="text-app-text4">(auto-hoy)</span></label>
             <input
               type="text"
               value={formDate}
@@ -1698,6 +1820,8 @@ export default function CarteraTab({
             </button>
           </div>
         </div>
+
+        {/* Investment summary line */}
         {selectedFormInstrument && formVN && (
           <div className="mt-3 p-2.5 bg-app-subtle rounded-md text-xs text-app-text3">
             <span className="text-app-text4">Inversión estimada: </span>
@@ -1724,6 +1848,46 @@ export default function CarteraTab({
                 </span>
               </>
             )}
+          </div>
+        )}
+
+        {/* ── V3.2.4: Return Simulator ── */}
+        {returnSimulator && (
+          <div className="mt-3 p-3 bg-gradient-to-r from-[#2eebc8]/5 to-[#2eebc8]/10 border border-[#2eebc8]/20 rounded-md">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] text-[#2eebc8] font-semibold">📊 Simulador de Retorno</span>
+              <span className="text-[9px] text-app-text4 font-mono">{returnSimulator.ticker}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div>
+                <div className="text-[9px] text-app-text4">Capital</div>
+                <div className="font-mono text-xs text-app-text2">
+                  ${returnSimulator.capitalInvertido.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                </div>
+              </div>
+              <div>
+                <div className="text-[9px] text-app-text4">TEM × {returnSimulator.months.toFixed(1)} meses ({returnSimulator.days}d)</div>
+                <div className="font-mono text-xs text-app-text2">
+                  {(returnSimulator.tem * 100).toFixed(2)}% × {returnSimulator.months.toFixed(1)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[9px] text-app-text4">Ganancia Estimada</div>
+                <div className="font-mono text-xs text-[#2eebc8]">
+                  +${returnSimulator.retornoEstimado.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                </div>
+              </div>
+              <div>
+                <div className="text-[9px] text-app-text4">Resultado al Vto</div>
+                <div className="font-mono text-sm font-bold text-[#2eebc8]">
+                  ${returnSimulator.retornoTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                </div>
+              </div>
+            </div>
+            <div className="mt-2 text-[10px] text-app-text4 font-mono border-t border-[#2eebc8]/10 pt-2">
+              Resultado estimado: <span className="text-[#2eebc8] font-bold">${returnSimulator.retornoTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span> al {returnSimulator.expiry}
+              <span className="text-app-text4 ml-2">(ganancia +${returnSimulator.retornoEstimado.toLocaleString('es-AR', { maximumFractionDigits: 0 })})</span>
+            </div>
           </div>
         )}
       </div>

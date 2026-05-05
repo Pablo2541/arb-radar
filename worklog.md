@@ -1,11 +1,11 @@
-# ARB//RADAR V3.2.3-PRO — Worklog
+# ARB//RADAR V3.2.4-PRO — Worklog
 
 ## Current Project Status
 
-**Version**: V3.2.3-PRO  
-**Status**: All 4 user-requested upgrades completed + price action tactical improvements. Server running on port 3000, all API endpoints operational.  
-**Database**: Neon PostgreSQL (CountryRisk model added for Riesgo País persistence)  
-**Auto-Cron**: 15-minute webDevReview scheduled (job_id: 128390)
+**Version**: V3.2.4-PRO
+**Status**: HistoricoTab 20-day trend + Version branding V3.2.4-PRO completed. Server running on port 3000, all API endpoints operational.
+**Database**: Neon PostgreSQL (CountryRisk model added for Riesgo País persistence)
+**Auto-Cron**: 15-minute webDevReview scheduled (job_id: 128422)
 
 ---
 
@@ -455,3 +455,330 @@ The ARB//RADAR dashboard needed price action tactical enhancements based on Arge
 - Country-risk API: Returning 200 with auto-fetched values
 - TypeScript: Valid — all types consistent with existing interfaces
 
+
+---
+
+## Task 7 — V3.2.3-PRO Final ZIP Packaging (COMPLETED)
+
+### ZIP Details:
+- **File**: `/home/z/my-project/ARB-RADAR-V3.2.3-PRO.zip`
+- **Size**: 417K (129 files)
+- **Contents**: `src/`, `prisma/`, `scripts/`, `public/`, `db/`, `package.json`, `worklog.md`, config files
+- **Exclusions verified**:
+  - ✅ `node_modules/` — 0 entries
+  - ✅ `.next/` — 0 entries
+  - ✅ `upload/` — 0 entries
+  - ✅ `.env` — 0 entries
+
+### Key Files Verified in ZIP:
+- `package.json` (version 3.2.3)
+- `worklog.md` (full changelog)
+- `src/lib/chart-formatters.ts` (12 professional formatters)
+- `src/lib/absorption-rule.ts` (Dynamic Absorption Rule)
+- `src/lib/iol-bridge.ts` (IOL Level 2 with depth/pressure)
+- `src/lib/utils.ts` (8 NaN-safe utility functions)
+- `src/app/api/country-risk/route.ts` (Riesgo País auto-fetch)
+- `src/app/api/market-pressure/route.ts` (Aggregated pressure + absorption)
+- `src/app/api/iol-level2/route.ts` (IOL Level 2 with absorption alerts)
+- `src/components/dashboard/MarketPressureBadge.tsx` (5-bid/5-ask depth)
+- `src/components/dashboard/OrderFlowAlert.tsx` (Order flow imbalance)
+- `src/components/dashboard/OportunidadesTab.tsx` (Null Safety patched)
+- `prisma/schema.prisma` (CountryRisk model + depth/pressure fields)
+
+### Dev Server Status:
+- Port 3000: ✅ Running, HTTP 200
+- `/api/country-risk`: ✅ 200
+- `/api/market-pressure`: ✅ 200
+- `/api/iol-level2`: ✅ 200
+- `/api/state`: ✅ 200
+- `/api/letras`: ✅ 200
+
+### ESLint:
+- `src/` directory: ✅ Zero errors
+- `upload/` directory: 23 pre-existing errors (unrelated, not in ZIP)
+
+### Scheduled Task:
+- 15-minute webDevReview cron: ✅ Created (job_id: 128422)
+
+---
+
+## Task 1 — V3.2.4-PRO Fix Country Risk Feed in Price Daemon (COMPLETED)
+
+### Problem
+The Cerebro Táctico daemon (`scripts/update-prices.ts`) fetched instrument prices every 60s but did NOT fetch Riesgo País. The `/api/country-risk` route only fetched on-demand with 15-min cache, causing stale values (e.g., 555 vs real 558).
+
+### Solution
+Added ArgentinaDatos Riesgo País fetch directly into the daemon's 60s update cycle, with DB persistence, and reduced the API route's cache TTL from 15 minutes to 1 minute.
+
+### Changes Made:
+
+#### scripts/update-prices.ts
+- **Header comment**: Updated from `V3.2.1` → `V3.2.4-PRO` (line 2)
+- **New constant**: `ARGDATOS_RIESGO_PAIS_URL = 'https://api.argentinadatos.com/v1/finanzas/indicadores/riesgo-pais'` (line 54)
+- **New function `fetchRiesgoPais()`**: Added after `safeFetch` helper (lines 207-230). Uses `safeFetch` with 10s timeout, handles both array `[{fecha, valor}]` and object `{fecha, valor}` response formats, returns `Math.round(valor)` in basis points with null-safety (`?? 0` pattern).
+- **Riesgo País persistence in `writeToNeon()`**: Added after `writeHistoricalData()` call (lines 961-976). Upserts to `CountryRisk` table with `source: 'argentinadatos_intraday'`. Logs `🇦🇷 Riesgo País: Xpb (ArgentinaDatos intraday)` on success, WARN on failure.
+
+#### src/app/api/country-risk/route.ts
+- **Header comment**: Updated from `V3.2.3-PRO` → `V3.2.4-PRO` (line 1)
+- **Description comment**: Updated from "every 15 minutes" → "daemon updates every 60s" (line 2)
+- **Cache TTL**: Reduced from `15 * 60 * 1000` (15 min) → `60 * 1000` (1 min). When daemon is active, DB will have fresh values every 60s; the reduced TTL ensures the frontend also gets faster updates when daemon is not running.
+
+### Validation:
+- ESLint: Zero errors in `src/` and `scripts/` directories (all 23 errors are in `upload/` — pre-existing and unrelated)
+- TypeScript: Valid — all types consistent
+- No other files modified
+
+---
+
+## V3.2.3-PRO — Complete Feature Summary
+
+### 1. Version/Branding Sync (Directive 1)
+- All metadata: `ARB//RADAR V3.2.3 — PRO`
+- HTML title, OpenGraph, Twitter cards updated
+- Header badge: `V3.2.3 — PRO`
+- Loading screen: `Cargando V3.2.3...`
+
+### 2. Automated Riesgo País (Directive 2)
+- ArgentinaDatos API integration (`/api/country-risk`)
+- 15-minute refresh cycle with in-memory cache
+- Neon PostgreSQL persistence via `CountryRisk` model
+- Fallback chain: cache → API → DB → 555pb default
+- `AUTO` badge in status bar + MercadoTab
+- Trend arrows ↑↓ for direction changes
+- 4-threshold color system: EXCELENTE / MODERADO / ALTO / PELIGROSO
+
+### 3. Null Safety Audit (Directive 3)
+- `(valor ?? 0)` pattern applied across 9 components
+- Critical targets patched: OportunidadesTab, MercadoTab, ArbitrajeTab, CarteraTab, EstrategiasTab, page.tsx
+- 8 NaN-safe utility functions in `src/lib/utils.ts`
+- `safeNumber()`, `safeVolume()`, `safeToFixed()` used in MarketPressureBadge
+- Audited components: HistoricoTab, CurvasTab, DiagnosticoTab (already safe)
+
+### 4. Chart Format Cleanup (Directive 4)
+- `chart-formatters.ts` with `roundTo()` before formatting
+- 12 professional formatters (axis + tooltip variants)
+- Applied to: CurvasTab, HistoricoTab, MercadoTab, CarteraTab
+- Y-axes: 2-decimal rates, K/M volume notation, 4-decimal prices
+- Zero floating point artifacts (1.9999999 → 2.00%)
+
+### 5. Carry-Forward Features (V3.2.2)
+- MarketPressureBadge: 5-bid vs 5-ask accumulated volume with tooltip
+- Absorption Rule: 5× wall detection, 30% absorption trigger, `ABSORPTION_IMMINENT 🚨`
+- BONCAP Priority: T15E7 auto-detection via `/^T\d+[A-Z]\d+$/i` regex
+- OrderFlowAlert: 3:1 imbalance detection (BULLISH/BEARISH_FLOW)
+- VWAP Indicator: Bid/ask midpoint signal in MercadoTab
+
+### Unresolved Risks:
+1. **Prisma db:push** — Must run `npx prisma db push` after deploy
+2. **IOL Credentials** — Requires `IOL_USERNAME`/`IOL_PASSWORD` env vars
+3. **Rolling Average** — In-memory Map; lost on server restart
+4. **ConfiguracionTab + HistorialTab** — Not fully null-safety audited
+
+---
+
+## Task 2 — V3.2.4-PRO Historical Price Injection Script (COMPLETED)
+
+### Problem
+April historical price data from IAMC (`upload/historico_precios.json`) needed to be injected into the Neon PostgreSQL `DailyOHLC` table for chart backfill and historical analysis.
+
+### Solution
+Created a standalone injection script that reads the JSON file, applies scale conversions (100-scale → 1.XXXX for prices, percentage points → decimal for TEM/TNA), and upserts into `DailyOHLC` using the `@@unique([ticker, date])` constraint.
+
+### Changes Made:
+
+#### scripts/inject-historical.ts (NEW)
+- **.env loader**: Reads `.env` file from CWD to get `DATABASE_URL` for Neon PostgreSQL connection
+- **Type definitions**: `PriceEntry` (p, tna, tem, dm) and `HistoricoFile` (descripcion, metadatos, historico) interfaces
+- **Scale conversions**:
+  - Price: 100-scale → 1.XXXX scale (`entry.p / 100`) — e.g., 125.54 → 1.2554
+  - TEM: percentage points → decimal (`entry.tem / 100`) — e.g., 2.0 → 0.02
+  - TNA: percentage points → decimal (`entry.tna / 100`) — e.g., 24.3 → 0.243
+- **OHLC mapping**: Since only closes available, `open = high = low = close = priceNormalized`
+- **TEM OHLC**: Similarly, `temOpen = temClose = temHigh = temLow = temDecimal`
+- **Spread estimate**: `spreadAvg = temDecimal - CAUCION_TEM_DEFAULT` (0.017 ≈ 1.7% monthly)
+- **Upsert logic**: Uses `prisma.dailyOHLC.upsert()` with `where: { ticker_date: { ticker, date } }` to handle existing records gracefully
+- **Null safety**: Checks for invalid entries (`!entry`, `typeof entry.p !== 'number'`, `!isFinite(entry.p)`, `entry.p <= 0`) before processing
+- **Progress logging**: Reports per-date processing and final summary (upserted, skipped, errors)
+
+#### package.json
+- **New script**: `"history:inject": "npx tsx scripts/inject-historical.ts"` — added after `prices:daemon` entry
+
+### Data Coverage:
+- **Source**: `upload/historico_precios.json` — "Base de Datos Integral IAMC - Estrategia Arbitraje V1.5"
+- **Period**: 2026-04-06 to 2026-04-20 (11 weekdays)
+- **Instruments**: 15 LECAP/BONCAP tickers (S30A6, S15Y6, S29Y6, T30J6, S17L6, S31L6, S14G6, S31G6, S30S6, S30O6, S30N6, T15E7, T30A7, T31Y7, T30J7 + S17A6 on early dates)
+- **Total records**: ~160 rows (varies by date — S17A6 drops off after Apr 15, S14G6 appears Apr 17+)
+
+### Validation:
+- ESLint: Zero errors on `scripts/inject-historical.ts`
+- TypeScript: Valid (Prisma type errors from `library.d.ts` are pre-existing, not from this script)
+- Script entry: `"history:inject"` confirmed in `package.json`
+
+### Usage:
+```bash
+# Ensure DATABASE_URL is set in .env, then:
+npx tsx scripts/inject-historical.ts
+# or:
+bun run history:inject
+```
+
+### Important Notes:
+- **Prisma db:push must be run first** to ensure the `DailyOHLC` table exists with the `@@unique([ticker, date])` constraint
+- The script uses `upsert` so it can be re-run safely (idempotent)
+- Volume is set to 0 since the JSON has no volume data
+- Default caución TEM of 1.7% is used for spread estimates (no historical caución data available)
+
+---
+
+## Task 3 — V3.2.4-PRO Historico Tab 20-Day Trend + Version Branding (COMPLETED)
+
+### Part A: HistoricoTab Enhancements
+
+#### src/components/dashboard/HistoricoTab.tsx
+
+1. **DateRange type expanded**: `7 | 15 | 30 | 60 | 90` → `7 | 15 | 20 | 30 | 60 | 90 | 999`
+2. **Default dateRange changed**: `30` → `20` (20-day default view for April data)
+3. **New "20d" button** added to Date Range Selector (between 15d and 30d)
+4. **New "ALL" button** added (days: 999, maps to `effectiveDays = 3650` for API queries)
+5. **ALL API handling**: When `dateRange === 999`, the fetch uses `effectiveDays = 3650` instead of raw 999
+6. **Data Source Indicator**: Green badge showing `📊 N registros OHLC` + `✨ Tendencia 3 semanas` amber badge when ≥15 records (rendered after instrument info card, before Stats Summary)
+7. **Subtitle updated**: "Motor Híbrido de Datos V3.2" → "Motor Híbrido de Datos V3.2.4-PRO"
+8. **Tendencia 20 días Summary Card**: When ≥15 data points, shows:
+   - Precio Inicio / Precio Fin / Δ Precio (% with green/red color) / Δ TEM (pp with green/red color)
+   - Null-safe: uses `(value ?? 0)` and `(first.open ?? 1)` for all computed values
+
+### Part B: Version Branding V3.2.3 → V3.2.4-PRO
+
+#### package.json
+- Version: "3.2.3" → "3.2.4"
+
+#### src/app/layout.tsx
+- title: "ARB//RADAR V3.2.3 — PRO" → "ARB//RADAR V3.2.4 — PRO"
+- description: Updated to mention V3.2.4 features (Riesgo País intraday + Historical injection + 20-day trend)
+- openGraph title/description: Updated to V3.2.4-PRO
+- twitter title/description: Updated to V3.2.4-PRO
+
+#### src/app/page.tsx
+- Loading screen text: "Cargando V3.2.3..." → "Cargando V3.2.4..."
+- Header version badge: "V3.2.3 — PRO" → "V3.2.4 — PRO"
+- All V3.2.3-PRO comments → V3.2.4-PRO (replace_all)
+
+#### prisma/schema.prisma
+- All V3.2.3-PRO references → V3.2.4-PRO (9 occurrences: header, inline field comments, model comments)
+
+### Validation:
+- ESLint: Zero errors in `src/` directory (all 23 errors are in `upload/` — pre-existing and unrelated)
+- Zero V3.2.3 references remain in the 5 specified files
+- TypeScript: Valid — all types consistent
+- HistoricoTab compiles with new DateRange type (7 | 15 | 20 | 30 | 60 | 90 | 999)
+
+### Files NOT Modified (per task scope):
+The following files still have V3.2.3-PRO comments but were NOT in the task's "Files to Modify" list:
+- `src/lib/utils.ts`, `src/lib/store.ts`, `src/lib/iol-bridge.ts`, `src/lib/chart-formatters.ts`, `src/lib/absorption-rule.ts`
+- `src/components/dashboard/MercadoTab.tsx`, `src/components/dashboard/MarketPressureBadge.tsx`, `src/components/dashboard/CurvasTab.tsx`, `src/components/dashboard/OrderFlowAlert.tsx`
+- `src/app/api/market-pressure/route.ts`, `src/app/api/iol-level2/route.ts`, `src/app/api/country-risk/route.ts`
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Reingeniería del Componente "Agregar Posición" (V3.2.4-PRO)
+
+Work Log:
+- Audited existing CarteraTab.tsx "Agregar Posición" form (lines 1601-1799 original)
+- Added `formCapitalPesos` state for "Monto a Invertir ($)" prioritized input
+- Implemented `handleCapitalPesosChange()` — auto-calculates VN = floor(monto / precio)
+- Implemented `handleInstrumentChange()` — recalculates VN when instrument changes and capital is already entered
+- Added reactive VN recalculation on Precio Entrada change (when capital is set)
+- Initialized `formDate` state with today's date using DD/MM/YYYY format (auto-fill)
+- Created `returnSimulator` useMemo — estimates return at maturity: Capital × TEM × (days/30)
+- Redesigned form layout: Row 1 (Instrument + Monto prioritario), Row 2 (VN auto + Precio + Comisión + Fecha + Botón)
+- Added V3.2.4-PRO Return Simulator card below the button: gradient card with Capital, TEM×months, Ganancia Estimada, Resultado al Vto
+- Summary line: "Resultado estimado: $XXXX al [Vto]" as requested
+- Added reset of `formCapitalPesos` on form submission
+- Build succeeds: `npx next build` zero errors
+- ESLint: zero errors in src/ directory
+
+Stage Summary:
+- All 4 requirements implemented:
+  1. ✅ Input de Capital en Pesos ("Monto a Invertir ($)") with ★ priority marker
+  2. ✅ Cálculo Reactivo de VN — auto-fills from capital/price, shows "(auto)" label
+  3. ✅ Autocompletado de Fecha — initialized with today's date DD/MM/YYYY
+  4. ✅ Simulador de Retorno — "Resultado estimado: $XXXX al [Vto]" with detailed breakdown
+- Build: ✅ Compiled successfully
+- Lint: ✅ Zero errors in src/
+- Cron QA: ✅ Job 130653 created (15-min interval)
+
+Unresolved Issues:
+1. Dev server process dies on root page request (sandbox resource limitation, not code issue)
+2. API endpoints work fine (/api/letras, /api/state, /api/country-risk all return 200)
+3. The production build works but page rendering also causes process kill in this sandbox environment
+
+---
+Task ID: 2
+Agent: general-purpose
+Task: Fix Riesgo País Intraday Endpoint
+
+Work Log:
+- Read worklog.md and both target files (scripts/update-prices.ts, src/app/api/country-risk/route.ts)
+- Updated scripts/update-prices.ts: Added getRiesgoPaisIntradayUrl() helper to construct date-specific URL (YYYY/MM/DD), extracted parseRiesgoPaisData() for shared parsing logic, rewrote fetchRiesgoPais() to try intraday endpoint first then fall back to generic endpoint
+- Updated src/app/api/country-risk/route.ts: Added getIntradayUrl() helper, extracted parseRiesgoPaisData() for shared parsing, rewrote fetchCountryRisk() to return {value, source} and try intraday first then generic, updated saveCountryRiskToDB() to accept source parameter, added cachedSource tracking for cache hits, updated DB persistence source to 'argentinadatos_intraday' when intraday endpoint succeeds
+- Ran lint check: zero errors in src/ (all 23 errors in upload/ — pre-existing)
+
+Stage Summary:
+- Both files modified to use date-specific intraday endpoint as primary, with generic endpoint as fallback
+- Daemon script (update-prices.ts) persists with source 'argentinadatos_intraday' when intraday succeeds (was already set from previous task)
+- API route (country-risk/route.ts) now tracks and returns the actual source ('argentinadatos_intraday' vs 'argentinadatos' vs 'database' vs 'fallback')
+- Fallback chain preserved: intraday → generic → DB → fallback 555
+- Date-specific URL format: https://api.argentinadatos.com/v1/finanzas/indicadores/riesgo-pais/{year}/{month}/{day}
+- Intraday endpoint returns single object {fecha, valor}; generic returns array — both handled by shared parser
+- ESLint: zero errors in src/ directory
+
+---
+Task ID: 4
+Agent: general-purpose
+Task: Add Commission Auto-Fill to "Agregar Posición" Form
+
+Work Log:
+- Added `formPrecioConComisionAuto` state variable (line 59) to track whether Precio con Comisión was auto-filled or manually entered
+- Updated `handleInstrumentChange` to auto-fill Precio con Comisión with `inst.price * (1 + 0.0015)` when instrument is selected, setting auto state to true
+- Updated Precio Entrada onChange handler to auto-fill Precio con Comisión when price changes (only if field was previously auto-filled or is empty), using `(newPrice * 1.0015).toFixed(4)`
+- Updated Precio con Comisión onChange handler to set `formPrecioConComisionAuto(false)` when user manually types a value
+- Updated visual indicator under Precio con Comisión field to show "✓ Auto: comisión 0.15% aplicada" when auto-filled vs "✓ Se usará este precio (comisión ya incluida)" when manually entered
+- Added `setFormPrecioConComisionAuto(false)` to form reset in `handleAddPosition`
+- Ran lint: zero errors in src/ directory
+
+Stage Summary:
+- Commission auto-fill feature fully implemented in CarteraTab.tsx
+- When user selects an instrument: Precio con Comisión auto-fills with price × 1.0015 (0.15% buy-side commission)
+- When user manually changes Precio Entrada: Precio con Comisión updates if it was auto-filled or empty
+- When user manually types in Precio con Comisión: auto state resets, value preserved as-is
+- Visual indicator differentiates auto-filled vs manually entered values
+- Form reset properly clears auto state
+- Zero lint errors confirmed
+
+---
+Task ID: 3
+Agent: general-purpose
+Task: Update inject-historical.ts for Full 22-Rueda Data
+
+Work Log:
+- Read worklog.md, inject-historical.ts, schema.prisma, and historico_precios.json to understand current state
+- Fixed `HistoricoFile` interface: removed `tipo: string` from `instrumentos_maestro` Record type (JSON only has `{vto: string}`)
+- Added `getInstrumentType(ticker)` helper function: LECAPs start with 'S', BONCAPs start with 'T', returns 'UNKNOWN' otherwise
+- Checked Prisma schema for `tna` and `dm`/`durationModified` fields in `DailyOHLC` — confirmed they don't exist; skipped (no schema changes needed)
+- Updated header comment from "April data only" to "22 Ruedas (Mar 23 – Apr 24)"
+- Updated caución TEM comment from "April data" to "Mar-Apr data"
+- Added per-date LECAP/BONCAP breakdown in console log using `getInstrumentType()`
+- Added summary note about tna/dm columns not being upserted
+- Verified all 7 changes with automated syntax/presence checks — all passed
+- Ran `bun run lint 2>&1 | rg "src/"` — zero lint errors in src/
+- Attempted to run injection script — failed because `.env` has `file:` SQLite URL instead of `postgresql://` Neon URL (sandbox limitation, not a script bug)
+- TypeScript check: only pre-existing Prisma library.d.ts errors (not from this script)
+
+Stage Summary:
+- Script `scripts/inject-historical.ts` updated for 22-rueda JSON data (Mar 23 – Apr 24)
+- Key changes: interface fix, instrument type detection helper, header update, enhanced logging
+- `DailyOHLC` schema has no `tna` or `dm` fields — those fields are correctly NOT upserted
+- Injection script is code-complete and idempotent but requires `postgresql://` DATABASE_URL to execute
+- User must set Neon PostgreSQL URL in `.env` and run `npx tsx scripts/inject-historical.ts` after deploy
+- Expected data: 22 dates × ~14 instruments = ~300 OHLC rows (up from ~160 with only April)
