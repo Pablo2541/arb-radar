@@ -51,7 +51,10 @@ const ARGDATOS_LETRAS_URL = 'https://api.argentinadatos.com/v1/finanzas/letras';
 const ARGDATOS_PF_URL = 'https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo';
 const IOL_TOKEN_URL = 'https://api.invertironline.com/token';
 const IOL_COTIZACION_URL = 'https://api.invertironline.com/api/v2/Titulos';
-const ARGDATOS_RIESGO_PAIS_URL = 'https://api.argentinadatos.com/v1/finanzas/indicadores/riesgo-pais'; // Generic fallback; intraday URL constructed dynamically
+// V3.2.4-FIX: BondTerminal as primary source (real-time), ArgentinaDatos as fallback
+const BONDTERMINAL_RIESGO_PAIS_URL = 'https://bondterminal.com/riesgo-pais'; // Primary: real-time value
+const ARGDATOS_RIESGO_PAIS_ULTIMO_URL = 'https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo'; // Secondary: may be stale
+const ARGDATOS_RIESGO_PAIS_URL = 'https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais'; // Tertiary fallback
 
 // IOL Volume thresholds for "Filtro de Verdad"
 const IOL_LOW_VOLUME_PCT = 0.10; // 10% of average daily = "Baja Liquidez"
@@ -206,16 +209,20 @@ async function safeFetch<T>(url: string, timeoutMs = 8000, headers?: Record<stri
 
 // ── Riesgo País Fetcher (V3.2.4-PRO) ──────────────────────────────────
 
-/** Build date-specific intraday URL for today */
-function getRiesgoPaisIntradayUrl(): string {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  return `https://api.argentinadatos.com/v1/finanzas/indicadores/riesgo-pais/${year}/${month}/${day}`;
+// V3.2.4-FIX: BondTerminal as primary (real-time), ArgentinaDatos as fallback
+// BondTerminal scrapes the latest JP Morgan EMBI+ value directly
+
+/** Parse Riesgo País from BondTerminal HTML */
+function parseBondTerminalHTML(html: string): number | null {
+  const match = html.match(/(\d{3,4})\s*pb/);
+  if (match) {
+    const value = parseInt(match[1], 10);
+    return value > 0 && value < 10000 && isFinite(value) ? value : null;
+  }
+  return null;
 }
 
-/** Parse Riesgo País value from API response (handles both array and single-object formats) */
+/** Parse Riesgo País value from ArgentinaDatos API response */
 function parseRiesgoPaisData(data: unknown): number | null {
   // Handle array format [{fecha, valor}]
   if (Array.isArray(data) && data.length > 0) {
@@ -223,7 +230,7 @@ function parseRiesgoPaisData(data: unknown): number | null {
     const valor = Number(latest.valor ?? latest.value ?? 0);
     return valor > 0 && isFinite(valor) ? Math.round(valor) : null;
   }
-  // Handle single object format {fecha, valor} (intraday endpoint)
+  // Handle single object format {fecha, valor}
   if (data && typeof data === 'object') {
     const obj = data as Record<string, unknown>;
     const valor = Number(obj.valor ?? obj.value ?? 0);
@@ -232,27 +239,41 @@ function parseRiesgoPaisData(data: unknown): number | null {
   return null;
 }
 
-async function fetchRiesgoPais(): Promise<number | null> {
-  // 1. Try date-specific intraday endpoint first (more reliable for current market value)
-  const intradayUrl = getRiesgoPaisIntradayUrl();
+async function fetchRiesgoPais(): Promise<{ value: number | null; source: string }> {
+  // ── SOURCE 1: BondTerminal (real-time, most reliable) ──
   try {
-    const { ok, data } = await safeFetch<unknown>(intradayUrl, 10000);
-    if (ok && data) {
-      const value = parseRiesgoPaisData(data);
-      if (value !== null) return value;
+    const { ok, data } = await safeFetch<string>(BONDTERMINAL_RIESGO_PAIS_URL, 8000);
+    if (ok && data && typeof data === 'string') {
+      const value = parseBondTerminalHTML(data);
+      if (value !== null) return { value, source: 'bondterminal' };
     }
   } catch {
-    // Intraday endpoint failed, try generic fallback
+    // BondTerminal failed
   }
 
-  // 2. Fallback to generic endpoint
+  // ── SOURCE 2: ArgentinaDatos /ultimo (may be stale by days) ──
+  try {
+    const { ok, data } = await safeFetch<unknown>(ARGDATOS_RIESGO_PAIS_ULTIMO_URL, 10000);
+    if (ok && data) {
+      const value = parseRiesgoPaisData(data);
+      if (value !== null) return { value, source: 'argentinadatos_ultimo' };
+    }
+  } catch {
+    // /ultimo endpoint failed
+  }
+
+  // ── SOURCE 3: ArgentinaDatos generic (full historical array) ──
   try {
     const { ok, data } = await safeFetch<unknown>(ARGDATOS_RIESGO_PAIS_URL, 10000);
-    if (!ok || !data) return null;
-    return parseRiesgoPaisData(data);
+    if (ok && data) {
+      const value = parseRiesgoPaisData(data);
+      if (value !== null) return { value, source: 'argentinadatos' };
+    }
   } catch {
-    return null;
+    // Generic endpoint also failed
   }
+
+  return { value: null, source: 'failed' };
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -984,21 +1005,21 @@ async function writeToNeon(
     // V3.2: Write historical accumulation data (snapshots + OHLC)
     await writeHistoricalData(prisma, instruments, caucionProxy);
 
-    // V3.2.4-PRO: Fetch and persist Riesgo País every cycle
-    const riesgoPaisValue = await fetchRiesgoPais();
-    if (riesgoPaisValue !== null && riesgoPaisValue > 0) {
+    // V3.2.4-FIX: Fetch and persist Riesgo País every cycle (using /ultimo endpoint)
+    const riesgoPaisResult = await fetchRiesgoPais();
+    if (riesgoPaisResult.value !== null && riesgoPaisResult.value > 0) {
       try {
         await prisma.countryRisk.upsert({
           where: { id: 'main' },
-          update: { value: riesgoPaisValue, source: 'argentinadatos_intraday' },
-          create: { id: 'main', value: riesgoPaisValue, source: 'argentinadatos_intraday' },
+          update: { value: riesgoPaisResult.value, source: riesgoPaisResult.source },
+          create: { id: 'main', value: riesgoPaisResult.value, source: riesgoPaisResult.source },
         });
-        log('OK', `🇦🇷 Riesgo País: ${riesgoPaisValue}pb (ArgentinaDatos intraday)`);
+        log('OK', `🇦🇷 Riesgo País: ${riesgoPaisResult.value}pb (${riesgoPaisResult.source})`);
       } catch {
         log('WARN', 'Riesgo País: no se pudo persistir en DB');
       }
     } else {
-      log('WARN', 'Riesgo País: no se pudo obtener de ArgentinaDatos');
+      log('WARN', 'Riesgo País: no se pudo obtener de ArgentinaDatos (todos los endpoints fallaron)');
     }
 
     return true;

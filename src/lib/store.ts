@@ -17,6 +17,7 @@ import { create } from 'zustand';
 import type {
   Instrument, Config, Position, Transaction,
   SimulationRecord, ExternalHistoryRecord, LiveInstrument,
+  CockpitScore,
 } from '@/lib/types';
 import {
   SAMPLE_INSTRUMENTS, DEFAULT_CONFIG, DEFAULT_POSITION,
@@ -24,6 +25,7 @@ import {
 } from '@/lib/sampleData';
 import { ensureValidDays } from '@/lib/calculations';
 import type { PriceHistoryFile } from '@/lib/priceHistory';
+import type { MarketTruthResponse } from '@/lib/market-truth-types';
 import { loadPriceHistory, savePriceHistory } from '@/lib/priceHistory';
 
 // ════════════════════════════════════════════════════════════════════════
@@ -31,7 +33,7 @@ import { loadPriceHistory, savePriceHistory } from '@/lib/priceHistory';
 // ════════════════════════════════════════════════════════════════════════
 
 export type AppTheme = 'dark' | 'light';
-export type TabId = 'mercado' | 'oportunidades' | 'curvas' | 'arbitraje' | 'estrategias' | 'cartera' | 'diagnostico' | 'historial' | 'historico' | 'configuracion';
+export type TabId = 'mercado' | 'cockpit' | 'curvas' | 'estrategias' | 'cartera' | 'historial' | 'historico' | 'configuracion';
 
 export interface ActivityItem {
   id: string;
@@ -73,6 +75,16 @@ export interface RadarState {
   // ── Country Risk Auto-Fetch State ───────────────────────────────────
   riesgoPaisAuto: number | null; // V3.2.3-PRO: Auto-fetched Riesgo País value (null = not fetched yet)
 
+  // ── V3.3-PRO: Market Truth Engine State ──────────────────────────────
+  marketTruth: MarketTruthResponse | null; // Full market truth consensus data
+  mepConsensus: number | null; // Best MEP value from consensus
+  mepConfidence: string | null; // MEP confidence level
+  rpConfidence: string | null; // RP confidence level
+
+  // ── V3.3-PRO Phase 2: Cockpit Score State ──
+  cockpitScores: CockpitScore[];
+  cockpitScoresLoading: boolean;
+
   // ── Actions ────────────────────────────────────────────────────────
   setInstruments: (v: Instrument[]) => void;
   setConfig: (v: Config) => void;
@@ -94,6 +106,13 @@ export interface RadarState {
 
   // ── Country Risk Auto-Fetch Actions ────────────────────────────────
   setRiesgoPaisAuto: (v: number | null) => void;
+
+  // ── V3.3-PRO: Market Truth Engine Actions ──────────────────────────
+  setMarketTruth: (v: MarketTruthResponse) => void;
+
+  // ── V3.3-PRO Phase 2: Cockpit Score Actions ──
+  setCockpitScores: (v: CockpitScore[]) => void;
+  setCockpitScoresLoading: (v: boolean) => void;
 
   // ── DB Sync Actions ────────────────────────────────────────────────
   persistToDb: () => Promise<void>;
@@ -183,6 +202,12 @@ export const useRadarStore = create<RadarState>((set, get) => ({
   lastDbSyncStatus: 'idle',
   iolLevel2Online: false,
   riesgoPaisAuto: null,
+  marketTruth: null,
+  mepConsensus: null,
+  mepConfidence: null,
+  rpConfidence: null,
+  cockpitScores: [],
+  cockpitScoresLoading: false,
 
   // ── Setters (write to Zustand + localStorage immediately, schedule DB) ─
   setInstruments: (v: Instrument[]) => {
@@ -308,6 +333,39 @@ export const useRadarStore = create<RadarState>((set, get) => ({
       if (currentConfig.riesgoPais !== v) {
         get().setConfig({ ...currentConfig, riesgoPais: v });
       }
+    }
+  },
+
+  // V3.3-PRO Phase 2: Set Cockpit Scores
+  setCockpitScores: (v: CockpitScore[]) => {
+    set({ cockpitScores: v });
+  },
+
+  setCockpitScoresLoading: (v: boolean) => {
+    set({ cockpitScoresLoading: v });
+  },
+
+  // V3.3-PRO: Set Market Truth consensus data
+  setMarketTruth: (v: MarketTruthResponse) => {
+    const rpValue = v.riesgo_pais.value;
+    const mepValue = v.mep.value;
+    set({
+      marketTruth: v,
+      riesgoPaisAuto: rpValue > 0 ? rpValue : null,
+      mepConsensus: mepValue > 0 ? mepValue : null,
+      mepConfidence: v.mep.confidence,
+      rpConfidence: v.riesgo_pais.confidence,
+    });
+    // Sync RP to config
+    if (rpValue > 0) {
+      const currentConfig = get().config;
+      if (currentConfig.riesgoPais !== rpValue) {
+        get().setConfig({ ...currentConfig, riesgoPais: rpValue });
+      }
+    }
+    // Sync MEP to store
+    if (mepValue > 0) {
+      get().setMepRate(mepValue);
     }
   },
 
@@ -454,6 +512,12 @@ export const useRadarStore = create<RadarState>((set, get) => ({
       priceHistory: null,
       activityFeed: [],
       riesgoPaisAuto: null,
+      marketTruth: null,
+      mepConsensus: null,
+      mepConfidence: null,
+      rpConfidence: null,
+      cockpitScores: [],
+      cockpitScoresLoading: false,
     });
 
     // Clear DB via API

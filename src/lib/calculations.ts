@@ -1,4 +1,4 @@
-import { Instrument, Config, Position, RotationAnalysis, SwingSignal, CurveAnomaly, CompositeSignal, DiagnosticResult, Snapshot, MomentumData, RotationScoreV17 } from './types';
+import { Instrument, Config, Position, RotationAnalysis, SwingSignal, CurveAnomaly, CompositeSignal, DiagnosticResult, Snapshot, MomentumData, RotationScoreV17, CockpitScore } from './types';
 
 /**
  * Calculate days remaining to expiry from an expiry date string.
@@ -1529,5 +1529,130 @@ export function calculateRotationScoreV17(
     tacticalScore,
     isPositionExhausted,
     shouldRotateForRun,
+  };
+}
+
+// ============================================================
+// V3.3-PRO Phase 2: COCKPIT SCORE — Unified Scalping Signal
+//
+// 5 weighted components for intraday scalping:
+//   25% Spread Neto (Carry inmediato vs Caución)
+//   25% ΔTIR (Momentum de tasa intradía)
+//   20% Presión de Punta (IOL bid/ask data)
+//   20% Upside Capital (Recorrido a resistencia S/R)
+//   10% Velocidad (Penaliza instrumentos largos, premia cortos)
+//
+// BLINDAJE: La comisión del 0.15% NO se toca.
+// ============================================================
+
+/**
+ * V3.3-PRO Phase 2: Cockpit Score — Unified scalping signal
+ *
+ * Computes a 0-10 composite score from 5 weighted factors,
+ * then assigns a verdict (SALTO_TACTICO → EVITAR).
+ *
+ * COMMISSION LOGIC IS STRICTLY PROTECTED — 0.15% (price × 1.0015)
+ * is NEVER modified by this function.
+ */
+export function calculateCockpitScore(
+  instrument: Instrument,
+  config: Config,
+  deltaTIR: number | null,
+  iolMarketPressure: number | null,
+  upsideCapital: number,
+  days: number,
+): CockpitScore {
+  // ── 1. Spread Neto Score (25%) ──────────────────────────────
+  // spreadNeto = TEM - cauciónTEM - comisiónAmortizada
+  const caucionTNA = getCaucionForDays(config, days);
+  const caucionTEM = caucionTEMFromTNA(caucionTNA);
+  const comisionAmortizada = days > 0 ? config.comisionTotal / (days / 30) : 0;
+  const spreadNeto = instrument.tem - caucionTEM - comisionAmortizada;
+  const spreadNetoScore = Math.max(0, Math.min(10, (spreadNeto + 0.5) / 1.5 * 10));
+
+  // ── 2. ΔTIR Score (25%) ────────────────────────────────────
+  // If deltaTIR is null: score = 3.0 (neutral baseline, penalize lack of data)
+  // Map: deltaTIR from [-0.1%, +0.15%] → [0, 10]
+  const deltaTIRScore = deltaTIR !== null
+    ? Math.max(0, Math.min(10, (deltaTIR + 0.1) / 0.25 * 10))
+    : 3.0;
+
+  // ── 3. Presión de Punta Score (20%) ────────────────────────
+  // If iolMarketPressure is available:
+  //   Map: pressure from [0.5, 1.5] → [0, 10]
+  //   (pressure > 1.3 → 10, > 1.0 → 7, > 0.7 → 5, < 0.7 → 2)
+  // If not available: score = 5.0 (neutral, no penalty but no reward)
+  const presionPuntasScore = iolMarketPressure !== null
+    ? Math.max(0, Math.min(10, (iolMarketPressure - 0.5) / 1.0 * 10))
+    : 5.0;
+
+  // ── 4. Upside Capital Score (20%) ──────────────────────────
+  // If srData available: upsideCapital = distanciaResistencia from SRData
+  // If not available: use tem * 0.3 as rough proxy (already passed in)
+  // Map: upsideCapital from [0%, 2.0%] → [0, 10]
+  const effectiveUpsideCapital = upsideCapital > 0 ? upsideCapital : instrument.tem * 0.3;
+  const upsideCapitalScore = Math.max(0, Math.min(10, effectiveUpsideCapital / 2.0 * 10));
+
+  // ── 5. Velocidad Score (10%) ───────────────────────────────
+  // Short instruments get higher score (scalping focus)
+  let velocidadScore: number;
+  if (days <= 7) velocidadScore = 10;
+  else if (days <= 15) velocidadScore = 8;
+  else if (days <= 20) velocidadScore = 6;
+  else if (days <= 30) velocidadScore = 4;
+  else if (days <= 60) velocidadScore = 2;
+  else velocidadScore = 0;
+
+  // ── Composite Score ────────────────────────────────────────
+  const cockpitScore =
+    spreadNetoScore * 0.25 +
+    deltaTIRScore * 0.25 +
+    presionPuntasScore * 0.20 +
+    upsideCapitalScore * 0.20 +
+    velocidadScore * 0.10;
+
+  // ── 20-day Temporal Horizon Filter ─────────────────────────
+  const withinHorizon = days <= 20;
+
+  // ── Verdict ────────────────────────────────────────────────
+  let verdict: CockpitScore['verdict'];
+  let verdictReason: string;
+
+  const effectiveDeltaTIR = deltaTIR ?? 0;
+
+  if (cockpitScore >= 7.5 && spreadNeto > 0.15 && effectiveDeltaTIR > 0) {
+    verdict = 'SALTO_TACTICO';
+    verdictReason = `Score ${cockpitScore.toFixed(1)} — Spread Neto +${spreadNeto.toFixed(2)}% + ΔTIR +${effectiveDeltaTIR.toFixed(3)}% — Entrada táctica confirmada`;
+  } else if (cockpitScore >= 5.5 && effectiveUpsideCapital > 0.50) {
+    verdict = 'PUNTO_CARAMELO';
+    verdictReason = `Score ${cockpitScore.toFixed(1)} — Upside +${effectiveUpsideCapital.toFixed(2)}% — Punto de entrada dulce con recorrido de capital`;
+  } else if (cockpitScore >= 4.0) {
+    verdict = 'ATRACTIVO';
+    verdictReason = `Score ${cockpitScore.toFixed(1)} — Condiciones favorables pero sin confirmación completa`;
+  } else if (cockpitScore >= 2.5) {
+    verdict = 'NEUTRAL';
+    verdictReason = `Score ${cockpitScore.toFixed(1)} — Sin señal clara, mantener observación`;
+  } else {
+    verdict = 'EVITAR';
+    verdictReason = `Score ${cockpitScore.toFixed(1)} — Condiciones desfavorables para entrada`;
+  }
+
+  return {
+    ticker: instrument.ticker,
+    type: instrument.type,
+    spreadNetoScore,
+    deltaTIRScore,
+    presionPuntasScore,
+    upsideCapitalScore,
+    velocidadScore,
+    cockpitScore,
+    verdict,
+    verdictReason,
+    spreadNeto,
+    deltaTIR,
+    presionPuntas: iolMarketPressure,
+    upsideCapital: effectiveUpsideCapital,
+    days,
+    withinHorizon,
   };
 }

@@ -230,7 +230,35 @@ export interface RotationScoreV17 {
   shouldRotateForRun: boolean;    // V1.7: even with similar TEM, better upside + score
 }
 
-export type TabId = 'mercado' | 'oportunidades' | 'curvas' | 'arbitraje' | 'estrategias' | 'cartera' | 'diagnostico' | 'historial' | 'historico' | 'configuracion';
+// V3.3-PRO Phase 2: Cockpit Score — Unified scalping signal
+export interface CockpitScore {
+  ticker: string;
+  type: 'LECAP' | 'BONCAP';
+  
+  // ── Component Scores (0-10 each) ──
+  spreadNetoScore: number;     // 25% weight — Carry inmediato vs Caución
+  deltaTIRScore: number;       // 25% weight — Momentum de tasa intradía
+  presionPuntasScore: number;  // 20% weight — Presión de puntas (IOL/bid-ask)
+  upsideCapitalScore: number;  // 20% weight — Recorrido a resistencia S/R
+  velocidadScore: number;      // 10% weight — Penaliza largos, premia cortos
+  
+  // ── Composite ──
+  cockpitScore: number;        // Weighted total (0-10)
+  
+  // ── Verdict ──
+  verdict: 'SALTO_TACTICO' | 'PUNTO_CARAMELO' | 'ATRACTIVO' | 'NEUTRAL' | 'EVITAR';
+  verdictReason: string;
+  
+  // ── Raw data for display ──
+  spreadNeto: number;          // TEM - CauciónTEM - comisionAmortizada
+  deltaTIR: number | null;     // Rate momentum
+  presionPuntas: number | null; // Bid/ask pressure ratio (>1 = buying)
+  upsideCapital: number;       // % to resistance
+  days: number;                // Days to expiry
+  withinHorizon: boolean;      // Within horizon filter (default 45 days — Scalping Extendido)
+}
+
+export type TabId = 'mercado' | 'cockpit' | 'curvas' | 'estrategias' | 'cartera' | 'historial' | 'historico' | 'configuracion';
 
 // ═══════════════════════════════════════════════════════════════
 // V2.0 — Live Data API Types (data912 + ArgentinaDatos merge)

@@ -43,11 +43,11 @@ export default function CarteraTab({
   isLive,
 }: CarteraTabProps) {
   const [formTicker, setFormTicker] = useState('');
-  const [formCapitalPesos, setFormCapitalPesos] = useState(''); // V3.2.4: Monto a Invertir ($)
+  const [formCapitalPesos, setFormCapitalPesos] = useState(''); // V3.3-PRO: Monto a Invertir ($)
   const [formVN, setFormVN] = useState('');
   const [formPrice, setFormPrice] = useState('');
   const [formDate, setFormDate] = useState(() => {
-    // V3.2.4: Auto-fill with today's date
+    // V3.3-PRO: Auto-fill with today's date
     if (typeof window === 'undefined') return '';
     const now = new Date();
     const d = String(now.getDate()).padStart(2, '0');
@@ -55,8 +55,9 @@ export default function CarteraTab({
     const y = now.getFullYear();
     return `${d}/${m}/${y}`;
   });
-  const [formPrecioConComision, setFormPrecioConComision] = useState('');
-  const [formPrecioConComisionAuto, setFormPrecioConComisionAuto] = useState(false);
+  // V3.3-PRO: precioConComision is now computed reactively from formPrice (no separate state)
+  // precioConComision = precio * 1.0015 (0.15% buy-side commission)
+  const computedPrecioConComision = formPrice ? parseFloat(formPrice) * 1.0015 : 0;
 
   // Rotation modal state
   const [showRotation, setShowRotation] = useState(false);
@@ -105,7 +106,7 @@ export default function CarteraTab({
     ? instruments.find(i => i.ticker === formTicker)
     : null;
 
-  // ── V3.2.4: Reactive VN from Capital in Pesos ──
+  // ── V3.3-PRO: Reactive VN from Capital in Pesos ──
   // When user types Monto a Invertir ($), auto-calculate VN = floor(monto / precio)
   // Price is in 1.XXXX scale (per nominal unit)
   const handleCapitalPesosChange = (capitalStr: string) => {
@@ -125,10 +126,7 @@ export default function CarteraTab({
     const inst = instruments.find(i => i.ticker === ticker);
     if (inst) {
       setFormPrice(inst.price.toString());
-      // Auto-fill Precio con Comisión with 0.15% buy-side commission
-      const comisionPrecio = inst.price * (1 + 0.0015);
-      setFormPrecioConComision(comisionPrecio.toFixed(4));
-      setFormPrecioConComisionAuto(true);
+      // precioConComision is computed reactively from formPrice — no manual set needed
       // Recalculate VN if capital is already entered
       if (formCapitalPesos) {
         const capital = parseFloat(formCapitalPesos);
@@ -140,7 +138,7 @@ export default function CarteraTab({
     }
   };
 
-  // ── V3.2.4: Return Simulator ──
+  // ── V3.3-PRO: Return Simulator ──
   // Estimates the return at maturity based on TEM and days to expiry
   const returnSimulator = useMemo(() => {
     if (!selectedFormInstrument) return null;
@@ -653,34 +651,29 @@ export default function CarteraTab({
   const handleAddPosition = () => {
     if (!formTicker || !formVN || !formPrice || !formDate) return;
 
-    const precioConComision = formPrecioConComision ? parseFloat(formPrecioConComision) : 0;
-    const effectiveEntryPrice = precioConComision > 0
-      ? precioConComision
-      : parseFloat(formPrice);
+    const precioBase = parseFloat(formPrice);
+    const precioConComision = precioBase * 1.0015; // 0.15% buy-side commission
 
     const newPosition: Position = {
       ticker: formTicker.toUpperCase(),
-      entryPrice: effectiveEntryPrice,
+      entryPrice: precioConComision, // real acquisition cost (precio con comisión)
       vn: parseInt(formVN),
       entryDate: formDate,
-      precioConComision: precioConComision > 0 ? precioConComision : undefined,
+      precioConComision: precioConComision,
     };
 
     const transaction: Transaction = {
       id: Date.now().toString(),
       type: 'BUY',
       ticker: newPosition.ticker,
-      price: newPosition.entryPrice,
+      price: precioBase, // clean market price
       vn: newPosition.vn,
       date: newPosition.entryDate,
-      precioConComision: precioConComision > 0 ? precioConComision : undefined,
+      precioConComision: precioConComision,
     };
 
-    const invested = newPosition.vn * newPosition.entryPrice;
-    const buyCommission = precioConComision > 0
-      ? 0
-      : invested * (config.comisionTotal / 2 / 100);
-    const totalCost = invested + buyCommission;
+    // Total cost = VN × precioConComision (commission already included)
+    const totalCost = newPosition.vn * precioConComision;
     const newConfig = { ...config, capitalDisponible: Math.max(0, config.capitalDisponible - totalCost) };
 
     setPosition(newPosition);
@@ -697,8 +690,7 @@ export default function CarteraTab({
     setFormVN('');
     setFormPrice('');
     setFormDate('');
-    setFormPrecioConComision('');
-    setFormPrecioConComisionAuto(false);
+    // precioConComision is derived from formPrice — resets automatically when formPrice clears
   };
 
   const handleClosePosition = () => {
@@ -1672,12 +1664,12 @@ export default function CarteraTab({
       )}
 
       {/* ──────────────────────────────────────────── */}
-      {/* 7. ADD POSITION FORM — V3.2.4-PRO REENGINEERED */}
+      {/* 7. ADD POSITION FORM — V3.3-PRO REENGINEERED */}
       {/* ──────────────────────────────────────────── */}
       <div className="bg-app-card rounded-lg border border-app-border p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-app-text2">Agregar Posición</h3>
-          <span className="text-[9px] text-app-text4 font-mono">V3.2.4-PRO</span>
+          <span className="text-[9px] text-app-text4 font-mono">V3.3-PRO</span>
         </div>
 
         {/* Row 1: Instrument + Monto a Invertir (prioritarios) */}
@@ -1758,14 +1750,7 @@ export default function CarteraTab({
               value={formPrice}
               onChange={(e) => {
                 setFormPrice(e.target.value);
-                // Auto-fill Precio con Comisión if it was auto-filled or empty
-                if (formPrecioConComisionAuto || !formPrecioConComision) {
-                  const newPrice = parseFloat(e.target.value);
-                  if (newPrice > 0) {
-                    setFormPrecioConComision((newPrice * 1.0015).toFixed(4));
-                    setFormPrecioConComisionAuto(true);
-                  }
-                }
+                // precioConComision is computed reactively — no manual update needed
                 // Recalculate VN if capital is set
                 if (formCapitalPesos && e.target.value) {
                   const capital = parseFloat(formCapitalPesos);
@@ -1780,25 +1765,19 @@ export default function CarteraTab({
             />
           </div>
           <div>
-            <label className="block text-[10px] text-app-text3 mb-1">Precio con Comisión <span className="text-app-accent-text">(opcional)</span></label>
+            <label className="block text-[10px] text-app-text3 mb-1">
+              Precio con Comisión <span className="text-[#2eebc8] font-bold">★</span>
+            </label>
             <input
-              type="number"
-              step="0.0001"
-              value={formPrecioConComision}
-              onChange={(e) => {
-                setFormPrecioConComision(e.target.value);
-                setFormPrecioConComisionAuto(false);
-              }}
-              placeholder="Broker real"
-              className="w-full bg-app-input text-app-text font-mono text-sm border border-app-border rounded-md px-3 py-2 focus:outline-none focus:border-app-accent/50 placeholder:text-app-text4"
+              type="text"
+              readOnly
+              value={computedPrecioConComision > 0 ? computedPrecioConComision.toFixed(4) : ''}
+              placeholder="Auto: precio × 1.0015"
+              className="w-full bg-[#0d2d26] text-[#2eebc8] font-mono text-sm border border-[#2eebc8]/30 rounded-md px-3 py-2 cursor-default ring-1 ring-[#2eebc8]/10"
             />
-            {formPrecioConComision && (
-              <div className="mt-1 text-[9px] text-app-accent-text">
-                {formPrecioConComisionAuto
-                  ? '✓ Auto: comisión 0.15% aplicada'
-                  : '✓ Se usará este precio (comisión ya incluida)'}
-              </div>
-            )}
+            <div className="mt-1 text-[9px] text-[#2eebc8]/70">
+              Costo real de adquisición (+0.15% comisión)
+            </div>
           </div>
           <div>
             <label className="block text-[10px] text-app-text3 mb-1">Fecha <span className="text-app-text4">(auto-hoy)</span></label>
@@ -1828,30 +1807,20 @@ export default function CarteraTab({
             <span className="font-mono text-app-accent-text">
               ${((parseInt(formVN) || 0) * (parseFloat(formPrice) || 0)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
             </span>
-            {formPrecioConComision ? (
-              <>
-                <span className="text-app-text4 ml-3">Precio con comisión (broker): </span>
-                <span className="font-mono text-app-accent-text">
-                  ${((parseInt(formVN) || 0) * parseFloat(formPrecioConComision)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
-                </span>
-                <span className="text-app-text4 ml-3 text-app-accent-text">→ Comisión calculada omitida, se usa precio broker</span>
-              </>
-            ) : (
-              <>
-                <span className="text-app-text4 ml-3">+ comisión compra: </span>
-                <span className="font-mono text-app-gold">
-                  ${((parseInt(formVN) || 0) * (parseFloat(formPrice) || 0) * (config.comisionTotal / 2 / 100)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
-                </span>
-                <span className="text-app-text4 ml-3">Total: </span>
-                <span className="font-mono text-app-text2">
-                  ${(((parseInt(formVN) || 0) * (parseFloat(formPrice) || 0)) * (1 + config.comisionTotal / 2 / 100)).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
-                </span>
-              </>
-            )}
+            <>
+              <span className="text-app-text4 ml-3">+ comisión compra (0.15%): </span>
+              <span className="font-mono text-app-gold">
+                ${((parseInt(formVN) || 0) * (parseFloat(formPrice) || 0) * 0.0015).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+              </span>
+              <span className="text-app-text4 ml-3">Total: </span>
+              <span className="font-mono text-[#2eebc8]">
+                ${((parseInt(formVN) || 0) * computedPrecioConComision).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+              </span>
+            </>
           </div>
         )}
 
-        {/* ── V3.2.4: Return Simulator ── */}
+        {/* ── V3.3-PRO: Return Simulator ── */}
         {returnSimulator && (
           <div className="mt-3 p-3 bg-gradient-to-r from-[#2eebc8]/5 to-[#2eebc8]/10 border border-[#2eebc8]/20 rounded-md">
             <div className="flex items-center gap-2 mb-2">

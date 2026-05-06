@@ -9,7 +9,7 @@ import { Instrument } from '@/lib/types';
 import { formatPriceAxis, formatTEMAxis, formatSpreadAxis, formatVolumeAxis, formatPriceTooltip, formatTEMTooltip, formatSpreadTooltip } from '@/lib/chart-formatters';
 
 // ════════════════════════════════════════════════════════════════════════
-// V3.2 — HistoricoTab: Price History with OHLC Charts
+// V3.3-PRO — HistoricoTab: Price History with OHLC Charts
 //
 // Shows historical price/TEM evolution from the Hybrid Data Motor.
 // Data comes from /api/price-history (Prisma DailyOHLC + PriceSnapshot).
@@ -261,7 +261,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
       {/* ── Header ── */}
       <div>
         <h2 className="text-lg font-light text-app-text mb-1">📈 Histórico de Precios</h2>
-        <p className="text-sm text-app-text3">Evolución de precios y TEM · Motor Híbrido de Datos V3.2.4-PRO</p>
+        <p className="text-sm text-app-text3">Evolución de precios y TEM · Motor Híbrido de Datos V3.3-PRO</p>
       </div>
 
       {/* ── Controls Bar ── */}

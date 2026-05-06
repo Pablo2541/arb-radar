@@ -38,32 +38,28 @@ function TabSkeleton() {
 }
 
 // Heavy tabs — loaded lazily (only compiled when user navigates to them)
-const OportunidadesTab = dynamic(() => import('@/components/dashboard/OportunidadesTab'), { ssr: false, loading: TabSkeleton });
-const ArbitrajeTab = dynamic(() => import('@/components/dashboard/ArbitrajeTab'), { ssr: false, loading: TabSkeleton });
+const CockpitTab = dynamic(() => import('@/components/dashboard/CockpitTab'), { ssr: false, loading: TabSkeleton });
 const EstrategiasTab = dynamic(() => import('@/components/dashboard/EstrategiasTab'), { ssr: false, loading: TabSkeleton });
 const CarteraTab = dynamic(() => import('@/components/dashboard/CarteraTab'), { ssr: false, loading: TabSkeleton });
-const DiagnosticoTab = dynamic(() => import('@/components/dashboard/DiagnosticoTab'), { ssr: false, loading: TabSkeleton });
 const HistorialTab = dynamic(() => import('@/components/dashboard/HistorialTab'), { ssr: false, loading: TabSkeleton });
 const HistoricoTab = dynamic(() => import('@/components/dashboard/HistoricoTab'), { ssr: false, loading: TabSkeleton });
 const ConfiguracionTab = dynamic(() => import('@/components/dashboard/ConfiguracionTab'), { ssr: false, loading: TabSkeleton });
-// V3.2.4-PRO: Order Flow Imbalance Alert — lazy-loaded
+// V3.3-PRO: Order Flow Imbalance Alert — lazy-loaded
 const OrderFlowAlert = dynamic(() => import('@/components/dashboard/OrderFlowAlert'), { ssr: false });
 
 const TAB_CONFIG: { id: TabId; icon: string; label: string; shortcut: string }[] = [
   { id: 'mercado', icon: '📊', label: 'Mercado', shortcut: '1' },
-  { id: 'oportunidades', icon: '🎯', label: 'Oportunidades', shortcut: '2' },
+  { id: 'cockpit', icon: '🎯', label: 'Cockpit', shortcut: '2' },
   { id: 'curvas', icon: '📈', label: 'Curvas', shortcut: '3' },
-  { id: 'arbitraje', icon: '🔄', label: 'Arbitraje', shortcut: '4' },
   { id: 'estrategias', icon: '⚡', label: 'Estrategias', shortcut: '5' },
   { id: 'cartera', icon: '💼', label: 'Cartera', shortcut: '6' },
-  { id: 'diagnostico', icon: '🩺', label: 'Diagnóstico', shortcut: '7' },
   { id: 'historial', icon: '📋', label: 'Historial', shortcut: '8' },
   { id: 'historico', icon: '📈', label: 'Histórico', shortcut: 'H' },
   { id: 'configuracion', icon: '⚙️', label: 'Config', shortcut: '9' },
 ];
 
 // ════════════════════════════════════════════════════════════════════════
-// V3.2.4-PRO — Global Absorption Alert Banner
+// V3.3-PRO — Global Absorption Alert Banner
 // Polls /api/market-pressure for wall detection alerts
 // ════════════════════════════════════════════════════════════════════════
 
@@ -216,7 +212,7 @@ function HomeContent() {
   const [showHelp, setShowHelp] = useState(false);
   const [showNukeConfirm, setShowNukeConfirm] = useState(false);
   const [dolarLastUpdateTime, setDolarLastUpdateTime] = useState<string>('');
-  // V3.2.4-PRO: Track previous Riesgo País value for trend arrow
+  // V3.3-PRO: Track previous Riesgo País value for trend arrow
   const prevRiesgoPaisRef = useRef<number | null>(null);
   const [riesgoPaisTrend, setRiesgoPaisTrend] = useState<'up' | 'down' | 'flat' | null>(null);
 
@@ -517,35 +513,70 @@ function HomeContent() {
     }
   }, [dbAvailable, lastDbSyncStatus]);
 
-  // V3.2.4-PRO: Auto-fetch Country Risk every 15 minutes
+  // V3.3-PRO: Market Truth Engine — Replaces old /api/country-risk polling
+  // Fetches RP + MEP with multi-source consensus and confidence levels
   useEffect(() => {
-    const fetchCountryRisk = async () => {
+    const fetchMarketTruth = async () => {
       try {
-        const res = await fetch('/api/country-risk');
+        const res = await fetch('/api/market-truth');
         if (!res.ok) return;
         const data = await res.json();
-        if (data.value && data.value > 0) {
-          // V3.2.4-PRO: Track trend direction before updating
+
+        // ── Process RP ──
+        if (data.riesgo_pais?.value && data.riesgo_pais.value > 0) {
           const currentRP = useRadarStore.getState().riesgoPaisAuto ?? useRadarStore.getState().config.riesgoPais;
-          if (prevRiesgoPaisRef.current !== null && currentRP !== data.value) {
-            setRiesgoPaisTrend(data.value > currentRP ? 'up' : data.value < currentRP ? 'down' : 'flat');
+          if (prevRiesgoPaisRef.current !== null && currentRP !== data.riesgo_pais.value) {
+            setRiesgoPaisTrend(data.riesgo_pais.value > currentRP ? 'up' : data.riesgo_pais.value < currentRP ? 'down' : 'flat');
           }
           prevRiesgoPaisRef.current = currentRP;
+        }
 
-          useRadarStore.getState().setRiesgoPaisAuto(data.value);
+        // ── Set full Market Truth data ──
+        useRadarStore.getState().setMarketTruth(data);
+
+        // ── Activity log ──
+        const rp = data.riesgo_pais;
+        const mep = data.mep;
+        if (rp?.value > 0) {
           const currentConfig = useRadarStore.getState().config;
-          if (currentConfig.riesgoPais !== data.value) {
-            useRadarStore.getState().addActivity({ icon: '🇦🇷', message: `Riesgo País: ${data.value}pb (${data.source})`, type: 'data' });
+          if (currentConfig.riesgoPais !== rp.value) {
+            useRadarStore.getState().addActivity({
+              icon: '🇦🇷',
+              message: `RP: ${rp.value}pb (${rp.confidence} ${rp.confidence_pct}%) [${rp.best_source}]`,
+              type: 'data',
+            });
           }
         }
+        if (mep?.value > 0 && mep.confidence !== 'CRITICA') {
+          useRadarStore.getState().addActivity({
+            icon: '💱',
+            message: `MEP: $${mep.value} (${mep.confidence} ${mep.confidence_pct}%) [${mep.best_source}]`,
+            type: 'dolar',
+          });
+        }
       } catch {
-        // silent
+        // silent — fallback to old /api/country-risk
+        try {
+          const res = await fetch('/api/country-risk');
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.value && data.value > 0) {
+            const currentRP = useRadarStore.getState().riesgoPaisAuto ?? useRadarStore.getState().config.riesgoPais;
+            if (prevRiesgoPaisRef.current !== null && currentRP !== data.value) {
+              setRiesgoPaisTrend(data.value > currentRP ? 'up' : data.value < currentRP ? 'down' : 'flat');
+            }
+            prevRiesgoPaisRef.current = currentRP;
+            useRadarStore.getState().setRiesgoPaisAuto(data.value);
+          }
+        } catch {
+          // completely silent
+        }
       }
     };
 
     // Defer initial fetch
-    const initialTimeout = setTimeout(fetchCountryRisk, 2000);
-    const interval = setInterval(fetchCountryRisk, 15 * 60 * 1000);
+    const initialTimeout = setTimeout(fetchMarketTruth, 2000);
+    const interval = setInterval(fetchMarketTruth, 45 * 1000); // V3.3: 45s refresh (aligned with engine cache TTL)
     return () => {
       clearTimeout(initialTimeout);
       clearInterval(interval);
@@ -585,7 +616,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V3.2.4...
+            Cargando V3.3 PRO...
           </p>
         </div>
       </div>
@@ -597,18 +628,14 @@ function HomeContent() {
     switch (activeTab) {
       case 'mercado':
         return <MercadoTab instruments={effectiveInstruments} config={config} position={position} momentumMap={momentumMap} priceHistory={priceHistory} onMepRate={handleMepRate} onCclRate={handleCclRate} onDolarUpdate={handleDolarUpdate} liveData={liveData} liveDataMap={liveDataMap} riesgoPaisAuto={riesgoPaisAuto} />;
-      case 'oportunidades':
-        return <OportunidadesTab instruments={effectiveInstruments} config={config} position={position} momentumMap={momentumMap} priceHistory={priceHistory} liveDataMap={liveDataMap} isLive={liveData.active} />;
+      case 'cockpit':
+        return <CockpitTab instruments={effectiveInstruments} config={config} position={position} liveDataMap={liveDataMap} isLive={liveData.active} />;
       case 'curvas':
         return <CurvasTab instruments={sanitizedInstruments} config={config} position={position} momentumMap={momentumMap} />;
-      case 'arbitraje':
-        return <ArbitrajeTab instruments={effectiveInstruments} config={config} position={position} momentumMap={momentumMap} priceHistory={priceHistory} />;
       case 'estrategias':
         return <EstrategiasTab instruments={effectiveInstruments} config={config} position={position} momentumMap={momentumMap} priceHistory={priceHistory} />;
       case 'cartera':
         return <CarteraTab instruments={effectiveInstruments} config={config} setConfig={updateConfig} position={position} setPosition={updatePosition} transactions={transactions} setTransactions={updateTransactions} externalHistory={externalHistory} setExternalHistory={updateExternalHistory} momentumMap={momentumMap} priceHistory={priceHistory} liveDataMap={liveDataMap} isLive={liveData.active} />;
-      case 'diagnostico':
-        return <DiagnosticoTab instruments={effectiveInstruments} config={config} position={position} mepRate={mepRate} momentumMap={momentumMap} priceHistory={priceHistory} />;
       case 'historial': {
         // ════════════════════════════════════════════════════════════════
         // V2.0.3 — SSOT: Cartera is the single source of truth
@@ -671,7 +698,7 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.2.4 — PRO</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.3 — PRO TERMINAL</span>
             {/* V3.0: DB Sync indicator dot */}
             <div className="w-1.5 h-1.5 rounded-full hidden sm:block" style={{ backgroundColor: dbSyncDotColor }} title={dbAvailable ? `DB: ${lastDbSyncStatus}` : 'DB: no configurado'} />
             {/* V3.1: IOL Level 2 indicator dot */}
@@ -679,6 +706,22 @@ function HomeContent() {
               <div className={`w-1.5 h-1.5 rounded-full ${iolLevel2Online ? 'bg-[#a78bfa] animate-pulse' : 'bg-app-text4'}`} />
               <span className="text-[7px] font-mono uppercase tracking-wider">{iolLevel2Online ? 'L2' : 'L2✗'}</span>
             </div>
+            {/* V3.3-PRO: Market Truth Engine indicator */}
+            {(() => {
+              const mt = useRadarStore.getState().marketTruth;
+              const mtOnline = mt !== null;
+              const rpConf = mt?.riesgo_pais?.confidence;
+              const mepConf = mt?.mep?.confidence;
+              const allHigh = rpConf === 'ALTA' && mepConf === 'ALTA';
+              const anyLow = rpConf === 'BAJA' || rpConf === 'CRITICA' || mepConf === 'BAJA' || mepConf === 'CRITICA';
+              const dotColor = !mtOnline ? '#6b7280' : allHigh ? '#2eebc8' : anyLow ? '#f87171' : '#fbbf24';
+              return (
+                <div className="flex items-center gap-1 hidden sm:flex" title={mtOnline ? `Market Truth: RP ${rpConf} · MEP ${mepConf}` : 'Market Truth: OFFLINE'}>
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dotColor, animation: mtOnline ? 'pulse 2s infinite' : 'none' }} />
+                  <span className="text-[7px] font-mono uppercase tracking-wider" style={{ color: dotColor }}>MT</span>
+                </div>
+              );
+            })()}
             {/* Market status indicator */}
             <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[8px] font-medium ${marketOpen ? 'bg-[#2eebc8]/10 text-[#2eebc8]' : 'bg-app-subtle/50 text-app-text4'}`}>
               <div className={`w-1.5 h-1.5 rounded-full ${marketOpen ? 'bg-[#2eebc8] animate-pulse' : 'bg-app-text4'}`} />
@@ -734,18 +777,16 @@ function HomeContent() {
       </header>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-y-auto">
         {/* Status Bar */}
         <div className="sticky top-0 z-20 bg-app-bg/85 backdrop-blur-md border-b border-app-border/60 border-app-accent/10 px-5 py-2 flex items-center justify-between flex-wrap gap-y-1">
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-light text-app-text2">
               {activeTab === 'mercado' && '📊 Mercado'}
-              {activeTab === 'oportunidades' && '🎯 Oportunidades'}
+              {activeTab === 'cockpit' && '🎯 Cockpit Táctico'}
               {activeTab === 'curvas' && '📈 Curvas'}
-              {activeTab === 'arbitraje' && '🔄 Arbitraje'}
               {activeTab === 'estrategias' && '⚡ Estrategias'}
               {activeTab === 'cartera' && '💼 Cartera'}
-              {activeTab === 'diagnostico' && '🩺 Diagnóstico'}
               {activeTab === 'historial' && '📋 Historial'}
               {activeTab === 'configuracion' && '⚙️ Configuración'}
               {activeTab === 'historico' && '📈 Histórico'}
@@ -764,11 +805,13 @@ function HomeContent() {
                 ${config.capitalDisponible.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
               </span>
             </div>
-            {/* Riesgo País — V3.2.4-PRO: Enhanced granular thresholds */}
+            {/* Riesgo País — V3.3-PRO: Market Truth Engine with confidence */}
             {(() => {
               const rp = riesgoPaisAuto ?? config.riesgoPais;
               const rpColor = rp > 700 ? '#f87171' : rp > 550 ? '#f472b6' : rp > 400 ? '#fbbf24' : '#2eebc8';
               const rpLabel = rp > 700 ? 'PELIGROSO' : rp > 550 ? 'ALTO' : rp > 400 ? 'MODERADO' : 'EXCELENTE';
+              const rpConf = useRadarStore.getState().rpConfidence;
+              const rpConfColor = rpConf === 'ALTA' ? '#2eebc8' : rpConf === 'MEDIA' ? '#fbbf24' : rpConf === 'BAJA' ? '#f87171' : '#6b7280';
               return (
                 <div className="card-hover-lift flex items-center gap-1.5 text-[9px] bg-app-subtle/60 px-2.5 py-1.5 rounded-lg border border-app-border/60">
                   <span className="text-app-text3">RP:</span>
@@ -780,21 +823,36 @@ function HomeContent() {
                   </span>
                   {riesgoPaisTrend === 'up' && <span className="text-[8px] text-[#f87171]">↑</span>}
                   {riesgoPaisTrend === 'down' && <span className="text-[8px] text-[#2eebc8]">↓</span>}
-                  {riesgoPaisAuto !== null && (
-                    <span className="text-[7px] font-bold text-[#2eebc8] bg-[#2eebc8]/10 px-1 py-0.5 rounded border border-[#2eebc8]/20 leading-none">AUTO</span>
+                  {/* V3.3-PRO: Confidence badge */}
+                  {rpConf && (
+                    <span className="text-[7px] font-bold px-1 py-0.5 rounded border leading-none" style={{ color: rpConfColor, borderColor: rpConfColor + '40', backgroundColor: rpConfColor + '15' }}>
+                      {rpConf}
+                    </span>
                   )}
                 </div>
               );
             })()}
-            {/* MEP Rate */}
-            {mepRate && (
-              <div className="card-hover-lift flex items-center gap-1.5 text-[9px] bg-app-subtle/60 px-2.5 py-1.5 rounded-lg border border-app-border/60">
-                <span className="text-app-text3">MEP:</span>
-                <span className={`font-mono font-medium ${mepRate > 1550 ? 'text-[#f87171]' : mepRate > 1450 ? 'text-[#fbbf24]' : 'text-[#2eebc8]'}`}>
-                  ${(mepRate ?? 0).toFixed(0)}
-                </span>
-              </div>
-            )}
+            {/* MEP Rate — V3.3-PRO: Market Truth Engine with confidence */}
+            {(() => {
+              const mepVal = useRadarStore.getState().mepConsensus ?? mepRate;
+              const mepConf = useRadarStore.getState().mepConfidence;
+              const mepConfColor = mepConf === 'ALTA' ? '#2eebc8' : mepConf === 'MEDIA' ? '#fbbf24' : mepConf === 'BAJA' ? '#f87171' : '#6b7280';
+              if (!mepVal) return null;
+              return (
+                <div className="card-hover-lift flex items-center gap-1.5 text-[9px] bg-app-subtle/60 px-2.5 py-1.5 rounded-lg border border-app-border/60">
+                  <span className="text-app-text3">MEP:</span>
+                  <span className={`font-mono font-medium ${mepVal > 1550 ? 'text-[#f87171]' : mepVal > 1450 ? 'text-[#fbbf24]' : 'text-[#2eebc8]'}`}>
+                    ${mepVal.toFixed(0)}
+                  </span>
+                  {/* V3.3-PRO: Confidence badge + source detail */}
+                  {mepConf && (
+                    <span className="text-[7px] font-bold px-1 py-0.5 rounded border leading-none" style={{ color: mepConfColor, borderColor: mepConfColor + '40', backgroundColor: mepConfColor + '15' }}>
+                      {mepConf}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
             {/* Position indicator */}
             {position && (
               <div className="card-hover-lift hidden sm:flex items-center gap-1.5 text-[9px] bg-app-subtle/60 px-2.5 py-1.5 rounded-lg border border-app-border/60">
@@ -829,10 +887,10 @@ function HomeContent() {
           <ThresholdAlerts instruments={sanitizedInstruments} config={config} position={position} momentumMap={momentumMap} />
         </div>
 
-        {/* V3.2.4-PRO: Global Absorption Alert Banner */}
+        {/* V3.3-PRO: Global Absorption Alert Banner */}
         <AbsorptionAlertBanner />
 
-        {/* V3.2.4-PRO: Order Flow Imbalance Alert */}
+        {/* V3.3-PRO: Order Flow Imbalance Alert */}
         <OrderFlowAlert />
 
         {/* ── Market Summary Widget (Enhanced V1.6.2) ── */}
@@ -879,7 +937,7 @@ function HomeContent() {
               );
             })()}
             <div className="w-px h-3 bg-app-border/40 shrink-0" />
-            {/* V3.2.4-PRO: Spread MEDIAN — more robust metric than best spread */}
+            {/* V3.3-PRO: Spread MEDIAN — more robust metric than best spread */}
             {(() => {
               const spreads = sanitizedInstruments.map(inst => spreadVsCaucion(inst.tem, config, inst.days)).filter(s => isFinite(s));
               const sorted = [...spreads].sort((a, b) => a - b);
@@ -894,7 +952,7 @@ function HomeContent() {
               );
             })()}
             <div className="w-px h-3 bg-app-border/40 shrink-0" />
-            {/* V3.2.4-PRO: Riesgo País Trend in Market Summary */}
+            {/* V3.3-PRO: Riesgo País Trend in Market Summary */}
             {(() => {
               const rp = riesgoPaisAuto ?? config.riesgoPais;
               const rpColor = rp > 700 ? '#f87171' : rp > 550 ? '#f472b6' : rp > 400 ? '#fbbf24' : '#2eebc8';
@@ -1050,7 +1108,7 @@ function HomeContent() {
       <footer className="mt-auto bg-app-card/80 backdrop-blur-sm px-5 py-2.5 flex items-center justify-between flex-wrap gap-y-1 gap-x-3">
         <div className="text-[8px] text-app-text4 font-mono flex items-center gap-2">
           <span className="version-pulse-dot" />
-          <span>ARB//RADAR V3.0</span>
+          <span>ARB//RADAR V3.3 — PRO TERMINAL</span>
           <span className="text-app-border/60">·</span>
           <span>{sanitizedInstruments.length} inst.</span>
           {dolarLastUpdateTime && (

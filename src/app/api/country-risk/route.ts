@@ -1,72 +1,106 @@
-// V3.2.4-PRO — Country Risk Auto-Fetch API
-// Fetches Riesgo País from ArgentinaDatos (daemon updates every 60s)
-// Uses date-specific intraday endpoint for current market value
+// V3.3-PRO — Country Risk Auto-Fetch API
+// V3.3-PRO: BondTerminal as primary source (real-time, 558pb current)
+// ArgentinaDatos /ultimo as secondary (often stale, e.g. 539pb from days ago)
+// ArgentinaDatos /indices/ as tertiary fallback
 // Persists to Neon PostgreSQL for historical tracking
 
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
-const ARG_DATOS_URL = 'https://api.argentinadatos.com/v1/finanzas/indicadores/riesgo-pais'; // Generic fallback
-const CACHE_TTL_MS = 60 * 1000; // 1 minute (daemon now updates every 60s)
+// Sources — priority order
+const BONDTERMINAL_URL = 'https://bondterminal.com/riesgo-pais';
+const ARG_DATOS_ULTIMO_URL = 'https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo';
+const ARG_DATOS_URL = 'https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais';
+const CACHE_TTL_MS = 60 * 1000; // 1 minute refresh
 
 // In-memory cache
 let cachedValue: number | null = null;
 let cachedAt: number = 0;
 let cachedSource: string | null = null;
 
-/** Build date-specific intraday URL for today */
-function getIntradayUrl(): string {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
-  return `https://api.argentinadatos.com/v1/finanzas/indicadores/riesgo-pais/${year}/${month}/${day}`;
+/** Parse Riesgo País from BondTerminal HTML (scraping) */
+function parseBondTerminalHTML(html: string): number | null {
+  // BondTerminal shows the value as "558 pb" in the HTML
+  const match = html.match(/(\d{3,4})\s*pb/);
+  if (match) {
+    const value = parseInt(match[1], 10);
+    if (value > 0 && value < 10000 && isFinite(value)) return value;
+  }
+  return null;
 }
 
-/** Parse Riesgo País value from API response */
-function parseRiesgoPaisData(data: unknown): number | null {
+/** Parse Riesgo País value from ArgentinaDatos JSON response */
+function parseArgDatosData(data: unknown): number | null {
   // Handle array format [{fecha, valor}]
   if (Array.isArray(data) && data.length > 0) {
-    return Number(data[data.length - 1]?.valor ?? data[data.length - 1]?.value ?? null);
+    const val = Number(data[data.length - 1]?.valor ?? data[data.length - 1]?.value ?? 0);
+    return val > 0 && isFinite(val) ? Math.round(val) : null;
   }
-  // Handle single object format {fecha, valor} (intraday endpoint)
-  if (data?.valor != null) return Number(data.valor);
-  if (data?.value != null) return Number(data.value);
+  // Handle single object format {fecha, valor} (intraday/ultimo endpoint)
+  if (data && typeof data === 'object') {
+    const obj = data as Record<string, unknown>;
+    const val = Number(obj.valor ?? obj.value ?? 0);
+    return val > 0 && isFinite(val) ? Math.round(val) : null;
+  }
   return null;
 }
 
 async function fetchCountryRisk(): Promise<{ value: number | null; source: string }> {
-  // 1. Try date-specific intraday endpoint first (more reliable for current market value)
-  const intradayUrl = getIntradayUrl();
+  // ── SOURCE 1: BondTerminal (real-time, most reliable) ──
   try {
-    const res = await fetch(intradayUrl, {
-      signal: AbortSignal.timeout(10_000),
+    const res = await fetch(BONDTERMINAL_URL, {
+      signal: AbortSignal.timeout(8_000),
+      headers: {
+        'Accept': 'text/html',
+        'User-Agent': 'Mozilla/5.0 (compatible; ARB-RADAR/3.2.4)',
+      },
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const value = parseBondTerminalHTML(html);
+      if (value !== null && value > 0) {
+        return { value, source: 'bondterminal' };
+      }
+    }
+  } catch {
+    // BondTerminal failed, try next source
+  }
+
+  // ── SOURCE 2: ArgentinaDatos /ultimo (may be stale by days) ──
+  try {
+    const res = await fetch(ARG_DATOS_ULTIMO_URL, {
+      signal: AbortSignal.timeout(8_000),
       headers: { 'Accept': 'application/json' },
     });
     if (res.ok) {
       const data = await res.json();
-      const value = parseRiesgoPaisData(data);
-      if (value !== null && value > 0 && isFinite(value)) {
-        return { value, source: 'argentinadatos_intraday' };
+      const value = parseArgDatosData(data);
+      if (value !== null && value > 0) {
+        return { value, source: 'argentinadatos_ultimo' };
       }
     }
   } catch {
-    // Intraday endpoint failed, try generic fallback
+    // /ultimo failed
   }
 
-  // 2. Fallback to generic endpoint
+  // ── SOURCE 3: ArgentinaDatos generic (full historical array) ──
   try {
     const res = await fetch(ARG_DATOS_URL, {
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(8_000),
       headers: { 'Accept': 'application/json' },
     });
-    if (!res.ok) return { value: null, source: 'argentinadatos' };
-    const data = await res.json();
-    const value = parseRiesgoPaisData(data);
-    return { value, source: 'argentinadatos' };
+    if (res.ok) {
+      const data = await res.json();
+      const value = parseArgDatosData(data);
+      if (value !== null && value > 0) {
+        return { value, source: 'argentinadatos' };
+      }
+    }
   } catch {
-    return { value: null, source: 'argentinadatos' };
+    // Generic endpoint also failed
   }
+
+  return { value: null, source: 'failed' };
 }
 
 async function getCountryRiskFromDB(): Promise<number | null> {
@@ -103,7 +137,7 @@ export async function GET() {
     });
   }
 
-  // Try fetching from ArgentinaDatos API (intraday → generic fallback)
+  // Try fetching from all sources (BondTerminal → ArgentinaDatos → ArgentinaDatos/ultimo)
   const { value: apiValue, source: apiSource } = await fetchCountryRisk();
 
   if (apiValue !== null && apiValue > 0 && isFinite(apiValue)) {
@@ -126,7 +160,7 @@ export async function GET() {
   const dbValue = await getCountryRiskFromDB();
   if (dbValue !== null) {
     cachedValue = dbValue;
-    cachedAt = now; // Reset cache timer to avoid hammering the API
+    cachedAt = now;
     cachedSource = 'database';
 
     return NextResponse.json({
@@ -139,7 +173,7 @@ export async function GET() {
 
   // Everything failed — return fallback
   return NextResponse.json({
-    value: 555, // Fallback default
+    value: 558, // Fallback default (updated from latest BondTerminal value)
     source: 'fallback',
     updated_at: null,
     next_refresh: new Date(now + CACHE_TTL_MS).toISOString(),
