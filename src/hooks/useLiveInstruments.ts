@@ -65,6 +65,16 @@ function liveToInstrument(live: LiveInstrument): Instrument {
     gananciaDirecta: live.ganancia_directa * 100, // convert to percentage
     vsPlazoFijo,
     dm: undefined, // Not available from live data
+    // V3.4: IOL Level 2 fields — populated by /api/letras enrichment or /api/iol-level2
+    iolVolume: live.iol_volume,
+    iolBid: live.iol_bid,
+    iolAsk: live.iol_ask,
+    iolBidDepth: live.iol_bid_depth,
+    iolAskDepth: live.iol_ask_depth,
+    iolMarketPressure: live.iol_market_pressure,
+    iolStatus: live.iol_status,
+    // V3.4: data912 notional volume — fallback for VOL column when IOL is offline
+    data912Volume: live.volume,
   };
 }
 
@@ -149,7 +159,7 @@ export function useLiveInstruments(): LiveInstrumentsState {
       }
 
       setLiveInstruments(data.instruments);
-      setInstruments(data.instruments.map(liveToInstrument));
+      const mappedInstruments = data.instruments.map(liveToInstrument);
       setCaucionProxy(data.caucion_proxy ?? null);
 
       // Mark data as available
@@ -177,9 +187,73 @@ export function useLiveInstruments(): LiveInstrumentsState {
       setStale(false);
 
       // Check if API itself reports stale data
-      if ((data as Record<string, unknown>).stale === true) {
+      if ((data as unknown as Record<string, unknown>).stale === true) {
         setStale(true);
       }
+
+      // ── V3.4: IOL Level 2 enrichment ─────────────────────────────
+      // Fetch IOL L2 data (volume, depth, pressure) from /api/iol-level2
+      // and merge into instruments. This provides real-time order book
+      // data beyond what /api/letras may already include.
+      // Best-effort: failures don't block the main data pipeline.
+      const tickers = data.instruments.map(i => i.ticker);
+      if (tickers.length > 0) {
+        try {
+          // Fetch in chunks of 20 (API limit)
+          const CHUNK_SIZE = 20;
+          const iolDataMap = new Map<string, {
+            volume: number;
+            bid: number;
+            ask: number;
+            bid_depth: number;
+            ask_depth: number;
+            market_pressure: number | null;
+            status: string;
+          }>();
+
+          for (let ci = 0; ci < tickers.length; ci += CHUNK_SIZE) {
+            const chunk = tickers.slice(ci, ci + CHUNK_SIZE);
+            const l2Res = await fetch(`/api/iol-level2?tickers=${chunk.join(',')}`, {
+              signal: AbortSignal.timeout(10000),
+            });
+            if (!l2Res.ok) continue;
+            const l2Data = await l2Res.json();
+            if (l2Data.iol_available && l2Data.data) {
+              for (const [ticker, td] of Object.entries(l2Data.data as Record<string, {
+                volume: number;
+                bid: number;
+                ask: number;
+                bid_depth: number;
+                ask_depth: number;
+                market_pressure: number | null;
+                status: string;
+              }>)) {
+                iolDataMap.set(ticker, td);
+              }
+            }
+          }
+
+          // Merge IOL data into instruments
+          if (iolDataMap.size > 0) {
+            for (const inst of mappedInstruments) {
+              const iol = iolDataMap.get(inst.ticker);
+              if (iol) {
+                inst.iolVolume = iol.volume;
+                inst.iolBid = iol.bid;
+                inst.iolAsk = iol.ask;
+                inst.iolBidDepth = iol.bid_depth;
+                inst.iolAskDepth = iol.ask_depth;
+                inst.iolMarketPressure = iol.market_pressure ?? undefined;
+                inst.iolStatus = iol.status as 'online' | 'offline' | 'no_data';
+              }
+            }
+          }
+        } catch {
+          // IOL enrichment failed — continue with base data only
+        }
+      }
+
+      setInstruments(mappedInstruments);
     } catch (err) {
       // SWR: If we have existing data, mark as stale but DON'T clear it
       if (hasDataRef.current) {

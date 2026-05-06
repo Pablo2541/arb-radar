@@ -1,5 +1,5 @@
 // V3.3-PRO — Country Risk Auto-Fetch API
-// V3.3-PRO: BondTerminal as primary source (real-time, 558pb current)
+// V3.3-PRO: BondTerminal as primary source (real-time, 528pb current)
 // ArgentinaDatos /ultimo as secondary (often stale, e.g. 539pb from days ago)
 // ArgentinaDatos /indices/ as tertiary fallback
 // Persists to Neon PostgreSQL for historical tracking
@@ -20,7 +20,7 @@ let cachedSource: string | null = null;
 
 /** Parse Riesgo País from BondTerminal HTML (scraping) */
 function parseBondTerminalHTML(html: string): number | null {
-  // BondTerminal shows the value as "558 pb" in the HTML
+  // BondTerminal shows the value as "528 pb" in the HTML
   const match = html.match(/(\d{3,4})\s*pb/);
   if (match) {
     const value = parseInt(match[1], 10);
@@ -173,7 +173,7 @@ export async function GET() {
 
   // Everything failed — return fallback
   return NextResponse.json({
-    value: 558, // Fallback default (updated from latest BondTerminal value)
+    value: 528, // Fallback default (updated from latest BondTerminal value)
     source: 'fallback',
     updated_at: null,
     next_refresh: new Date(now + CACHE_TTL_MS).toISOString(),

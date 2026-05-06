@@ -71,6 +71,8 @@ export interface RadarState {
 
   // ── IOL Level 2 State ─────────────────────────────────────────────
   iolLevel2Online: boolean;    // V3.1: Whether IOL Level 2 data is available
+  iolCredentialsExist: boolean; // V3.4: Whether IOL credentials are configured in .env
+  iolConnectionFailed: boolean; // V3.4: Credentials exist but API connection failed
 
   // ── Country Risk Auto-Fetch State ───────────────────────────────────
   riesgoPaisAuto: number | null; // V3.2.3-PRO: Auto-fetched Riesgo País value (null = not fetched yet)
@@ -105,6 +107,11 @@ export interface RadarState {
   addActivity: (item: Omit<ActivityItem, 'id' | 'timestamp'>) => void;
   clearActivityFeed: () => void;
 
+  // ── IOL Level 2 Actions ───────────────────────────────────────────
+  setIolLevel2Online: (v: boolean) => void;
+  setIolCredentialsExist: (v: boolean) => void;
+  setIolConnectionFailed: (v: boolean) => void;
+
   // ── Country Risk Auto-Fetch Actions ────────────────────────────────
   setRiesgoPaisAuto: (v: number | null) => void;
 
@@ -117,6 +124,7 @@ export interface RadarState {
 
   // ── DB Sync Actions ────────────────────────────────────────────────
   persistToDb: () => Promise<void>;
+  forceSyncToDb: () => Promise<void>;  // V3.4: Immediate DB write (no debounce)
   loadFromDb: () => Promise<boolean>;
   nukeAll: () => void;
 }
@@ -202,6 +210,8 @@ export const useRadarStore = create<RadarState>((set, get) => ({
   lastDbSync: null,
   lastDbSyncStatus: 'idle',
   iolLevel2Online: false,
+  iolCredentialsExist: false,
+  iolConnectionFailed: false,
   riesgoPaisAuto: null,
   marketTruth: null,
   mepConsensus: null,
@@ -327,6 +337,17 @@ export const useRadarStore = create<RadarState>((set, get) => ({
     set({ activityFeed: [] });
   },
 
+  // V3.4: IOL Level 2 state setters
+  setIolLevel2Online: (v: boolean) => {
+    set({ iolLevel2Online: v });
+  },
+  setIolCredentialsExist: (v: boolean) => {
+    set({ iolCredentialsExist: v });
+  },
+  setIolConnectionFailed: (v: boolean) => {
+    set({ iolConnectionFailed: v });
+  },
+
   // V3.2.3-PRO: Set auto-fetched Riesgo País and sync to config
   setRiesgoPaisAuto: (v: number | null) => {
     set({ riesgoPaisAuto: v });
@@ -391,6 +412,8 @@ export const useRadarStore = create<RadarState>((set, get) => ({
         cclRate: state.cclRate ?? null,
         liveActive: false, // Will be set by LIVE hook
         iolLevel2Online: state.iolLevel2Online,
+        externalHistory: JSON.stringify(state.externalHistory),  // V3.4: Full cloud persistence
+        simulations: JSON.stringify(state.simulations),          // V3.4: Full cloud persistence
       };
 
       const res = await fetch('/api/state', {
@@ -420,6 +443,19 @@ export const useRadarStore = create<RadarState>((set, get) => ({
       set({ dbAvailable: false, lastDbSyncStatus: 'error' });
       console.warn('[persistToDb] Network error, localStorage is fallback:', error);
     }
+  },
+
+  // ════════════════════════════════════════════════════════════════════
+  // V3.4: FORCE SYNC — Immediate DB write (bypasses 60s debounce)
+  // Called on app mount to push all localStorage data to cloud.
+  // ════════════════════════════════════════════════════════════════════
+  forceSyncToDb: async () => {
+    // Cancel any pending debounce timer — we're forcing a write NOW
+    if (dbDebounceTimer) {
+      clearTimeout(dbDebounceTimer);
+      dbDebounceTimer = null;
+    }
+    await get().persistToDb();
   },
 
   // ════════════════════════════════════════════════════════════════════
@@ -463,6 +499,14 @@ export const useRadarStore = create<RadarState>((set, get) => ({
           config.capitalDisponible = DEFAULT_CONFIG.capitalDisponible;
         }
 
+        // V3.4: Parse externalHistory and simulations from DB
+        const dbExternalHistory = (dbState as Record<string, unknown>).externalHistory
+          ? JSON.parse((dbState as Record<string, unknown>).externalHistory as string) as ExternalHistoryRecord[]
+          : [];
+        const dbSimulations = (dbState as Record<string, unknown>).simulations
+          ? JSON.parse((dbState as Record<string, unknown>).simulations as string) as SimulationRecord[]
+          : [];
+
         set({
           instruments: instruments.length > 0 ? instruments : SAMPLE_INSTRUMENTS,
           config,
@@ -472,6 +516,8 @@ export const useRadarStore = create<RadarState>((set, get) => ({
           rawInput: dbState.rawInput ?? '',
           mepRate: dbState.mepRate ?? undefined,
           cclRate: dbState.cclRate ?? undefined,
+          externalHistory: dbExternalHistory,
+          simulations: dbSimulations,
           dbAvailable: true,
           lastDbSync: new Date(),
           // V3.1: Detect IOL Level 2 status from DB flag OR from instrument data
@@ -538,6 +584,8 @@ export const useRadarStore = create<RadarState>((set, get) => ({
         mepRate: null,
         cclRate: null,
         liveActive: false,
+        externalHistory: '[]',
+        simulations: '[]',
       }),
     }).catch(() => { /* DB unavailable */ });
 
@@ -593,6 +641,9 @@ export async function initializeStore(): Promise<void> {
     mepRate: number | null;
     cclRate: number | null;
     liveActive: boolean;
+    iolLevel2Online?: boolean;
+    externalHistory?: string;
+    simulations?: string;
     updatedAt?: string;
   } | null = null;
   let dbAvailable = false;
@@ -654,6 +705,14 @@ export async function initializeStore(): Promise<void> {
         config.capitalDisponible = DEFAULT_CONFIG.capitalDisponible;
       }
 
+      // V3.4: Parse externalHistory and simulations from DB (with LS fallback)
+      const dbExtHistory = dbData.externalHistory
+        ? JSON.parse(dbData.externalHistory) as ExternalHistoryRecord[]
+        : lsExternalHistory;
+      const dbSims = dbData.simulations
+        ? JSON.parse(dbData.simulations) as SimulationRecord[]
+        : lsSimulations;
+
       useRadarStore.setState({
         instruments: instruments.length > 0 ? instruments : SAMPLE_INSTRUMENTS,
         config,
@@ -663,8 +722,8 @@ export async function initializeStore(): Promise<void> {
         rawInput: dbData.rawInput ?? '',
         mepRate: dbData.mepRate ?? undefined,
         cclRate: dbData.cclRate ?? undefined,
-        simulations: lsSimulations, // DB doesn't store simulations, keep LS
-        externalHistory: lsExternalHistory, // DB doesn't store extHistory, keep LS
+        externalHistory: dbExtHistory.length > 0 ? dbExtHistory : lsExternalHistory,  // V3.4: DB first, LS fallback
+        simulations: dbSims.length > 0 ? dbSims : lsSimulations,                      // V3.4: DB first, LS fallback
         theme: lsTheme, // Theme is local-only, not synced
         priceHistory: lsPriceHistory, // Price history is local-only
         dbAvailable: true,

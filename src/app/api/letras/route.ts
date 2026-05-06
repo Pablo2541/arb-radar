@@ -15,6 +15,7 @@
 // ════════════════════════════════════════════════════════════════════════
 
 import { NextResponse } from 'next/server';
+import { getIOLCotizacion, isIOLAvailable } from '@/lib/iol-bridge';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 60; // cache for 60 seconds
@@ -91,6 +92,15 @@ interface LiveInstrument {
   source: 'arg_notes' | 'arg_bonds';
   delta_tir: number | null;   // V2.0.2: TIR(live) - TIR(last_close)
   last_close: number | null;  // V2.0.2: previous close per $1 VN
+
+  // V3.4: IOL Level 2 Fields (enriched from IOL API)
+  iol_volume?: number;
+  iol_bid?: number;
+  iol_ask?: number;
+  iol_bid_depth?: number;
+  iol_ask_depth?: number;
+  iol_market_pressure?: number;
+  iol_status?: 'online' | 'offline' | 'no_data';
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -368,6 +378,52 @@ export async function GET() {
   // Sort by days_to_expiry ascending
   instruments.sort((a, b) => a.days_to_expiry - b.days_to_expiry);
 
+  // ── V3.4: IOL Level 2 Enrichment ────────────────────────────────────
+  // If IOL credentials are configured, fetch IOL data for each ticker
+  // using batched requests with rate limiting. Best-effort — failures
+  // don't block the response.
+  let iolEnrichedCount = 0;
+  if (isIOLAvailable() && instruments.length > 0) {
+    const IOL_BATCH_SIZE = 5;
+    const IOL_BATCH_DELAY_MS = 200;
+    const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
+    for (let i = 0; i < instruments.length; i += IOL_BATCH_SIZE) {
+      const batch = instruments.slice(i, i + IOL_BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map(async (inst) => {
+          try {
+            const l2 = await getIOLCotizacion(inst.ticker);
+            return { ticker: inst.ticker, l2 };
+          } catch {
+            return { ticker: inst.ticker, l2: null };
+          }
+        }),
+      );
+
+      for (const { ticker, l2 } of batchResults) {
+        if (l2) {
+          const inst = instruments.find(ii => ii.ticker === ticker);
+          if (inst) {
+            inst.iol_volume = l2.iol_volume;
+            inst.iol_bid = l2.iol_bid;
+            inst.iol_ask = l2.iol_ask;
+            inst.iol_bid_depth = l2.iol_bid_depth;
+            inst.iol_ask_depth = l2.iol_ask_depth;
+            inst.iol_market_pressure = l2.iol_market_pressure;
+            inst.iol_status = l2.iol_status;
+            iolEnrichedCount++;
+          }
+        }
+      }
+
+      // Rate-limit delay between batches (skip after last batch)
+      if (i + IOL_BATCH_SIZE < instruments.length) {
+        await sleep(IOL_BATCH_DELAY_MS);
+      }
+    }
+  }
+
   // Count by type
   const lecapCount = instruments.filter(i => i.type === 'LECAP').length;
   const boncapCount = instruments.filter(i => i.type === 'BONCAP').length;
@@ -396,6 +452,10 @@ export async function GET() {
         ok: argDatosResult.ok,
         count: argDatosCount,
         latency_ms: argDatosResult.latency_ms,
+      },
+      iol_level2: {
+        ok: iolEnrichedCount > 0,
+        count: iolEnrichedCount,
       },
     },
     stats: {

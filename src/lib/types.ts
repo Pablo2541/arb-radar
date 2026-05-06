@@ -24,6 +24,7 @@ export interface Instrument {
   iolAskDepth?: number;          // V3.2.1: Total quantity across all venta puntas
   iolMarketPressure?: number;    // V3.2.1: bid_depth / ask_depth ratio (>1 = buying pressure)
   iolVerdict?: string;           // V3.2.1: Human-readable Filtro de Verdad verdict
+  data912Volume?: number;        // V3.4: Notional ARS volume from data912 (fallback for VOL column)
 }
 
 export interface Config {
@@ -321,6 +322,15 @@ export interface LiveInstrument {
   source: 'arg_notes' | 'arg_bonds'; // V2.0.1: which data912 endpoint provided the price
   delta_tir: number | null;  // V2.0.2: TIR(live) - TIR(last_close) in decimal, null if no last_close
   last_close: number | null; // V2.0.2: previous close price per $1 VN, derived from pct_change
+
+  // ── V3.4: IOL Level 2 Fields (enriched from IOL API) ──
+  iol_volume?: number;              // cantidadOperada from IOL
+  iol_bid?: number;                 // best bid price from IOL puntas
+  iol_ask?: number;                 // best ask price from IOL puntas
+  iol_bid_depth?: number;           // Total quantity across all compra puntas
+  iol_ask_depth?: number;           // Total quantity across all venta puntas
+  iol_market_pressure?: number;     // bid_depth / ask_depth ratio
+  iol_status?: 'online' | 'offline' | 'no_data'; // IOL data availability
 }
 
 /** Full /api/letras response (V2.0.1 with multi-source) */

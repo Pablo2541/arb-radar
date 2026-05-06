@@ -30,7 +30,7 @@ import type { ConfidenceLevel, SourceResult, RPConsensus, MEPConsensus, MarketTr
 export const dynamic = 'force-dynamic';
 
 // ── Configuration ──────────────────────────────────────────────────
-const CACHE_TTL_MS = 45 * 1000; // 45s — faster than old 60s for truth engine
+const CACHE_TTL_MS = 60 * 1000; // 60s refresh for ArgentinaDatos and data912
 const SOURCE_TIMEOUT_MS = 2_000; // 2s max per source — never block the UI longer
 
 // RP Sources
@@ -70,7 +70,7 @@ async function fetchBondTerminalRP(): Promise<SourceResult<number>> {
     if (!res.ok) return { value: null, source: 'bondterminal', latency_ms, ok: false, timestamp: new Date().toISOString() };
 
     const html = await res.text();
-    // BondTerminal shows value as "558 pb" in HTML
+    // BondTerminal shows value as "528 pb" in HTML
     const match = html.match(/(\d{3,4})\s*pb/);
     if (match) {
       const value = parseInt(match[1], 10);

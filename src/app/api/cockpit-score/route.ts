@@ -56,7 +56,7 @@ const DEFAULT_CONFIG = {
   caucion7d: 19.2,
   caucion30d: 18.5,
   comisionTotal: 0.30,
-  riesgoPais: 558,
+  riesgoPais: 528,
   capitalDisponible: 500000,
 };
 

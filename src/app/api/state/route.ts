@@ -1,8 +1,9 @@
 // ════════════════════════════════════════════════════════════════════════
-// V3.0 — /api/state: Persist & Restore Application State
+// V3.4 — /api/state: Persist & Restore Application State
 //
 // GET  → Load last persisted state from DB
 // PUT  → Save current state to DB (called every 60s by debounced Zustand)
+//        ?forceSync=true → immediate write (bypasses debounce on client)
 //
 // If DATABASE_URL is not configured, returns { fallback: true }
 // so the client knows to use localStorage instead.
@@ -25,6 +26,8 @@ interface PersistedState {
   cclRate: number | null;
   liveActive: boolean;
   iolLevel2Online?: boolean; // V3.1: IOL Level 2 status
+  externalHistory?: string;  // V3.4: JSON — ExternalHistoryRecord[]
+  simulations?: string;      // V3.4: JSON — SimulationRecord[]
   updatedAt?: Date;  // Returned from DB, not part of payload
 }
 
@@ -57,6 +60,8 @@ export async function GET() {
         cclRate: state.cclRate,
         liveActive: state.liveActive,
         iolLevel2Online: state.iolLevel2Online,
+        externalHistory: state.externalHistory,
+        simulations: state.simulations,
         updatedAt: state.updatedAt,
       } satisfies PersistedState,
     });
@@ -93,6 +98,8 @@ export async function PUT(request: NextRequest) {
         cclRate: body.cclRate,
         liveActive: body.liveActive,
         iolLevel2Online: body.iolLevel2Online ?? false,
+        externalHistory: body.externalHistory ?? '[]',
+        simulations: body.simulations ?? '[]',
       },
       create: {
         id: 'main',
@@ -106,6 +113,8 @@ export async function PUT(request: NextRequest) {
         cclRate: body.cclRate,
         liveActive: body.liveActive,
         iolLevel2Online: body.iolLevel2Online ?? false,
+        externalHistory: body.externalHistory ?? '[]',
+        simulations: body.simulations ?? '[]',
       },
     });
 

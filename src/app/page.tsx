@@ -14,7 +14,7 @@ import { useSessionHistory } from '@/hooks/useSessionHistory';
 import { useLiveInstruments } from '@/hooks/useLiveInstruments';
 import type { PriceHistoryFile } from '@/lib/priceHistory';
 
-// ── V3.3.1-PRO: Static imports — Eliminates ChunkLoadError ──
+// ── V3.4-PRO: Static imports — Eliminates ChunkLoadError ──
 // Dynamic imports caused ChunkLoadError in preview environments.
 // All tabs now load eagerly — zero chunk fetch failures possible.
 import ThresholdAlerts from '@/components/dashboard/ThresholdAlerts';
@@ -166,6 +166,8 @@ function HomeContent() {
   const dbAvailable = useRadarStore(s => s.dbAvailable);
   const lastDbSyncStatus = useRadarStore(s => s.lastDbSyncStatus);
   const iolLevel2Online = useRadarStore(s => s.iolLevel2Online);
+  const iolCredentialsExist = useRadarStore(s => s.iolCredentialsExist);
+  const iolConnectionFailed = useRadarStore(s => s.iolConnectionFailed);
   const riesgoPaisAuto = useRadarStore(s => s.riesgoPaisAuto);
 
   // ── Store setters ──
@@ -228,6 +230,16 @@ function HomeContent() {
         tem: liveInst.tem * 100,
         tir: liveInst.tem * 100,
         days: liveInst.days_to_expiry,
+        // V3.4: IOL Level 2 enrichment from /api/letras — real-time order book data
+        iolVolume: liveInst.iol_volume ?? inst.iolVolume,
+        iolBid: liveInst.iol_bid ?? inst.iolBid,
+        iolAsk: liveInst.iol_ask ?? inst.iolAsk,
+        iolBidDepth: liveInst.iol_bid_depth ?? inst.iolBidDepth,
+        iolAskDepth: liveInst.iol_ask_depth ?? inst.iolAskDepth,
+        iolMarketPressure: liveInst.iol_market_pressure ?? inst.iolMarketPressure,
+        iolStatus: liveInst.iol_status ?? inst.iolStatus,
+        // V3.4: data912 volume as fallback for VOL column
+        data912Volume: liveInst.volume ?? inst.data912Volume,
       };
     });
 
@@ -330,11 +342,69 @@ function HomeContent() {
   }, [handleTabChange, toggleTheme]);
 
   // ── V3.0: Initialize store (DB first, then localStorage fallback) ──
+  // V3.4: After init, force sync all local data to cloud DB (no debounce)
   useEffect(() => {
     initializeStore().then(() => {
       const validInstruments = useRadarStore.getState().instruments;
       sessionHistory.addSnapshot(validInstruments);
+      // V3.4: Force immediate DB sync — push all localStorage data to cloud
+      useRadarStore.getState().forceSyncToDb().catch(() => {
+        // Silent fail — DB unavailable, localStorage is the fallback
+      });
     });
+  }, []);
+
+  // ── V3.4: Proactive IOL Level 2 availability check on startup ──
+  // Calls /api/iol-level2 with a test ticker to detect IOL status.
+  // Sets 3-state LED: online (purple pulsing), no credentials (gray), connection failed (orange)
+  useEffect(() => {
+    const checkIOL = async () => {
+      try {
+        const res = await fetch('/api/iol-level2?tickers=T5W3', {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) {
+          // API error — likely credentials exist but connection failed
+          const store = useRadarStore.getState();
+          store.setIolCredentialsExist(true);
+          store.setIolConnectionFailed(true);
+          store.setIolLevel2Online(false);
+          return;
+        }
+        const data = await res.json();
+
+        if (data.token_status === 'not_configured') {
+          // No credentials in .env
+          const store = useRadarStore.getState();
+          store.setIolCredentialsExist(false);
+          store.setIolConnectionFailed(false);
+          store.setIolLevel2Online(false);
+        } else if (data.token_status === 'invalid') {
+          // Credentials exist but auth failed
+          const store = useRadarStore.getState();
+          store.setIolCredentialsExist(true);
+          store.setIolConnectionFailed(true);
+          store.setIolLevel2Online(false);
+        } else if (data.iol_available) {
+          // IOL is online — check if any ticker has actual data
+          const hasOnlineData = Object.values(data.data as Record<string, { status: string }>)
+            .some((td) => td.status === 'online');
+          const store = useRadarStore.getState();
+          store.setIolCredentialsExist(true);
+          store.setIolConnectionFailed(false);
+          store.setIolLevel2Online(hasOnlineData);
+        } else {
+          // iol_available is false but token isn't explicitly invalid
+          const store = useRadarStore.getState();
+          store.setIolCredentialsExist(true);
+          store.setIolConnectionFailed(true);
+          store.setIolLevel2Online(false);
+        }
+      } catch {
+        // Network error — can't determine status, leave as defaults
+      }
+    };
+    checkIOL();
   }, []);
 
   // ── V3.0: Persist state changes (store handles localStorage + DB) ──
@@ -539,7 +609,7 @@ function HomeContent() {
 
     // PRIORITY HYDRATION: Fire immediately, no delay — cache must be warm on entry
     fetchMarketTruth();
-    const interval = setInterval(fetchMarketTruth, 45 * 1000); // V3.3: 45s refresh (aligned with engine cache TTL)
+    const interval = setInterval(fetchMarketTruth, 60 * 1000); // V3.4: 60s refresh — aligned with engine cache TTL (user directive)
     return () => {
       clearInterval(interval);
     };
@@ -578,7 +648,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V3.3.1 PRO...
+            Cargando V3.4 PRO...
           </p>
         </div>
       </div>
@@ -660,14 +730,58 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.3.1 — PRO TERMINAL</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.4 — PRO TERMINAL</span>
             {/* V3.0: DB Sync indicator dot */}
             <div className="w-1.5 h-1.5 rounded-full hidden sm:block" style={{ backgroundColor: dbSyncDotColor }} title={dbAvailable ? `DB: ${lastDbSyncStatus}` : 'DB: no configurado'} />
-            {/* V3.1: IOL Level 2 indicator dot */}
-            <div className={`flex items-center gap-1 hidden sm:flex ${iolLevel2Online ? 'text-[#a78bfa]' : 'text-app-text4'}`} title={iolLevel2Online ? 'IOL Nivel 2: ONLINE — Volumen validado' : 'IOL Nivel 2: OFFLINE — Sin datos de volumen'}>
-              <div className={`w-1.5 h-1.5 rounded-full ${iolLevel2Online ? 'bg-[#a78bfa] animate-pulse' : 'bg-app-text4'}`} />
-              <span className="text-[7px] font-mono uppercase tracking-wider">{iolLevel2Online ? 'L2' : 'L2✗'}</span>
-            </div>
+            {/* V3.4: IOL Level 2 indicator — 3-state LED */}
+            {(() => {
+              // 3-state LED logic:
+              // Online: credentials present AND API succeeds → "L2" purple pulsing
+              // No credentials: .env vars empty → "L2✗" gray
+              // Connection failed: credentials exist but API errors → "L2⚠" orange
+              const isOnline = iolLevel2Online;
+              const noCreds = !iolCredentialsExist && !iolConnectionFailed;
+              const connFailed = iolCredentialsExist && iolConnectionFailed;
+
+              let dotColor: string;
+              let label: string;
+              let title: string;
+              let pulse: boolean;
+
+              if (isOnline) {
+                dotColor = '#a78bfa'; // purple
+                label = 'L2';
+                title = 'IOL Nivel 2: ONLINE — Volumen validado';
+                pulse = true;
+              } else if (noCreds) {
+                dotColor = '#6b7280'; // gray
+                label = 'L2✗';
+                title = 'IOL Nivel 2: SIN CREDENCIALES — Configure IOL_USERNAME/IOL_PASSWORD en .env';
+                pulse = false;
+              } else if (connFailed) {
+                dotColor = '#fb923c'; // orange
+                label = 'L2⚠';
+                title = 'IOL Nivel 2: CONEXIÓN FALLIDA — Credenciales presentes pero API no responde';
+                pulse = false;
+              } else {
+                dotColor = '#6b7280'; // gray (default/unknown)
+                label = 'L2✗';
+                title = 'IOL Nivel 2: OFFLINE';
+                pulse = false;
+              }
+
+              return (
+                <div className="flex items-center gap-1 hidden sm:flex" title={title}>
+                  <div
+                    className={`w-1.5 h-1.5 rounded-full ${pulse ? 'animate-pulse' : ''}`}
+                    style={{ backgroundColor: dotColor }}
+                  />
+                  <span className="text-[7px] font-mono uppercase tracking-wider" style={{ color: dotColor }}>
+                    {label}
+                  </span>
+                </div>
+              );
+            })()}
             {/* V3.3-PRO: Market Truth Engine indicator — SWR stale aware */}
             {(() => {
               const mt = useRadarStore.getState().marketTruth;
@@ -1063,7 +1177,7 @@ function HomeContent() {
       <footer className="mt-auto bg-app-card/80 backdrop-blur-sm px-5 py-2.5 flex items-center justify-between flex-wrap gap-y-1 gap-x-3">
         <div className="text-[8px] text-app-text4 font-mono flex items-center gap-2">
           <span className="version-pulse-dot" />
-          <span>ARB//RADAR V3.3.1 — PRO TERMINAL</span>
+          <span>ARB//RADAR V3.4 — PRO TERMINAL</span>
           <span className="text-app-border/60">·</span>
           <span>{sanitizedInstruments.length} inst.</span>
           {dolarLastUpdateTime && (

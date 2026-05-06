@@ -34,6 +34,8 @@ model AppState {
   cclRate      Float?   // Last known CCL rate
   liveActive   Boolean  @default(false) // Whether LIVE was active at last persist
   iolLevel2Online Boolean @default(false) // V3.1: Whether IOL Level 2 data is available
+  externalHistory String @default("[]") // JSON — ExternalHistoryRecord[]
+  simulations     String @default("[]") // JSON — SimulationRecord[]
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }

@@ -353,7 +353,7 @@ export default function CockpitTab({
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-lg font-light text-app-text mb-1">
-              🎯 Cockpit Táctico — V3.3.1 PRO TERMINAL
+              🎯 Cockpit Táctico — V3.4 PRO TERMINAL
             </h2>
             <p className="text-sm text-app-text3">
               Señal de scalping compuesta · 5 factores ponderados · Horizonte: {horizonLabel}
@@ -522,11 +522,12 @@ export default function CockpitTab({
       ) : (
         <div className="glass-card animate-fadeInUp">
           {/* Table Header */}
-          <div className="table-header-enhanced px-4 py-2.5 grid grid-cols-[32px_1fr_80px_70px_80px_70px_1fr] gap-2 items-center text-[9px] text-app-text4 uppercase tracking-wider font-medium">
+          <div className="table-header-enhanced px-4 py-2.5 grid grid-cols-[32px_1fr_80px_70px_60px_80px_70px_1fr] gap-2 items-center text-[9px] text-app-text4 uppercase tracking-wider font-medium">
             <span>#</span>
             <span>Instrumento</span>
             <span className="text-right">Precio</span>
             <span className="text-right">TEM</span>
+            <span className="text-right">VOL</span>
             <span className="text-right">Spread Neto</span>
             <span className="text-right">Score</span>
             <span className="text-right">Veredicto</span>
@@ -549,7 +550,7 @@ export default function CockpitTab({
                   style={idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 70px' } : undefined}
                 >
                   {/* ── ROW 1: Main Data ── */}
-                  <div className="grid grid-cols-[32px_1fr_80px_70px_80px_70px_1fr] gap-2 items-center">
+                  <div className="grid grid-cols-[32px_1fr_80px_70px_60px_80px_70px_1fr] gap-2 items-center">
                     {/* Rank */}
                     <div className={`rank-badge ${getRankClass(rank)} text-[10px]`}>
                       {rank}
@@ -577,6 +578,22 @@ export default function CockpitTab({
                     {/* TEM */}
                     <div className="text-right font-mono text-xs text-app-text2">
                       {fmtNum(tem, 2)}%
+                    </div>
+
+                    {/* VOL — V3.4: IOL volume (primary) / data912 volume (fallback) from /api/letras enrichment */}
+                    <div className="text-right font-mono text-xs text-app-text2">
+                      {(() => {
+                        // Priority: IOL volume (real-time order book) > data912 volume (notional ARS)
+                        const vol = instData?.iolVolume ?? liveData?.iol_volume ?? instData?.data912Volume ?? liveData?.volume;
+                        if (vol != null && vol > 0) {
+                          return vol >= 1_000_000
+                            ? `${(vol / 1_000_000).toFixed(1)}M`
+                            : vol >= 1_000
+                              ? `${(vol / 1_000).toFixed(0)}K`
+                              : vol.toString();
+                        }
+                        return '—';
+                      })()}
                     </div>
 
                     {/* Spread Neto */}
