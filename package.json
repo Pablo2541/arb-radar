@@ -1,6 +1,6 @@
 {
   "name": "arb-radar",
-  "version": "3.4.0",
+  "version": "3.4.1",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
@@ -14,7 +14,10 @@
     "postinstall": "prisma generate",
     "prices:update": "npx tsx scripts/update-prices.ts",
     "prices:daemon": "npx tsx scripts/update-prices.ts --daemon",
-    "history:inject": "npx tsx scripts/inject-historical.ts"
+    "history:inject": "npx tsx scripts/inject-historical.ts",
+    "history:migrate": "npx tsx scripts/migrate-historico.ts",
+    "history:migrate:upload": "npx tsx scripts/migrate-historico.ts --upload",
+    "history:migrate:scripts": "npx tsx scripts/migrate-historico.ts --scripts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-// V3.0 — ARB//RADAR Global State Store (Zustand)
+// V3.4.1 — ARB//RADAR Global State Store (Zustand)
 //
 // ARCHITECTURE:
 // 1. Zustand store → instant UI updates (synchronous, no lag)
@@ -11,6 +11,8 @@
 // - DB writes are debounced to 60s to avoid exhausting Vercel quotas
 // - If DB fails or isn't configured, localStorage is the automatic fallback
 // - The store is the SINGLE SOURCE OF TRUTH for all tabs
+// - V3.4.1: Auto-heal on init — if DB data is corrupt, fall back gracefully
+// - V3.4.1: forceSyncToDb() on mount pushes all local data to cloud immediately
 // ════════════════════════════════════════════════════════════════════════
 
 import { create } from 'zustand';
@@ -599,16 +601,14 @@ export const useRadarStore = create<RadarState>((set, get) => ({
 // ════════════════════════════════════════════════════════════════════════
 // Initialization helper — call once on app mount
 //
-// PRIORITY (V3.0 with timestamp comparison):
+// V3.4.1 PRIORITY (robust timestamp comparison with auto-heal):
 // 1. Load both DB and localStorage data
 // 2. Compare timestamps — use whichever is MORE RECENT
-// 3. If DB has no data or is unreachable → use localStorage
-// 4. If localStorage has no data → use DB
-// 5. If neither has data → use defaults
-//
-// This ensures that if a user made changes on another device
-// (synced to DB), those changes won't be overwritten by stale
-// localStorage data from the current browser.
+// 3. If DB data is corrupt/empty → auto-heal from localStorage
+// 4. If DB has no data or is unreachable → use localStorage
+// 5. If localStorage has no data → use DB
+// 6. If neither has data → use defaults
+// 7. After loading → forceSyncToDb() to ensure cloud has latest
 // ════════════════════════════════════════════════════════════════════════
 
 export async function initializeStore(): Promise<void> {
@@ -669,27 +669,49 @@ export async function initializeStore(): Promise<void> {
   }
 
   // ── Step 3: Compare timestamps and decide source ──
+  // V3.4.1: Auto-heal — if DB data fails to parse, silently fall back to LS
   let useDB = false;
 
   if (dbData) {
-    const dbUpdatedAt = dbData.updatedAt ? new Date(dbData.updatedAt).getTime() : 0;
+    // V3.4.1: Validate DB data has essential fields before considering it
+    const dbHasInstruments = dbData.instruments && typeof dbData.instruments === 'string';
+    const dbHasConfig = dbData.config && typeof dbData.config === 'string';
 
-    if (lsPersistTime && dbUpdatedAt > 0) {
-      // Both have timestamps → use the MORE RECENT one
-      useDB = dbUpdatedAt > lsPersistTime;
-      if (useDB) {
-        console.log(`[initializeStore] DB wins: DB updatedAt=${new Date(dbUpdatedAt).toISOString()} > LS persistTime=${new Date(lsPersistTime).toISOString()}`);
-      } else {
-        console.log(`[initializeStore] LS wins: LS persistTime=${new Date(lsPersistTime).toISOString()} >= DB updatedAt=${new Date(dbUpdatedAt).toISOString()}`);
-      }
-    } else if (dbUpdatedAt > 0) {
-      // DB has timestamp but localStorage doesn't → prefer DB (cross-device sync)
-      useDB = true;
-      console.log('[initializeStore] DB wins: no LS timestamp, DB has data');
-    } else {
-      // DB has no timestamp → can't determine recency, prefer localStorage (more reliable)
+    if (!dbHasInstruments || !dbHasConfig) {
+      console.warn('[initializeStore] DB data missing essential fields — using localStorage');
       useDB = false;
-      console.log('[initializeStore] LS wins: DB has no updatedAt timestamp');
+    } else {
+      const dbUpdatedAt = dbData.updatedAt ? new Date(dbData.updatedAt).getTime() : 0;
+
+      // V3.4.1: Try to parse DB instruments to verify they're valid
+      let dbInstrumentsValid = true;
+      try {
+        const parsed = JSON.parse(dbData.instruments);
+        dbInstrumentsValid = Array.isArray(parsed) && parsed.length > 0;
+      } catch {
+        dbInstrumentsValid = false;
+        console.warn('[initializeStore] DB instruments JSON is corrupt — using localStorage');
+      }
+
+      if (!dbInstrumentsValid) {
+        useDB = false;
+      } else if (lsPersistTime && dbUpdatedAt > 0) {
+        // Both have timestamps → use the MORE RECENT one
+        useDB = dbUpdatedAt > lsPersistTime;
+        if (useDB) {
+          console.log(`[initializeStore] DB wins: DB updatedAt=${new Date(dbUpdatedAt).toISOString()} > LS persistTime=${new Date(lsPersistTime).toISOString()}`);
+        } else {
+          console.log(`[initializeStore] LS wins: LS persistTime=${new Date(lsPersistTime).toISOString()} >= DB updatedAt=${new Date(dbUpdatedAt).toISOString()}`);
+        }
+      } else if (dbUpdatedAt > 0) {
+        // DB has timestamp but localStorage doesn't → prefer DB (cross-device sync)
+        useDB = true;
+        console.log('[initializeStore] DB wins: no LS timestamp, DB has data');
+      } else {
+        // DB has no timestamp → can't determine recency, prefer localStorage (more reliable)
+        useDB = false;
+        console.log('[initializeStore] LS wins: DB has no updatedAt timestamp');
+      }
     }
   }
 

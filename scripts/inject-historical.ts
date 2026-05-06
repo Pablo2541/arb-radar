@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-// V3.2.4-PRO — Historical Price Injection Script
+// V3.4.1-PRO — Historical Price Injection Script
 // Reads historico_precios.json and upserts 22 Ruedas (Mar 23 – Apr 24) into DailyOHLC
 //
 // Usage: npx tsx scripts/inject-historical.ts
@@ -9,7 +9,7 @@ import { PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// ── Load .env ──
+// ── Load .env (V3.4.1: Windows-safe — handles quoted values with & symbols) ──
 function loadEnv() {
   const envPath = path.resolve(process.cwd(), '.env');
   if (fs.existsSync(envPath)) {
@@ -20,7 +20,11 @@ function loadEnv() {
       const eqIdx = trimmed.indexOf('=');
       if (eqIdx === -1) continue;
       const key = trimmed.slice(0, eqIdx).trim();
-      const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+      // V3.4.1: Strip surrounding quotes but preserve & and special chars inside
+      let val = trimmed.slice(eqIdx + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
       if (!process.env[key]) process.env[key] = val;
     }
   }
@@ -60,6 +64,14 @@ async function main() {
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     console.error('✖ DATABASE_URL not configured. Cannot write to Neon.');
+    process.exit(1);
+  }
+
+  // V3.4.1: Validate DATABASE_URL is not truncated (Windows &-in-URL issue)
+  if (!databaseUrl.includes('@') || (!databaseUrl.includes('neon.tech') && !databaseUrl.includes('postgresql'))) {
+    console.error('✖ DATABASE_URL appears truncated or invalid.');
+    console.error('   On Windows, wrap the URL in quotes in .env:');
+    console.error('   DATABASE_URL="postgresql://user:pass@host/db?sslmode=require"');
     process.exit(1);
   }
 

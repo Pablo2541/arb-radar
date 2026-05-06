@@ -169,6 +169,9 @@ function HomeContent() {
   const iolCredentialsExist = useRadarStore(s => s.iolCredentialsExist);
   const iolConnectionFailed = useRadarStore(s => s.iolConnectionFailed);
   const riesgoPaisAuto = useRadarStore(s => s.riesgoPaisAuto);
+  // V3.4.1: MT indicator uses reactive hooks (not getState())
+  const marketTruth = useRadarStore(s => s.marketTruth);
+  const marketTruthStale = useRadarStore(s => s.marketTruthStale);
 
   // ── Store setters ──
   const setActiveTab = useRadarStore(s => s.setActiveTab);
@@ -730,7 +733,7 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.4 — PRO TERMINAL</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.4.1 — PRO TERMINAL</span>
             {/* V3.0: DB Sync indicator dot */}
             <div className="w-1.5 h-1.5 rounded-full hidden sm:block" style={{ backgroundColor: dbSyncDotColor }} title={dbAvailable ? `DB: ${lastDbSyncStatus}` : 'DB: no configurado'} />
             {/* V3.4: IOL Level 2 indicator — 3-state LED */}
@@ -782,10 +785,11 @@ function HomeContent() {
                 </div>
               );
             })()}
-            {/* V3.3-PRO: Market Truth Engine indicator — SWR stale aware */}
+            {/* V3.4.1-PRO: Market Truth Engine indicator — SWR stale aware (REACTIVE) */}
             {(() => {
-              const mt = useRadarStore.getState().marketTruth;
-              const isStale = useRadarStore.getState().marketTruthStale;
+              // V3.4.1: Uses reactive Zustand hooks instead of getState()
+              const mt = marketTruth;
+              const isStale = marketTruthStale;
               const mtOnline = mt !== null;
               const rpConf = mt?.riesgo_pais?.confidence;
               const mepConf = mt?.mep?.confidence;

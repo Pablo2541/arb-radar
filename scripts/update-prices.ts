@@ -20,7 +20,7 @@
 
 import { PrismaClient } from '@prisma/client';
 
-// ── Load .env ──────────────────────────────────────────────────────────
+// ── Load .env (V3.4.1: Windows-safe — handles quoted values with & symbols) ──
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -34,7 +34,11 @@ function loadEnv() {
       const eqIdx = trimmed.indexOf('=');
       if (eqIdx === -1) continue;
       const key = trimmed.slice(0, eqIdx).trim();
-      const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+      // V3.4.1: Strip surrounding quotes but preserve & and special chars inside
+      let val = trimmed.slice(eqIdx + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
       if (!process.env[key]) process.env[key] = val;
     }
   }
