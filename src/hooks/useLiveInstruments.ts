@@ -27,6 +27,7 @@ export interface LiveInstrumentsState {
   caucionProxy: { tna_promedio: number; tem_caucion: number; source: string } | null;
   loading: boolean;
   error: string | null;
+  stale: boolean;
   lastRefresh: Date | null;
   sources: {
     data912_notes: { ok: boolean; count: number; latency_ms: number } | null;
@@ -100,6 +101,8 @@ export function useLiveInstruments(): LiveInstrumentsState {
   const [active, setActiveRaw] = useState<boolean>(getPersistedActive);
   const [liveTickers, setLiveTickers] = useState<Set<string>>(new Set());
   const [deltaTIRMap, setDeltaTIRMap] = useState<Map<string, number>>(new Map());
+  const [stale, setStale] = useState(false);
+  const hasDataRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
@@ -110,18 +113,21 @@ export function useLiveInstruments(): LiveInstrumentsState {
   }, []);
 
   const fetchData = useCallback(async () => {
-    setLoading(true);
+    // SWR: Only show full loading spinner on first fetch (no existing data)
+    // On subsequent fetches, just mark as stale while revalidating in background
+    const isFirstFetch = !hasDataRef.current;
+    if (isFirstFetch) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
-      // For static export, we can't use the server-side merge, so fetch both endpoints directly
+      // For static export, we can't use the server-side merge
       if (STATIC_EXPORT) {
-        // Fallback for static export: fetch only arg_notes (limited, but better than nothing)
         const res = await fetch('https://data912.com/live/arg_notes', {
           signal: AbortSignal.timeout(15000),
         });
         if (!res.ok) throw new Error(`API returned ${res.status}`);
-        // For static export, we can't merge with ArgentinaDatos, so just return empty
         setLiveInstruments([]);
         setInstruments([]);
         setLiveTickers(new Set());
@@ -146,28 +152,46 @@ export function useLiveInstruments(): LiveInstrumentsState {
       setInstruments(data.instruments.map(liveToInstrument));
       setCaucionProxy(data.caucion_proxy ?? null);
 
-      // V2.0.1: Track which tickers are live from the API
+      // Mark data as available
+      hasDataRef.current = data.instruments.length > 0;
+
+      // Track which tickers are live from the API
       const newLiveTickers = new Set(data.instruments.map(i => i.ticker));
       setLiveTickers(newLiveTickers);
 
-      // V2.0.2: Build delta_tir map from API response
-      // delta_tir is computed in /api/letras: TIR(live_price) - TIR(last_close)
+      // Build delta_tir map from API response
       const newDeltaTIRMap = new Map<string, number>();
       for (const inst of data.instruments) {
         if (inst.delta_tir != null && isFinite(inst.delta_tir)) {
-          newDeltaTIRMap.set(inst.ticker, inst.delta_tir * 100); // convert decimal to percentage
+          newDeltaTIRMap.set(inst.ticker, inst.delta_tir * 100);
         }
       }
       setDeltaTIRMap(newDeltaTIRMap);
 
-      // V2.0.1: Handle new sources structure
+      // Handle sources structure
       setSources(data.sources ?? null);
       setStats(data.stats ?? null);
       setLastRefresh(new Date());
+
+      // SWR: Data is fresh again
+      setStale(false);
+
+      // Check if API itself reports stale data
+      if ((data as Record<string, unknown>).stale === true) {
+        setStale(true);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch live data');
+      // SWR: If we have existing data, mark as stale but DON'T clear it
+      if (hasDataRef.current) {
+        setStale(true);
+        // Keep existing data visible — don't set error that would block UI
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to fetch live data');
+      }
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -191,6 +215,8 @@ export function useLiveInstruments(): LiveInstrumentsState {
       // Clear the instruments list though (go back to manual data)
       setInstruments([]);
       setLiveInstruments([]);
+      setStale(false);
+      hasDataRef.current = false;
     }
 
     return () => {
@@ -212,6 +238,7 @@ export function useLiveInstruments(): LiveInstrumentsState {
     caucionProxy,
     loading,
     error,
+    stale,
     lastRefresh,
     sources,
     stats,

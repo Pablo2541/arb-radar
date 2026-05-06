@@ -13,24 +13,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ARB//RADAR V3.3 — PRO TERMINAL",
-  description: "Cockpit Táctico · Market Truth Engine · cockpitScore — Dashboard de arbitraje de LECAPs y BONCAPs con datos en tiempo real. V3.3-PRO TERMINAL",
+  title: "ARB//RADAR V3.3.1 — PRO TERMINAL",
+  description: "Cockpit Táctico · Market Truth Engine · cockpitScore — Dashboard de arbitraje de LECAPs y BONCAPs con datos en tiempo real. V3.3.1-PRO TERMINAL",
   keywords: ["arbitraje", "LECAP", "BONCAP", "Argentina", "tasas", "curvas", "dólar MEP", "CCL", "spread caución", "duration modified"],
   authors: [{ name: "ARB Radar" }],
   icons: {
     icon: "/logo.svg",
   },
   openGraph: {
-    title: "ARB//RADAR V3.3 — PRO TERMINAL",
-    description: "Cockpit Táctico · Market Truth Engine · cockpitScore — Dashboard de arbitraje argentino — V3.3-PRO TERMINAL",
+    title: "ARB//RADAR V3.3.1 — PRO TERMINAL",
+    description: "Cockpit Táctico · Market Truth Engine · cockpitScore — Dashboard de arbitraje argentino — V3.3.1-PRO TERMINAL",
     url: "https://arbradar.com",
     siteName: "ARB Radar",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ARB//RADAR V3.3 — PRO TERMINAL",
-    description: "Cockpit Táctico · Market Truth Engine · cockpitScore — Dashboard de arbitraje argentino — V3.3-PRO TERMINAL",
+    title: "ARB//RADAR V3.3.1 — PRO TERMINAL",
+    description: "Cockpit Táctico · Market Truth Engine · cockpitScore — Dashboard de arbitraje argentino — V3.3.1-PRO TERMINAL",
   },
 };
 

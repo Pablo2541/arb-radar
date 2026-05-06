@@ -48,4 +48,6 @@ export interface MarketTruthResponse {
   timestamp: string;
   next_refresh: string;
   engine_version: string;
+  stale?: boolean;
+  stale_reason?: string;
 }

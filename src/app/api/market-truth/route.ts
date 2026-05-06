@@ -31,6 +31,7 @@ export const dynamic = 'force-dynamic';
 
 // ── Configuration ──────────────────────────────────────────────────
 const CACHE_TTL_MS = 45 * 1000; // 45s — faster than old 60s for truth engine
+const SOURCE_TIMEOUT_MS = 2_000; // 2s max per source — never block the UI longer
 
 // RP Sources
 const BONDTERMINAL_URL = 'https://bondterminal.com/riesgo-pais';
@@ -59,7 +60,7 @@ async function fetchBondTerminalRP(): Promise<SourceResult<number>> {
   const start = Date.now();
   try {
     const res = await fetch(BONDTERMINAL_URL, {
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
       headers: {
         'Accept': 'text/html',
         'User-Agent': 'Mozilla/5.0 (compatible; ARB-RADAR/3.3)',
@@ -88,7 +89,7 @@ async function fetchArgDatosUltimoRP(): Promise<SourceResult<number>> {
   const start = Date.now();
   try {
     const res = await fetch(ARG_DATOS_ULTIMO_URL, {
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
       headers: { 'Accept': 'application/json' },
     });
     const latency_ms = Date.now() - start;
@@ -110,7 +111,7 @@ async function fetchArgDatosArrayRP(): Promise<SourceResult<number>> {
   const start = Date.now();
   try {
     const res = await fetch(ARG_DATOS_URL, {
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
       headers: { 'Accept': 'application/json' },
     });
     const latency_ms = Date.now() - start;
@@ -177,7 +178,7 @@ async function fetchDirectMEP(): Promise<{
 
   try {
     const res = await fetch(DATA912_BONDS_URL, {
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
       headers: { 'Accept': 'application/json' },
     });
     const latency_ms = Date.now() - start;
@@ -255,7 +256,7 @@ async function fetchDolarAPIMEP(): Promise<SourceResult<number>> {
   const start = Date.now();
   try {
     const res = await fetch(DOLAR_API_URL, {
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
     });
     const latency_ms = Date.now() - start;
     if (!res.ok) return { value: null, source: 'dolarapi', latency_ms, ok: false, timestamp: new Date().toISOString() };
@@ -539,12 +540,27 @@ export async function GET() {
 
   // ── BUILD RESPONSE ──
   const timestamp = new Date(now).toISOString();
+
+  // SWR: If BOTH RP and MEP are CRITICA (all sources failed), return stale cache if available
+  const bothCritical = rpConsensus.confidence === 'CRITICA' && mepConsensus.confidence === 'CRITICA';
+  if (bothCritical && cachedTruth) {
+    console.warn('[market-truth] All sources CRITICA — returning stale cache');
+    const staleResponse: MarketTruthResponse = {
+      ...cachedTruth,
+      stale: true,
+      stale_reason: 'all_sources_failed',
+      next_refresh: new Date(now + CACHE_TTL_MS).toISOString(),
+    };
+    return NextResponse.json(staleResponse);
+  }
+
   const response: MarketTruthResponse = {
     riesgo_pais: rpConsensus,
     mep: mepConsensus,
     timestamp,
     next_refresh: new Date(now + CACHE_TTL_MS).toISOString(),
     engine_version: 'V3.3-PRO',
+    stale: false,
   };
 
   // Cache it

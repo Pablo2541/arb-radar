@@ -33,6 +33,11 @@ export async function GET() {
   try {
     const { db } = await import('@/lib/db');
 
+    // V3.3-PRO: Handle null db (DATABASE_URL invalid/missing)
+    if (!db) {
+      return NextResponse.json({ fallback: true, error: 'Database not configured' });
+    }
+
     const state = await db.appState.findUnique({ where: { id: 'main' } });
 
     if (!state) {
@@ -68,6 +73,11 @@ export async function PUT(request: NextRequest) {
     const body = await request.json() as PersistedState;
 
     const { db } = await import('@/lib/db');
+
+    // V3.3-PRO: Handle null db (DATABASE_URL invalid/missing)
+    if (!db) {
+      return NextResponse.json({ ok: false, fallback: true, error: 'Database not configured' });
+    }
 
     // Upsert: create if not exists, update if exists
     const state = await db.appState.upsert({

@@ -14,38 +14,19 @@ import { useSessionHistory } from '@/hooks/useSessionHistory';
 import { useLiveInstruments } from '@/hooks/useLiveInstruments';
 import type { PriceHistoryFile } from '@/lib/priceHistory';
 
-// ── Dynamic imports for memory efficiency ──
-// Tabs are compiled on-demand, reducing initial compile memory from ~1.2GB to ~400MB
-import dynamic from 'next/dynamic';
+// ── V3.3.1-PRO: Static imports — Eliminates ChunkLoadError ──
+// Dynamic imports caused ChunkLoadError in preview environments.
+// All tabs now load eagerly — zero chunk fetch failures possible.
 import ThresholdAlerts from '@/components/dashboard/ThresholdAlerts';
-
-// Light tabs — loaded eagerly (small bundle)
 import MercadoTab from '@/components/dashboard/MercadoTab';
 import CurvasTab from '@/components/dashboard/CurvasTab';
-
-// Loading skeleton for lazy-loaded tabs (defined before dynamic imports for hoisting)
-function TabSkeleton() {
-  return (
-    <div className="p-6 animate-pulse space-y-4">
-      <div className="h-6 bg-app-subtle/50 rounded w-48" />
-      <div className="h-32 bg-app-subtle/30 rounded-lg" />
-      <div className="grid grid-cols-3 gap-3">
-        {[1,2,3].map(i => <div key={i} className="h-20 bg-app-subtle/20 rounded-lg" />)}
-      </div>
-      <div className="h-48 bg-app-subtle/20 rounded-lg" />
-    </div>
-  );
-}
-
-// Heavy tabs — loaded lazily (only compiled when user navigates to them)
-const CockpitTab = dynamic(() => import('@/components/dashboard/CockpitTab'), { ssr: false, loading: TabSkeleton });
-const EstrategiasTab = dynamic(() => import('@/components/dashboard/EstrategiasTab'), { ssr: false, loading: TabSkeleton });
-const CarteraTab = dynamic(() => import('@/components/dashboard/CarteraTab'), { ssr: false, loading: TabSkeleton });
-const HistorialTab = dynamic(() => import('@/components/dashboard/HistorialTab'), { ssr: false, loading: TabSkeleton });
-const HistoricoTab = dynamic(() => import('@/components/dashboard/HistoricoTab'), { ssr: false, loading: TabSkeleton });
-const ConfiguracionTab = dynamic(() => import('@/components/dashboard/ConfiguracionTab'), { ssr: false, loading: TabSkeleton });
-// V3.3-PRO: Order Flow Imbalance Alert — lazy-loaded
-const OrderFlowAlert = dynamic(() => import('@/components/dashboard/OrderFlowAlert'), { ssr: false });
+import CockpitTab from '@/components/dashboard/CockpitTab';
+import EstrategiasTab from '@/components/dashboard/EstrategiasTab';
+import CarteraTab from '@/components/dashboard/CarteraTab';
+import HistorialTab from '@/components/dashboard/HistorialTab';
+import HistoricoTab from '@/components/dashboard/HistoricoTab';
+import ConfiguracionTab from '@/components/dashboard/ConfiguracionTab';
+import OrderFlowAlert from '@/components/dashboard/OrderFlowAlert';
 
 const TAB_CONFIG: { id: TabId; icon: string; label: string; shortcut: string }[] = [
   { id: 'mercado', icon: '📊', label: 'Mercado', shortcut: '1' },
@@ -182,7 +163,6 @@ function HomeContent() {
   const theme = useRadarStore(s => s.theme);
   const mounted = useRadarStore(s => s.mounted);
   const currentTime = useRadarStore(s => s.currentTime);
-  const activityFeed = useRadarStore(s => s.activityFeed);
   const dbAvailable = useRadarStore(s => s.dbAvailable);
   const lastDbSyncStatus = useRadarStore(s => s.lastDbSyncStatus);
   const iolLevel2Online = useRadarStore(s => s.iolLevel2Online);
@@ -202,8 +182,7 @@ function HomeContent() {
   const setCclRate = useRadarStore(s => s.setCclRate);
   const setPriceHistory = useRadarStore(s => s.setPriceHistory);
   const setCurrentTime = useRadarStore(s => s.setCurrentTime);
-  const addActivity = useRadarStore(s => s.addActivity);
-  const clearActivityFeed = useRadarStore(s => s.clearActivityFeed);
+
 
   // ── Local-only state (NOT in store) ──
   const [tabTransition, setTabTransition] = useState(false);
@@ -362,7 +341,7 @@ function HomeContent() {
   const updateInstruments = useCallback((v: Instrument[]) => {
     useRadarStore.getState().setInstruments(v);
     sessionHistory.addSnapshot(useRadarStore.getState().instruments);
-    useRadarStore.getState().addActivity({ icon: '📊', message: 'Datos actualizados', type: 'data' });
+    // Activity feed removed — no layout shift
   }, [sessionHistory]);
 
   const updateConfig = useCallback((v: Config) => {
@@ -371,7 +350,7 @@ function HomeContent() {
 
   const updatePosition = useCallback((v: Position | null) => {
     useRadarStore.getState().setPosition(v);
-    useRadarStore.getState().addActivity({ icon: '💼', message: `Posición modificada: ${v?.ticker ?? 'cerrada'}`, type: 'position' });
+    // Activity feed removed — no layout shift
   }, []);
 
   const updateTransactions = useCallback((v: Transaction[]) => {
@@ -403,7 +382,7 @@ function HomeContent() {
   }, []);
   const handleDolarUpdate = useCallback((timestamp: string) => {
     setDolarLastUpdateTime(timestamp);
-    useRadarStore.getState().addActivity({ icon: '💱', message: 'Cotización dólar actualizada', type: 'dolar' });
+    // Activity feed removed — no layout shift
   }, []);
 
   // V2.0.3: Sync new LIVE instruments to the permanent instruments list
@@ -415,7 +394,7 @@ function HomeContent() {
     if (trulyNew.length === 0) return;
     const updated = [...currentInstruments, ...trulyNew];
     useRadarStore.getState().setInstruments(updated);
-    useRadarStore.getState().addActivity({ icon: '📡', message: `${trulyNew.length} instrumento(s) nuevo(s) desde LIVE: ${trulyNew.map(i => i.ticker).join(', ')}`, type: 'data' });
+    // Activity feed removed — no layout shift
   }, []);
 
   // V2.0.3: Sync new LIVE instruments via useEffect (not during render!)
@@ -457,7 +436,7 @@ function HomeContent() {
       });
       if (hasChanges) {
         useRadarStore.getState().setInstruments(lastLive);
-        useRadarStore.getState().addActivity({ icon: '💾', message: 'Precios LIVE preservados al desconectar', type: 'data' });
+        // Activity feed removed — no layout shift
       }
     }
     prevLiveActiveRef.current = liveData.active;
@@ -537,23 +516,7 @@ function HomeContent() {
         // ── Activity log ──
         const rp = data.riesgo_pais;
         const mep = data.mep;
-        if (rp?.value > 0) {
-          const currentConfig = useRadarStore.getState().config;
-          if (currentConfig.riesgoPais !== rp.value) {
-            useRadarStore.getState().addActivity({
-              icon: '🇦🇷',
-              message: `RP: ${rp.value}pb (${rp.confidence} ${rp.confidence_pct}%) [${rp.best_source}]`,
-              type: 'data',
-            });
-          }
-        }
-        if (mep?.value > 0 && mep.confidence !== 'CRITICA') {
-          useRadarStore.getState().addActivity({
-            icon: '💱',
-            message: `MEP: $${mep.value} (${mep.confidence} ${mep.confidence_pct}%) [${mep.best_source}]`,
-            type: 'dolar',
-          });
-        }
+        // Activity feed removed — RP/MEP updates shown in status bar
       } catch {
         // silent — fallback to old /api/country-risk
         try {
@@ -574,11 +537,10 @@ function HomeContent() {
       }
     };
 
-    // Defer initial fetch
-    const initialTimeout = setTimeout(fetchMarketTruth, 2000);
+    // PRIORITY HYDRATION: Fire immediately, no delay — cache must be warm on entry
+    fetchMarketTruth();
     const interval = setInterval(fetchMarketTruth, 45 * 1000); // V3.3: 45s refresh (aligned with engine cache TTL)
     return () => {
-      clearTimeout(initialTimeout);
       clearInterval(interval);
     };
   }, []);
@@ -616,7 +578,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V3.3 PRO...
+            Cargando V3.3.1 PRO...
           </p>
         </div>
       </div>
@@ -698,7 +660,7 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.3 — PRO TERMINAL</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.3.1 — PRO TERMINAL</span>
             {/* V3.0: DB Sync indicator dot */}
             <div className="w-1.5 h-1.5 rounded-full hidden sm:block" style={{ backgroundColor: dbSyncDotColor }} title={dbAvailable ? `DB: ${lastDbSyncStatus}` : 'DB: no configurado'} />
             {/* V3.1: IOL Level 2 indicator dot */}
@@ -706,19 +668,21 @@ function HomeContent() {
               <div className={`w-1.5 h-1.5 rounded-full ${iolLevel2Online ? 'bg-[#a78bfa] animate-pulse' : 'bg-app-text4'}`} />
               <span className="text-[7px] font-mono uppercase tracking-wider">{iolLevel2Online ? 'L2' : 'L2✗'}</span>
             </div>
-            {/* V3.3-PRO: Market Truth Engine indicator */}
+            {/* V3.3-PRO: Market Truth Engine indicator — SWR stale aware */}
             {(() => {
               const mt = useRadarStore.getState().marketTruth;
+              const isStale = useRadarStore.getState().marketTruthStale;
               const mtOnline = mt !== null;
               const rpConf = mt?.riesgo_pais?.confidence;
               const mepConf = mt?.mep?.confidence;
               const allHigh = rpConf === 'ALTA' && mepConf === 'ALTA';
               const anyLow = rpConf === 'BAJA' || rpConf === 'CRITICA' || mepConf === 'BAJA' || mepConf === 'CRITICA';
-              const dotColor = !mtOnline ? '#6b7280' : allHigh ? '#2eebc8' : anyLow ? '#f87171' : '#fbbf24';
+              const dotColor = !mtOnline ? '#6b7280' : isStale ? '#fb923c' : allHigh ? '#2eebc8' : anyLow ? '#f87171' : '#fbbf24';
+              const label = !mtOnline ? 'MT' : isStale ? 'STALE' : 'MT';
               return (
-                <div className="flex items-center gap-1 hidden sm:flex" title={mtOnline ? `Market Truth: RP ${rpConf} · MEP ${mepConf}` : 'Market Truth: OFFLINE'}>
-                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dotColor, animation: mtOnline ? 'pulse 2s infinite' : 'none' }} />
-                  <span className="text-[7px] font-mono uppercase tracking-wider" style={{ color: dotColor }}>MT</span>
+                <div className="flex items-center gap-1 hidden sm:flex" title={mtOnline ? `Market Truth: RP ${rpConf} · MEP ${mepConf}${isStale ? ' (STALE)' : ''}` : 'Market Truth: OFFLINE'}>
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: dotColor, animation: mtOnline && !isStale ? 'pulse 2s infinite' : 'none' }} />
+                  <span className="text-[7px] font-mono uppercase tracking-wider" style={{ color: dotColor }}>{label}</span>
                 </div>
               );
             })()}
@@ -805,20 +769,21 @@ function HomeContent() {
                 ${config.capitalDisponible.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
               </span>
             </div>
-            {/* Riesgo País — V3.3-PRO: Market Truth Engine with confidence */}
+            {/* Riesgo País — V3.3-PRO: Market Truth Engine with confidence + SWR stale */}
             {(() => {
               const rp = riesgoPaisAuto ?? config.riesgoPais;
               const rpColor = rp > 700 ? '#f87171' : rp > 550 ? '#f472b6' : rp > 400 ? '#fbbf24' : '#2eebc8';
               const rpLabel = rp > 700 ? 'PELIGROSO' : rp > 550 ? 'ALTO' : rp > 400 ? 'MODERADO' : 'EXCELENTE';
               const rpConf = useRadarStore.getState().rpConfidence;
               const rpConfColor = rpConf === 'ALTA' ? '#2eebc8' : rpConf === 'MEDIA' ? '#fbbf24' : rpConf === 'BAJA' ? '#f87171' : '#6b7280';
+              const isStale = useRadarStore.getState().marketTruthStale;
               return (
-                <div className="card-hover-lift flex items-center gap-1.5 text-[9px] bg-app-subtle/60 px-2.5 py-1.5 rounded-lg border border-app-border/60">
+                <div className={`card-hover-lift flex items-center gap-1.5 text-[9px] ${isStale ? 'bg-[#fb923c]/5 border-[#fb923c]/20' : 'bg-app-subtle/60 border-app-border/60'} px-2.5 py-1.5 rounded-lg border`}>
                   <span className="text-app-text3">RP:</span>
-                  <span className="font-mono font-medium" style={{ color: rpColor }}>
+                  <span className={`font-mono font-medium ${isStale ? 'opacity-60' : ''}`} style={{ color: rpColor }}>
                     {rp}pb
                   </span>
-                  <span className="text-[7px] font-bold uppercase tracking-wider" style={{ color: rpColor }}>
+                  <span className={`text-[7px] font-bold uppercase tracking-wider ${isStale ? 'opacity-60' : ''}`} style={{ color: rpColor }}>
                     {rpLabel}
                   </span>
                   {riesgoPaisTrend === 'up' && <span className="text-[8px] text-[#f87171]">↑</span>}
@@ -829,25 +794,36 @@ function HomeContent() {
                       {rpConf}
                     </span>
                   )}
+                  {isStale && (
+                    <span className="text-[6px] font-bold px-1 py-0.5 rounded border leading-none text-[#fb923c] border-[#fb923c]/30 bg-[#fb923c]/10">
+                      STALE
+                    </span>
+                  )}
                 </div>
               );
             })()}
-            {/* MEP Rate — V3.3-PRO: Market Truth Engine with confidence */}
+            {/* MEP Rate — V3.3-PRO: Market Truth Engine with confidence + SWR stale */}
             {(() => {
               const mepVal = useRadarStore.getState().mepConsensus ?? mepRate;
               const mepConf = useRadarStore.getState().mepConfidence;
               const mepConfColor = mepConf === 'ALTA' ? '#2eebc8' : mepConf === 'MEDIA' ? '#fbbf24' : mepConf === 'BAJA' ? '#f87171' : '#6b7280';
+              const isStale = useRadarStore.getState().marketTruthStale;
               if (!mepVal) return null;
               return (
-                <div className="card-hover-lift flex items-center gap-1.5 text-[9px] bg-app-subtle/60 px-2.5 py-1.5 rounded-lg border border-app-border/60">
+                <div className={`card-hover-lift flex items-center gap-1.5 text-[9px] ${isStale ? 'bg-[#fb923c]/5 border-[#fb923c]/20' : 'bg-app-subtle/60 border-app-border/60'} px-2.5 py-1.5 rounded-lg border`}>
                   <span className="text-app-text3">MEP:</span>
-                  <span className={`font-mono font-medium ${mepVal > 1550 ? 'text-[#f87171]' : mepVal > 1450 ? 'text-[#fbbf24]' : 'text-[#2eebc8]'}`}>
+                  <span className={`font-mono font-medium ${mepVal > 1550 ? 'text-[#f87171]' : mepVal > 1450 ? 'text-[#fbbf24]' : 'text-[#2eebc8]'} ${isStale ? 'opacity-60' : ''}`}>
                     ${mepVal.toFixed(0)}
                   </span>
                   {/* V3.3-PRO: Confidence badge + source detail */}
                   {mepConf && (
                     <span className="text-[7px] font-bold px-1 py-0.5 rounded border leading-none" style={{ color: mepConfColor, borderColor: mepConfColor + '40', backgroundColor: mepConfColor + '15' }}>
                       {mepConf}
+                    </span>
+                  )}
+                  {isStale && (
+                    <span className="text-[6px] font-bold px-1 py-0.5 rounded border leading-none text-[#fb923c] border-[#fb923c]/30 bg-[#fb923c]/10">
+                      STALE
                     </span>
                   )}
                 </div>
@@ -1050,28 +1026,7 @@ function HomeContent() {
           </div>
         </div>
 
-        {/* ── Activity Feed Widget (V1.6.2) ── */}
-        {activityFeed.length > 0 && (
-          <div className="px-4 md:px-6 lg:px-8 py-0.5">
-            <div className="glass-card px-4 py-2 max-h-32 overflow-y-auto custom-scrollbar">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <span className="text-[8px] text-app-text4 uppercase tracking-wider font-medium">Actividad reciente</span>
-                <button
-                  onClick={() => clearActivityFeed()}
-                  className="text-[8px] text-app-text4 hover:text-[#f87171] transition-colors ml-auto"
-                  title="Limpiar actividad"
-                >✕</button>
-              </div>
-              {activityFeed.map(item => (
-                <div key={item.id} className="activity-feed-item">
-                  <span className="text-[10px] shrink-0">{item.icon}</span>
-                  <span className="text-[10px] text-app-text3 flex-1">{item.message}</span>
-                  <span className="text-[8px] text-app-text4 font-mono shrink-0">{item.timestamp}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Activity Feed Widget: REMOVED — was causing layout shift on auto-open/close */}
 
         {/* Page Content with fade transition */}
         <div className={`p-4 md:p-6 lg:p-8 transition-opacity duration-150 animate-fadeInUp ${tabTransition ? 'opacity-0' : 'opacity-100'}`}>
@@ -1108,7 +1063,7 @@ function HomeContent() {
       <footer className="mt-auto bg-app-card/80 backdrop-blur-sm px-5 py-2.5 flex items-center justify-between flex-wrap gap-y-1 gap-x-3">
         <div className="text-[8px] text-app-text4 font-mono flex items-center gap-2">
           <span className="version-pulse-dot" />
-          <span>ARB//RADAR V3.3 — PRO TERMINAL</span>
+          <span>ARB//RADAR V3.3.1 — PRO TERMINAL</span>
           <span className="text-app-border/60">·</span>
           <span>{sanitizedInstruments.length} inst.</span>
           {dolarLastUpdateTime && (

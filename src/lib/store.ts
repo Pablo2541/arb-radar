@@ -80,6 +80,7 @@ export interface RadarState {
   mepConsensus: number | null; // Best MEP value from consensus
   mepConfidence: string | null; // MEP confidence level
   rpConfidence: string | null; // RP confidence level
+  marketTruthStale: boolean; // SWR: true if data is from stale cache
 
   // ── V3.3-PRO Phase 2: Cockpit Score State ──
   cockpitScores: CockpitScore[];
@@ -206,6 +207,7 @@ export const useRadarStore = create<RadarState>((set, get) => ({
   mepConsensus: null,
   mepConfidence: null,
   rpConfidence: null,
+  marketTruthStale: false,
   cockpitScores: [],
   cockpitScoresLoading: false,
 
@@ -355,6 +357,7 @@ export const useRadarStore = create<RadarState>((set, get) => ({
       mepConsensus: mepValue > 0 ? mepValue : null,
       mepConfidence: v.mep.confidence,
       rpConfidence: v.riesgo_pais.confidence,
+      marketTruthStale: v.stale === true,
     });
     // Sync RP to config
     if (rpValue > 0) {
@@ -516,6 +519,7 @@ export const useRadarStore = create<RadarState>((set, get) => ({
       mepConsensus: null,
       mepConfidence: null,
       rpConfidence: null,
+      marketTruthStale: false,
       cockpitScores: [],
       cockpitScoresLoading: false,
     });

@@ -205,7 +205,10 @@ export default function CockpitTab({
       localStorage.setItem('arbradar_cockpit_horizon', String(value));
     } catch { /* silent */ }
   }, []);
-  const [summary, setSummary] = useState<{
+
+  // ─── All scores from API (unfiltered) ─────────────────────────────
+  const [allScores, setAllScores] = useState<CockpitScore[]>([]);
+  const [apiSummary, setApiSummary] = useState<{
     total: number;
     within_horizon: number;
     salto_tactico: number;
@@ -215,41 +218,73 @@ export default function CockpitTab({
     evitar: number;
   } | null>(null);
   const [engineVersion, setEngineVersion] = useState('');
+  const [isStale, setIsStale] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ─── Fetch Cockpit Scores ─────────────────────────────────────────
+  // Ref to track whether we have data (avoids dependency on allScores.length)
+  const hasDataRef = useRef(false);
+
+  // ─── Fetch Cockpit Scores (once, ALL instruments, no horizon param) ──
+  // Horizon filtering is done CLIENT-SIDE for instant switching
+  // PRIORITY HYDRATION: Only set loading=true on FIRST fetch (no data yet)
   const fetchScores = useCallback(async () => {
-    setCockpitScoresLoading(true);
+    // SWR: Only show loading spinner if we have NO data at all
+    // If we have stale data, silently revalidate in background
+    const hasData = hasDataRef.current;
+    if (!hasData) setCockpitScoresLoading(true);
     try {
-      const res = await fetch(`/api/cockpit-score?horizon=${horizon}`);
-      if (!res.ok) return;
+      const res = await fetch('/api/cockpit-score?horizon=365');
+      if (!res.ok) {
+        // API error — mark as stale if we have existing data
+        if (hasDataRef.current) setIsStale(true);
+        return;
+      }
       const data = await res.json();
-      if (data.error) return;
+      if (data.error) {
+        if (hasDataRef.current) setIsStale(true);
+        return;
+      }
 
-      const scores: CockpitScore[] = data.scores ?? [];
-      setCockpitScores(scores);
-      setSummary(data.summary ?? null);
+      // Store ALL scores (unfiltered) — horizon filter is client-side
+      const raw: CockpitScore[] = data.all_scores ?? data.scores ?? [];
+      setAllScores(raw);
+      hasDataRef.current = raw.length > 0;
+      setApiSummary(data.summary ?? null);
       setEngineVersion(data.engine_version ?? '');
+      setIsStale(data.stale === true);
     } catch {
-      // silent — API may be unavailable
+      // Network error — mark as stale if we have existing data
+      if (hasDataRef.current) setIsStale(true);
     } finally {
-      setCockpitScoresLoading(false);
+      if (!hasData) setCockpitScoresLoading(false);
     }
-  }, [horizon, setCockpitScores, setCockpitScoresLoading]);
+  }, [setCockpitScoresLoading]);
 
+  // PRIORITY HYDRATION: Fire immediately on mount, no setTimeout delay
   useEffect(() => {
-    const initTimeout = setTimeout(() => fetchScores(), 0);
+    fetchScores(); // IMMEDIATE — cache must be warm when user enters terminal
     intervalRef.current = setInterval(fetchScores, 50_000);
     return () => {
-      clearTimeout(initTimeout);
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [fetchScores]);
+  }, [fetchScores]); // Now stable — fetchScores only depends on setCockpitScoresLoading
 
-  // ─── Computed: filtered & sorted scores ────────────────────────────
+  // ─── Client-side horizon filtering ────────────────────────────────
+  // INSTANT — no server roundtrip when changing horizon
+  const filteredScores = useMemo(() => {
+    if (horizon === 9999) return allScores; // "ALL" = no filter
+    return allScores.filter(s => s.days <= horizon);
+  }, [allScores, horizon]);
+
+  // ─── Computed: sorted scores ───────────────────────────────────────
   const sortedScores = useMemo(() => {
-    return [...cockpitScores].sort((a, b) => b.cockpitScore - a.cockpitScore);
-  }, [cockpitScores]);
+    return [...filteredScores].sort((a, b) => b.cockpitScore - a.cockpitScore);
+  }, [filteredScores]);
+
+  // ─── Sync filtered scores to store (for other tabs) ──────────────
+  useEffect(() => {
+    setCockpitScores(sortedScores);
+  }, [sortedScores, setCockpitScores]);
 
   // ─── Computed: El Grito instruments ────────────────────────────────
   const elGritoScores = useMemo(() => {
@@ -264,19 +299,29 @@ export default function CockpitTab({
     return opt ? opt.desc : `${horizon}d`;
   }, [horizon]);
 
-  // ─── Computed: summary counts (from local if API not yet returned) ─
+  // ─── Computed: summary counts (client-side, always fresh) ────────
   const localSummary = useMemo(() => {
-    if (summary) return summary;
+    const allCount = allScores.length;
+    const filteredCount = filteredScores.length;
     return {
-      total: sortedScores.length,
-      within_horizon: sortedScores.length,
-      salto_tactico: sortedScores.filter(s => s.verdict === 'SALTO_TACTICO').length,
-      punto_caramelo: sortedScores.filter(s => s.verdict === 'PUNTO_CARAMELO').length,
-      atractivo: sortedScores.filter(s => s.verdict === 'ATRACTIVO').length,
-      neutral: sortedScores.filter(s => s.verdict === 'NEUTRAL').length,
-      evitar: sortedScores.filter(s => s.verdict === 'EVITAR').length,
+      total: allCount,
+      within_horizon: filteredCount,
+      salto_tactico: filteredScores.filter(s => s.verdict === 'SALTO_TACTICO').length,
+      punto_caramelo: filteredScores.filter(s => s.verdict === 'PUNTO_CARAMELO').length,
+      atractivo: filteredScores.filter(s => s.verdict === 'ATRACTIVO').length,
+      neutral: filteredScores.filter(s => s.verdict === 'NEUTRAL').length,
+      evitar: filteredScores.filter(s => s.verdict === 'EVITAR').length,
     };
-  }, [summary, sortedScores]);
+  }, [allScores, filteredScores]);
+
+  // ─── Instrument lookup Map (O(1) instead of O(N) find) ───────────
+  const instrumentMap = useMemo(() => {
+    const map = new Map<string, Instrument>();
+    for (const inst of instruments) {
+      map.set(inst.ticker, inst);
+    }
+    return map;
+  }, [instruments]);
 
   // ─── MEP & RP from Market Truth ───────────────────────────────────
   const mepValue = marketTruth?.mep?.value ?? null;
@@ -308,7 +353,7 @@ export default function CockpitTab({
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-lg font-light text-app-text mb-1">
-              🎯 Cockpit Táctico — V3.3 PRO TERMINAL
+              🎯 Cockpit Táctico — V3.3.1 PRO TERMINAL
             </h2>
             <p className="text-sm text-app-text3">
               Señal de scalping compuesta · 5 factores ponderados · Horizonte: {horizonLabel}
@@ -327,6 +372,17 @@ export default function CockpitTab({
           </div>
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* STALE DATA WARNING — shown when API fallback is active       */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {isStale && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#fb923c]/8 border border-[#fb923c]/20 text-[10px] text-[#fb923c] animate-fadeInUp">
+          <span className="text-xs">⏳</span>
+          <span className="font-medium uppercase tracking-wider">Datos en caché</span>
+          <span className="text-[9px] text-[#fb923c]/70">— Las APIs externas no responden, mostrando último valor disponible</span>
+        </div>
+      )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* SUMMARY BAR                                                   */}
@@ -406,11 +462,11 @@ export default function CockpitTab({
             </>
           )}
 
-          {/* Engine status */}
+          {/* Engine status — SWR stale indicator */}
           <div className="flex items-center gap-1.5">
-            <span className={`inline-block w-1.5 h-1.5 rounded-full ${cockpitScoresLoading ? 'bg-[#fbbf24] animate-pulse' : cockpitScores.length > 0 ? 'bg-[#2eebc8]' : 'bg-app-text4'}`} />
-            <span className="text-app-text4 text-[10px] uppercase tracking-wider">
-              {cockpitScoresLoading ? 'Sync' : cockpitScores.length > 0 ? 'OK' : 'Idle'}
+            <span className={`inline-block w-1.5 h-1.5 rounded-full ${cockpitScoresLoading ? 'bg-[#fbbf24] animate-pulse' : isStale ? 'bg-[#fb923c]' : cockpitScores.length > 0 ? 'bg-[#2eebc8]' : 'bg-app-text4'}`} />
+            <span className={`text-[10px] uppercase tracking-wider ${isStale ? 'text-[#fb923c]' : 'text-app-text4'}`}>
+              {cockpitScoresLoading ? 'Sync' : isStale ? 'STALE' : cockpitScores.length > 0 ? 'OK' : 'Idle'}
             </span>
           </div>
         </div>
@@ -482,8 +538,9 @@ export default function CockpitTab({
               const vc = VERDICT_CONFIG[score.verdict];
               const rank = idx + 1;
               const liveData = liveDataMap.get(score.ticker);
-              const price = liveData?.last_price ?? instruments.find(i => i.ticker === score.ticker)?.price ?? 0;
-              const tem = instruments.find(i => i.ticker === score.ticker)?.tem ?? 0;
+              const instData = instrumentMap.get(score.ticker);
+              const price = liveData?.last_price ?? instData?.price ?? 0;
+              const tem = instData?.tem ?? 0;
 
               return (
                 <div

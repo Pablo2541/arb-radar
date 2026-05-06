@@ -32,10 +32,12 @@ const ARGDATOS_PF_URL = 'https://api.argentinadatos.com/v1/finanzas/tasas/plazoF
 interface CacheEntry {
   data: unknown;
   timestamp: number;
+  stale?: boolean;
 }
 
 const cache: { letras: CacheEntry | null } = { letras: null };
 const CACHE_TTL = 55_000; // 55 seconds (slightly less than 60s to ensure freshness)
+const SOURCE_TIMEOUT_MS = 2_000; // 2s max per source — never block the UI longer
 
 // ── Types (inline for server route — avoids import issues) ─────────────
 interface Data912Note {
@@ -109,7 +111,7 @@ function daysToExpiry(vencimiento: string): number {
 }
 
 /** Fetch with timeout and error handling */
-async function safeFetch<T>(url: string, timeoutMs = 8000): Promise<{ ok: boolean; data: T | null; latency_ms: number }> {
+async function safeFetch<T>(url: string, timeoutMs = SOURCE_TIMEOUT_MS): Promise<{ ok: boolean; data: T | null; latency_ms: number }> {
   const start = Date.now();
   try {
     const res = await fetch(url, {
@@ -178,8 +180,18 @@ export async function GET() {
     }
   }
 
-  // ── If ALL price sources AND ArgentinaDatos failed, return error ───
+  // ── If ALL price sources AND ArgentinaDatos failed, return error (or stale cache) ───
   if (!notesResult.ok && !bondsResult.ok && !argDatosResult.ok) {
+    // SWR: Return stale cache if available rather than empty response
+    if (cache.letras) {
+      console.warn('[letras] All sources failed — returning stale cache');
+      const staleData = cache.letras.data as Record<string, unknown>;
+      return NextResponse.json({
+        ...staleData,
+        stale: true,
+        stale_reason: 'all_sources_failed',
+      });
+    }
     return NextResponse.json(
       {
         error: true,

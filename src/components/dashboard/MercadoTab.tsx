@@ -367,18 +367,26 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
             title={liveData.active ? 'Desactivar datos en vivo' : 'Activar datos en vivo (data912 + ArgentinaDatos)'}
           >
             {/* V2.0.2: Green dot ONLY when LIVE is active, no dot when off */}
-            {liveData.active && <span className="inline-block w-2 h-2 rounded-full bg-[#2eebc8] animate-pulse" />}
-            <span>{liveData.active ? 'LIVE' : 'LIVE OFF'}</span>
+            {liveData.active && <span className={`inline-block w-2 h-2 rounded-full ${liveData.stale ? 'bg-[#fb923c]' : 'bg-[#2eebc8] animate-pulse'}`} />}
+            <span>{liveData.active ? (liveData.stale ? 'LIVE ⏳' : 'LIVE') : 'LIVE OFF'}</span>
             {liveData.active && liveData.lastRefresh && (
               <span className="text-[8px] font-mono text-app-text4 ml-1">
                 {liveData.lastRefresh.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </span>
             )}
           </button>
-          {liveData.active && liveData.loading && (
+          {/* SWR: Only show "Actualizando" on first fetch (no data yet). Subsequent refreshes are silent. */}
+          {liveData.active && liveData.loading && !liveData.stale && (
             <span className="text-[10px] text-[#2eebc8]/70 animate-pulse">Actualizando…</span>
           )}
-          {liveData.active && liveData.error && (
+          {/* SWR: Show stale indicator when APIs failed but we still have data displayed */}
+          {liveData.active && liveData.stale && (
+            <span className="flex items-center gap-1 text-[10px] text-[#fb923c]">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#fb923c]" />
+              STALE — datos en caché
+            </span>
+          )}
+          {liveData.active && liveData.error && !liveData.stale && (
             <span className="text-[10px] text-[#f87171]">⚠ {liveData.error}</span>
           )}
         </div>
@@ -761,7 +769,7 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
 
       {/* ── Instruments Table (V1.5: now includes DELTA TIR column) ── */}
       <div className="bg-app-card rounded-xl border border-app-border overflow-hidden relative">
-        <div className="overflow-x-auto max-h-[520px] overflow-y-auto custom-scrollbar">
+        <div className="overflow-x-auto scrollbar-hide">
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-app-card z-10 border-b border-app-border">
               <tr>

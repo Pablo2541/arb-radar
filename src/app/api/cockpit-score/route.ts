@@ -19,12 +19,15 @@ export const dynamic = 'force-dynamic';
 
 // ── In-Memory Cache ────────────────────────────────────────────────
 interface CockpitCache {
-  data: CockpitScoreResponse;
+  allScores: CockpitScore[];  // Always store ALL scores, never filtered
+  data: CockpitScoreResponse; // Pre-built full response (horizon=365)
   timestamp: number;
+  stale?: boolean;            // True if data came from stale cache
 }
 
 let cachedCockpit: CockpitCache | null = null;
 const CACHE_TTL_MS = 50_000; // 50s — fresh enough for scalping
+const LETRAS_TIMEOUT_MS = 2_000; // 2s max — never block the UI longer
 
 // ── Response Types ─────────────────────────────────────────────────
 interface CockpitScoreResponse {
@@ -42,6 +45,8 @@ interface CockpitScoreResponse {
   };
   timestamp: string;
   engine_version: string;
+  stale?: boolean;
+  stale_reason?: string;
 }
 
 // ── Config Defaults ────────────────────────────────────────────────
@@ -59,22 +64,72 @@ const DEFAULT_CONFIG = {
 export async function GET(request: NextRequest) {
   const now = Date.now();
 
-  // Return cache if fresh
-  if (cachedCockpit && (now - cachedCockpit.timestamp) < CACHE_TTL_MS) {
-    return NextResponse.json(cachedCockpit.data);
-  }
-
-  // Parse horizon param (default: 45 days — V3.3-PRO Phase 3: Scalping Extendido)
+  // Parse horizon param FIRST (before cache check)
   const { searchParams } = new URL(request.url);
   const horizon = Math.max(1, Math.min(365, parseInt(searchParams.get('horizon') || '45', 10) || 45));
 
+  // Return cache if fresh — cache stores ALL scores unfiltered
+  // Client-side filters by horizon, so cached data works for any horizon
+  if (cachedCockpit && (now - cachedCockpit.timestamp) < CACHE_TTL_MS) {
+    // Re-derive filtered scores from cached allScores for backward compat
+    const scores = horizon >= 365
+      ? cachedCockpit.allScores
+      : cachedCockpit.allScores.filter(s => s.days <= horizon);
+    const response = {
+      ...cachedCockpit.data,
+      scores,
+      horizon_days: horizon,
+    };
+    return NextResponse.json(response);
+  }
+
   try {
     // ── Fetch live instrument data from /api/letras ──
-    const letrasRes = await fetch(new URL('/api/letras', request.url).toString(), {
-      signal: AbortSignal.timeout(15_000),
-    });
+    // SWR: 2s timeout — if slow, return stale cache rather than block
+    let letrasRes: Response;
+    try {
+      letrasRes = await fetch(new URL('/api/letras', request.url).toString(), {
+        signal: AbortSignal.timeout(LETRAS_TIMEOUT_MS),
+      });
+    } catch (fetchErr) {
+      // Timeout or network error — return stale cache if available
+      if (cachedCockpit) {
+        console.warn('[cockpit-score] /api/letras timeout/fail — returning stale cache');
+        const scores = horizon >= 365
+          ? cachedCockpit.allScores
+          : cachedCockpit.allScores.filter(s => s.days <= horizon);
+        const staleResponse = {
+          ...cachedCockpit.data,
+          scores,
+          horizon_days: horizon,
+          stale: true,
+          stale_reason: fetchErr instanceof Error ? fetchErr.message : 'timeout',
+        };
+        return NextResponse.json(staleResponse);
+      }
+      // No cache at all — return error
+      return NextResponse.json(
+        { error: true, message: 'Live data unavailable and no cache', detail: fetchErr instanceof Error ? fetchErr.message : 'timeout' },
+        { status: 502 },
+      );
+    }
 
     if (!letrasRes.ok) {
+      // API returned error — return stale cache if available
+      if (cachedCockpit) {
+        console.warn('[cockpit-score] /api/letras error — returning stale cache');
+        const scores = horizon >= 365
+          ? cachedCockpit.allScores
+          : cachedCockpit.allScores.filter(s => s.days <= horizon);
+        const staleResponse = {
+          ...cachedCockpit.data,
+          scores,
+          horizon_days: horizon,
+          stale: true,
+          stale_reason: `letras_api_${letrasRes.status}`,
+        };
+        return NextResponse.json(staleResponse);
+      }
       return NextResponse.json(
         { error: true, message: 'Failed to fetch live instrument data from /api/letras' },
         { status: 502 },
@@ -160,14 +215,29 @@ export async function GET(request: NextRequest) {
       summary,
       timestamp: new Date(now).toISOString(),
       engine_version: 'V3.3-PRO-Phase2',
+      stale: false,
     };
 
-    // Cache it
-    cachedCockpit = { data: response, timestamp: now };
+    // Cache it (store ALL scores, not filtered)
+    cachedCockpit = { allScores, data: response, timestamp: now };
 
     return NextResponse.json(response);
   } catch (error) {
     console.error('[cockpit-score] Error:', error);
+    // Last resort: return stale cache if available
+    if (cachedCockpit) {
+      const scores = horizon >= 365
+        ? cachedCockpit.allScores
+        : cachedCockpit.allScores.filter(s => s.days <= horizon);
+      const staleResponse = {
+        ...cachedCockpit.data,
+        scores,
+        horizon_days: horizon,
+        stale: true,
+        stale_reason: 'computation_error',
+      };
+      return NextResponse.json(staleResponse);
+    }
     return NextResponse.json(
       { error: true, message: 'Cockpit score computation failed', detail: error instanceof Error ? error.message : 'unknown' },
       { status: 500 },
