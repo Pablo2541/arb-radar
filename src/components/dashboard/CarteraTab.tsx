@@ -1669,7 +1669,7 @@ export default function CarteraTab({
       <div className="bg-app-card rounded-lg border border-app-border p-4">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-app-text2">Agregar Posición</h3>
-          <span className="text-[9px] text-app-text4 font-mono">V3.3-PRO</span>
+          <span className="text-[9px] text-app-text4 font-mono">V3.4.2-PRO</span>
         </div>
 
         {/* Row 1: Instrument + Monto a Invertir (prioritarios) */}

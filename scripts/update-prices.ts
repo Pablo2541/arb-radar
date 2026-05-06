@@ -39,7 +39,12 @@ function loadEnv() {
       if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
         val = val.slice(1, -1);
       }
-      if (!process.env[key]) process.env[key] = val;
+      // V3.4.3: DATABASE_URL from .env takes priority over system env
+      if (key === 'DATABASE_URL' && val) {
+        process.env[key] = val;
+      } else if (!process.env[key]) {
+        process.env[key] = val;
+      }
     }
   }
 }

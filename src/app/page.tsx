@@ -408,6 +408,9 @@ function HomeContent() {
       }
     };
     checkIOL();
+    // V3.4.3: Re-check IOL status every 60s to recover from transient failures
+    const iolInterval = setInterval(checkIOL, 60_000);
+    return () => clearInterval(iolInterval);
   }, []);
 
   // ── V3.0: Persist state changes (store handles localStorage + DB) ──
@@ -651,7 +654,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V3.4 PRO...
+            Cargando V3.4.3 PRO...
           </p>
         </div>
       </div>
@@ -733,7 +736,7 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.4.1 — PRO TERMINAL</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.4.3 — PRO TERMINAL</span>
             {/* V3.0: DB Sync indicator dot */}
             <div className="w-1.5 h-1.5 rounded-full hidden sm:block" style={{ backgroundColor: dbSyncDotColor }} title={dbAvailable ? `DB: ${lastDbSyncStatus}` : 'DB: no configurado'} />
             {/* V3.4: IOL Level 2 indicator — 3-state LED */}

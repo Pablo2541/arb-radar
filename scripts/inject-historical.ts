@@ -9,7 +9,7 @@ import { PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 
-// ── Load .env (V3.4.1: Windows-safe — handles quoted values with & symbols) ──
+// ── Load .env (V3.4.3: Windows-safe — .env overrides system env) ──
 function loadEnv() {
   const envPath = path.resolve(process.cwd(), '.env');
   if (fs.existsSync(envPath)) {
@@ -20,12 +20,16 @@ function loadEnv() {
       const eqIdx = trimmed.indexOf('=');
       if (eqIdx === -1) continue;
       const key = trimmed.slice(0, eqIdx).trim();
-      // V3.4.1: Strip surrounding quotes but preserve & and special chars inside
       let val = trimmed.slice(eqIdx + 1).trim();
       if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
         val = val.slice(1, -1);
       }
-      if (!process.env[key]) process.env[key] = val;
+      // V3.4.3: DATABASE_URL from .env takes priority over system env
+      if (key === 'DATABASE_URL' && val) {
+        process.env[key] = val;
+      } else if (!process.env[key]) {
+        process.env[key] = val;
+      }
     }
   }
 }

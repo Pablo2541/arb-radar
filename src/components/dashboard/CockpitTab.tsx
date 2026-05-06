@@ -353,7 +353,7 @@ export default function CockpitTab({
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-lg font-light text-app-text mb-1">
-              🎯 Cockpit Táctico — V3.4 PRO TERMINAL
+              🎯 Cockpit Táctico — V3.4.3 PRO TERMINAL
             </h2>
             <p className="text-sm text-app-text3">
               Señal de scalping compuesta · 5 factores ponderados · Horizonte: {horizonLabel}

@@ -559,7 +559,7 @@ export async function GET() {
     mep: mepConsensus,
     timestamp,
     next_refresh: new Date(now + CACHE_TTL_MS).toISOString(),
-    engine_version: 'V3.3-PRO',
+    engine_version: 'V3.4.2-PRO',
     stale: false,
   };
 

@@ -1,13 +1,11 @@
 // ════════════════════════════════════════════════════════════════════════
-// V3.4.1-PRO — ARB//RADAR Prisma Schema
+// V3.4.3-PRO — ARB//RADAR Prisma Schema
 //
-// PostgreSQL-compatible schema for data persistence.
-// LIVE data is persisted via debounced writes (every 60s)
-// to avoid exhausting Vercel serverless function quotas.
+// PostgreSQL-compatible schema for Neon DB persistence.
+// Standard Prisma 6.x configuration — reads DATABASE_URL from .env
 //
-// V3.4.1: Windows-safe — .env DATABASE_URL must be quoted
-// V3.2.4-PRO adds depth/pressure fields to PriceSnapshot & DailyOHLC
-// for Market Pressure visualization and Absorption Rule detection.
+// V3.4.2: Simplified — no prisma.config.ts, no bash scripts.
+//   Just set DATABASE_URL in .env and run: npm run db:push
 //
 // FALLBACK: If DATABASE_URL is not configured, the app
 // automatically falls back to localStorage — zero config needed.

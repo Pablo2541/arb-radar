@@ -214,7 +214,7 @@ export async function GET(request: NextRequest) {
       horizon_days: horizon,
       summary,
       timestamp: new Date(now).toISOString(),
-      engine_version: 'V3.3-PRO-Phase2',
+      engine_version: 'V3.4.2-PRO',
       stale: false,
     };
 

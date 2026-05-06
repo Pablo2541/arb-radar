@@ -261,7 +261,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
       {/* ── Header ── */}
       <div>
         <h2 className="text-lg font-light text-app-text mb-1">📈 Histórico de Precios</h2>
-        <p className="text-sm text-app-text3">Evolución de precios y TEM · Motor Híbrido de Datos V3.3-PRO</p>
+        <p className="text-sm text-app-text3">Evolución de precios y TEM · Motor Híbrido de Datos V3.4.2-PRO</p>
       </div>
 
       {/* ── Controls Bar ── */}

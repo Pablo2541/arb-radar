@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-// V3.4.1 — ARB//RADAR Global State Store (Zustand)
+// V3.4.3 — ARB//RADAR Global State Store (Zustand)
 //
 // ARCHITECTURE:
 // 1. Zustand store → instant UI updates (synchronous, no lag)

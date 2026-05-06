@@ -15,7 +15,7 @@
 // ════════════════════════════════════════════════════════════════════════
 
 import { NextResponse } from 'next/server';
-import { getIOLCotizacion, isIOLAvailable } from '@/lib/iol-bridge';
+import { getIOLCotizacion, getIOLToken, isIOLAvailable } from '@/lib/iol-bridge';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 60; // cache for 60 seconds
@@ -383,7 +383,15 @@ export async function GET() {
   // using batched requests with rate limiting. Best-effort — failures
   // don't block the response.
   let iolEnrichedCount = 0;
-  if (isIOLAvailable() && instruments.length > 0) {
+  // V3.4.3: Try IOL enrichment if credentials exist (fixes chicken-and-egg bug)
+  // isIOLAvailable() returns false on first call, so we check credentials directly
+  // and call getIOLToken() to bootstrap the connection
+  const hasIOLCredentials = !!(process.env.IOL_USERNAME && process.env.IOL_PASSWORD);
+  if (hasIOLCredentials && instruments.length > 0) {
+    const iolToken = await getIOLToken();
+    if (!iolToken) {
+      console.warn('[letras] IOL auth failed — skipping Level 2 enrichment');
+    }
     const IOL_BATCH_SIZE = 5;
     const IOL_BATCH_DELAY_MS = 200;
     const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));

@@ -6,7 +6,7 @@ export const DEFAULT_CONFIG: Config = {
   caucion30d: 18.5,
   riesgoPais: 528,
   comisionTotal: 0.30,
-  capitalDisponible: 390000, // V2.0.4: Clean initial funding
+  capitalDisponible: 467587.55, // V3.4.3: Current portfolio capital
 };
 
 export const DEFAULT_POSITION: Position | null = null; // V2.0.4: No default position — clean slate

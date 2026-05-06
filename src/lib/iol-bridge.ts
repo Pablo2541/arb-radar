@@ -313,3 +313,13 @@ export function isIOLAvailable(): boolean {
   }
   return iolAvailable;
 }
+
+/**
+ * Reset IOL connection state — allows re-authentication after a failure.
+ * Useful for recovery from transient auth errors.
+ */
+export function resetIOLState(): void {
+  iolAccessToken = null;
+  iolTokenExpiry = 0;
+  iolAvailable = false;
+}
