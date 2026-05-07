@@ -167,11 +167,69 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
   }, [onMepRate, onCclRate, onDolarUpdate]);
 
   useEffect(() => {
-    fetchDolar();
-    // Auto-refresh every 5 minutes
-    const interval = setInterval(() => fetchDolar(), 300000);
-    return () => clearInterval(interval);
-  }, [fetchDolar]);
+    // V3.4.5: Dolar is now fetched by the API orchestrator (sequential, no concurrent calls)
+    // MercadoTab receives dolar data from the orchestrator cache instead of fetching directly
+    // This prevents the server from crashing under concurrent API load
+    const pollOrchestratorCache = async () => {
+      try {
+        const { getCachedResult } = await import('@/lib/api-orchestrator');
+        const cached = getCachedResult('dolar');
+        if (cached && !cached.error && cached.data) {
+          const data = cached.data as DolarRate[];
+          if (Array.isArray(data) && data.length > 0 && typeof data[0].venta === 'number') {
+            // Detect price changes for flash animation
+            if (prevRatesRef.current.length > 0) {
+              const flashes: Record<string, 'up' | 'down'> = {};
+              for (const newRate of data) {
+                const oldRate = prevRatesRef.current.find(r => r.nombre === newRate.nombre);
+                if (oldRate && oldRate.venta !== newRate.venta) {
+                  flashes[newRate.nombre] = newRate.venta > oldRate.venta ? 'up' : 'down';
+                }
+              }
+              if (Object.keys(flashes).length > 0) {
+                setPriceFlash(flashes);
+                setTimeout(() => setPriceFlash({}), 1200);
+              }
+            }
+            setDolarRates(data);
+            prevRatesRef.current = data;
+            // Append venta prices to sparkline history (max 20 snapshots)
+            const hist = dolarHistoryRef.current;
+            for (const rate of data) {
+              if (typeof rate.venta === 'number' && isFinite(rate.venta)) {
+                const key = rate.nombre;
+                if (!hist[key]) hist[key] = [];
+                hist[key] = [...hist[key], rate.venta].slice(-20);
+              }
+            }
+            setDolarLastUpdate(new Date().toLocaleTimeString('es-AR'));
+            setDolarError(false);
+            // Notify parent of MEP rate and dolar update
+            const mepData = data.find((r: DolarRate) => r.nombre === 'Bolsa');
+            if (mepData && typeof mepData.venta === 'number') {
+              onMepRate?.(mepData.venta);
+            }
+            const cclData = data.find((r: DolarRate) => r.nombre === 'Contado con liquidación') ?? data.find((r: DolarRate) => r.nombre === 'Contadoconliqui');
+            if (cclData && typeof cclData.venta === 'number') {
+              onCclRate?.(cclData.venta);
+            }
+            onDolarUpdate?.(new Date().toLocaleTimeString('es-AR'));
+            setDolarLoading(false);
+          }
+        }
+      } catch {
+        // Silent
+      }
+    };
+
+    // Start polling the orchestrator cache after 10s
+    const initialTimeout = setTimeout(pollOrchestratorCache, 10_000);
+    const interval = setInterval(pollOrchestratorCache, 10_000); // Check cache every 10s
+    return () => {
+      clearTimeout(initialTimeout);
+      clearInterval(interval);
+    };
+  }, [onMepRate, onCclRate, onDolarUpdate]);
 
   // Retry: force a clean fetch bypassing cache
   const handleRetry = useCallback(() => {
@@ -810,7 +868,7 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                 return (
                   <tr
                     key={inst.ticker}
-                    className={`border-b border-app-border/60 hover:bg-app-subtle/50 transition-colors ${getRowBg(inst.deltaTIR, isHeld)}`}
+                    className={`border-b border-app-border/60 hover:bg-app-subtle/50 transition-colors table-row-alt ${getRowBg(inst.deltaTIR, isHeld)}`}
                     style={getRowStyle(inst.deltaTIR)}
                   >
                     <td

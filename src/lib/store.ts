@@ -1,18 +1,18 @@
 // ════════════════════════════════════════════════════════════════════════
-// V3.4.3 — ARB//RADAR Global State Store (Zustand)
+// V4.0 BLINDADO — ARB//RADAR Global State Store (Zustand)
 //
-// ARCHITECTURE:
-// 1. Zustand store → instant UI updates (synchronous, no lag)
-// 2. localStorage → immediate backup on every change (fallback)
-// 3. PostgreSQL   → debounced write every 60s (Vercel quota safe)
+// ARCHITECTURE: "Data Intelligence ≠ Data Persistence"
 //
-// CRITICAL RULES:
-// - LIVE updates the screen INSTANTLY via Zustand (no debounce on read)
-// - DB writes are debounced to 60s to avoid exhausting Vercel quotas
-// - If DB fails or isn't configured, localStorage is the automatic fallback
-// - The store is the SINGLE SOURCE OF TRUTH for all tabs
-// - V3.4.1: Auto-heal on init — if DB data is corrupt, fall back gracefully
-// - V3.4.1: forceSyncToDb() on mount pushes all local data to cloud immediately
+// 1. Portfolio/Config → READ from data/portfolio.json on startup
+// 2. Prices/Rates → FETCH from APIs in real-time (data912, IOL, etc.)
+// 3. localStorage → instant backup, always available offline
+// 4. NO NEON DB — No cloud persistence that can lose your data
+//
+// RULES:
+// - The Radar NEVER auto-saves portfolio to the server
+// - User must explicitly "Save" to persist portfolio changes
+// - localStorage is the fast cache, portfolio.json is the truth
+// - Prices update automatically from APIs, portfolio does NOT
 // ════════════════════════════════════════════════════════════════════════
 
 import { create } from 'zustand';
@@ -42,7 +42,7 @@ export interface ActivityItem {
   icon: string;
   message: string;
   timestamp: string;
-  type: 'data' | 'dolar' | 'position' | 'threshold' | 'db';
+  type: 'data' | 'dolar' | 'position' | 'threshold' | 'portfolio';
 }
 
 export interface RadarState {
@@ -66,27 +66,26 @@ export interface RadarState {
   currentTime: string;
   activityFeed: ActivityItem[];
 
-  // ── DB Sync State ──────────────────────────────────────────────────
-  dbAvailable: boolean;        // whether DB is reachable
-  lastDbSync: Date | null;     // last successful DB write
-  lastDbSyncStatus: 'idle' | 'syncing' | 'error' | 'success';
+  // ── File Persistence State ─────────────────────────────────────────
+  portfolioSource: 'file' | 'defaults' | 'localStorage';  // Where data came from
+  portfolioLastSaved: string | null;  // Last save timestamp
 
   // ── IOL Level 2 State ─────────────────────────────────────────────
-  iolLevel2Online: boolean;    // V3.1: Whether IOL Level 2 data is available
-  iolCredentialsExist: boolean; // V3.4: Whether IOL credentials are configured in .env
-  iolConnectionFailed: boolean; // V3.4: Credentials exist but API connection failed
+  iolLevel2Online: boolean;
+  iolCredentialsExist: boolean;
+  iolConnectionFailed: boolean;
 
   // ── Country Risk Auto-Fetch State ───────────────────────────────────
-  riesgoPaisAuto: number | null; // V3.2.3-PRO: Auto-fetched Riesgo País value (null = not fetched yet)
+  riesgoPaisAuto: number | null;
 
-  // ── V3.3-PRO: Market Truth Engine State ──────────────────────────────
-  marketTruth: MarketTruthResponse | null; // Full market truth consensus data
-  mepConsensus: number | null; // Best MEP value from consensus
-  mepConfidence: string | null; // MEP confidence level
-  rpConfidence: string | null; // RP confidence level
-  marketTruthStale: boolean; // SWR: true if data is from stale cache
+  // ── Market Truth Engine State ──────────────────────────────────────
+  marketTruth: MarketTruthResponse | null;
+  mepConsensus: number | null;
+  mepConfidence: string | null;
+  rpConfidence: string | null;
+  marketTruthStale: boolean;
 
-  // ── V3.3-PRO Phase 2: Cockpit Score State ──
+  // ── Cockpit Score State ──
   cockpitScores: CockpitScore[];
   cockpitScoresLoading: boolean;
 
@@ -117,17 +116,15 @@ export interface RadarState {
   // ── Country Risk Auto-Fetch Actions ────────────────────────────────
   setRiesgoPaisAuto: (v: number | null) => void;
 
-  // ── V3.3-PRO: Market Truth Engine Actions ──────────────────────────
+  // ── Market Truth Engine Actions ──────────────────────────────────
   setMarketTruth: (v: MarketTruthResponse) => void;
 
-  // ── V3.3-PRO Phase 2: Cockpit Score Actions ──
+  // ── Cockpit Score Actions ──
   setCockpitScores: (v: CockpitScore[]) => void;
   setCockpitScoresLoading: (v: boolean) => void;
 
-  // ── DB Sync Actions ────────────────────────────────────────────────
-  persistToDb: () => Promise<void>;
-  forceSyncToDb: () => Promise<void>;  // V3.4: Immediate DB write (no debounce)
-  loadFromDb: () => Promise<boolean>;
+  // ── Portfolio File Actions ──────────────────────────────────────
+  savePortfolioToFile: () => Promise<boolean>;  // Explicit save to JSON file
   nukeAll: () => void;
 }
 
@@ -138,8 +135,6 @@ export interface RadarState {
 function saveToStorage<T>(key: string, data: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(data));
-    // V3.0: Track last persist time for DB vs localStorage comparison on init
-    localStorage.setItem('arbradar_lastPersistTime', String(Date.now()));
   } catch {
     // Storage full or unavailable
   }
@@ -162,26 +157,6 @@ function fixInstruments(instruments: Instrument[]): Instrument[] {
     return { ...inst, tir: effectiveRate, tem: effectiveRate };
   });
   return ensureValidDays(fixed);
-}
-
-// ════════════════════════════════════════════════════════════════════════
-// Debounce Timer (60s) for DB writes
-// ════════════════════════════════════════════════════════════════════════
-
-let dbDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-const DB_DEBOUNCE_MS = 60_000; // 60 seconds
-
-function scheduleDbPersist(store: () => RadarState) {
-  if (dbDebounceTimer) {
-    clearTimeout(dbDebounceTimer);
-  }
-  dbDebounceTimer = setTimeout(async () => {
-    const state = store();
-    if (state.mounted) {
-      await state.persistToDb();
-    }
-    dbDebounceTimer = null;
-  }, DB_DEBOUNCE_MS);
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -208,9 +183,9 @@ export const useRadarStore = create<RadarState>((set, get) => ({
   currentTime: '',
   activityFeed: [],
 
-  dbAvailable: true,
-  lastDbSync: null,
-  lastDbSyncStatus: 'idle',
+  portfolioSource: 'defaults',
+  portfolioLastSaved: null,
+
   iolLevel2Online: false,
   iolCredentialsExist: false,
   iolConnectionFailed: false,
@@ -223,70 +198,59 @@ export const useRadarStore = create<RadarState>((set, get) => ({
   cockpitScores: [],
   cockpitScoresLoading: false,
 
-  // ── Setters (write to Zustand + localStorage immediately, schedule DB) ─
+  // ── Setters (write to Zustand + localStorage immediately) ──
   setInstruments: (v: Instrument[]) => {
     const validInstruments = fixInstruments(v);
     set({ instruments: validInstruments });
     saveToStorage(STORAGE_KEYS.INSTRUMENTS, validInstruments);
-    scheduleDbPersist(get);
   },
 
   setConfig: (v: Config) => {
     set({ config: v });
     saveToStorage(STORAGE_KEYS.CONFIG, v);
-    scheduleDbPersist(get);
   },
 
   setPosition: (v: Position | null) => {
     set({ position: v });
     saveToStorage(STORAGE_KEYS.POSITION, v);
-    scheduleDbPersist(get);
   },
 
   setTransactions: (v: Transaction[]) => {
     set({ transactions: v });
     saveToStorage(STORAGE_KEYS.TRANSACTIONS, v);
-    scheduleDbPersist(get);
   },
 
   setSimulations: (v: SimulationRecord[]) => {
     set({ simulations: v });
     saveToStorage(STORAGE_KEYS.SIMULATIONS, v);
-    scheduleDbPersist(get);
   },
 
   setExternalHistory: (v: ExternalHistoryRecord[]) => {
     set({ externalHistory: v });
     saveToStorage(STORAGE_KEYS.EXTERNAL_HISTORY, v);
-    scheduleDbPersist(get);
   },
 
   setLastUpdate: (v: string) => {
     set({ lastUpdate: v });
     saveToStorage(STORAGE_KEYS.LAST_UPDATE, v);
-    scheduleDbPersist(get);
   },
 
   setRawInput: (v: string) => {
     set({ rawInput: v });
     saveToStorage(STORAGE_KEYS.RAW_INPUT, v);
-    scheduleDbPersist(get);
   },
 
   setMepRate: (v: number | undefined) => {
     set({ mepRate: v });
-    scheduleDbPersist(get);
   },
 
   setCclRate: (v: number | undefined) => {
     set({ cclRate: v });
-    scheduleDbPersist(get);
   },
 
   setPriceHistory: (v: PriceHistoryFile) => {
     set({ priceHistory: v });
     savePriceHistory(v);
-    scheduleDbPersist(get);
   },
 
   setActiveTab: (v: TabId) => {
@@ -339,7 +303,7 @@ export const useRadarStore = create<RadarState>((set, get) => ({
     set({ activityFeed: [] });
   },
 
-  // V3.4: IOL Level 2 state setters
+  // IOL Level 2 state setters
   setIolLevel2Online: (v: boolean) => {
     set({ iolLevel2Online: v });
   },
@@ -350,7 +314,7 @@ export const useRadarStore = create<RadarState>((set, get) => ({
     set({ iolConnectionFailed: v });
   },
 
-  // V3.2.3-PRO: Set auto-fetched Riesgo País and sync to config
+  // Riesgo País setter
   setRiesgoPaisAuto: (v: number | null) => {
     set({ riesgoPaisAuto: v });
     if (v !== null && v > 0) {
@@ -361,7 +325,7 @@ export const useRadarStore = create<RadarState>((set, get) => ({
     }
   },
 
-  // V3.3-PRO Phase 2: Set Cockpit Scores
+  // Cockpit Scores
   setCockpitScores: (v: CockpitScore[]) => {
     set({ cockpitScores: v });
   },
@@ -370,7 +334,7 @@ export const useRadarStore = create<RadarState>((set, get) => ({
     set({ cockpitScoresLoading: v });
   },
 
-  // V3.3-PRO: Set Market Truth consensus data
+  // Market Truth
   setMarketTruth: (v: MarketTruthResponse) => {
     const rpValue = v.riesgo_pais.value;
     const mepValue = v.mep.value;
@@ -389,158 +353,51 @@ export const useRadarStore = create<RadarState>((set, get) => ({
         get().setConfig({ ...currentConfig, riesgoPais: rpValue });
       }
     }
-    // Sync MEP to store
+    // Sync MEP
     if (mepValue > 0) {
       get().setMepRate(mepValue);
     }
   },
 
   // ════════════════════════════════════════════════════════════════════
-  // DB PERSISTENCE — Debounced write (every 60s when data changes)
+  // V4.0: SAVE PORTFOLIO TO FILE — Explicit user action only
   // ════════════════════════════════════════════════════════════════════
-  persistToDb: async () => {
+  savePortfolioToFile: async () => {
     const state = get();
-    set({ lastDbSyncStatus: 'syncing' });
-
     try {
-      const payload = {
-        instruments: JSON.stringify(state.instruments),
-        config: JSON.stringify(state.config),
-        position: state.position ? JSON.stringify(state.position) : null,
-        transactions: JSON.stringify(state.transactions),
-        lastUpdate: state.lastUpdate,
-        rawInput: state.rawInput,
-        mepRate: state.mepRate ?? null,
-        cclRate: state.cclRate ?? null,
-        liveActive: false, // Will be set by LIVE hook
-        iolLevel2Online: state.iolLevel2Online,
-        externalHistory: JSON.stringify(state.externalHistory),  // V3.4: Full cloud persistence
-        simulations: JSON.stringify(state.simulations),          // V3.4: Full cloud persistence
-      };
-
-      const res = await fetch('/api/state', {
+      const res = await fetch('/api/portfolio', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          capitalDisponible: state.config.capitalDisponible,
+          position: state.position,
+          transactions: state.transactions,
+          config: {
+            caucion1d: state.config.caucion1d,
+            caucion7d: state.config.caucion7d,
+            caucion30d: state.config.caucion30d,
+            riesgoPais: state.config.riesgoPais,
+            comisionTotal: state.config.comisionTotal,
+          },
+        }),
       });
 
       if (res.ok) {
-        set({
-          dbAvailable: true,
-          lastDbSync: new Date(),
-          lastDbSyncStatus: 'success',
-        });
-      } else {
-        const data = await res.json().catch(() => ({}));
-        if (data.fallback) {
-          // DB not configured — this is fine, localStorage is the fallback
-          set({ dbAvailable: false, lastDbSyncStatus: 'idle' });
-        } else {
-          set({ lastDbSyncStatus: 'error' });
-          console.warn('[persistToDb] DB write failed, localStorage is fallback');
-        }
-      }
-    } catch (error) {
-      // Network error or DB unavailable — localStorage already has the data
-      set({ dbAvailable: false, lastDbSyncStatus: 'error' });
-      console.warn('[persistToDb] Network error, localStorage is fallback:', error);
-    }
-  },
-
-  // ════════════════════════════════════════════════════════════════════
-  // V3.4: FORCE SYNC — Immediate DB write (bypasses 60s debounce)
-  // Called on app mount to push all localStorage data to cloud.
-  // ════════════════════════════════════════════════════════════════════
-  forceSyncToDb: async () => {
-    // Cancel any pending debounce timer — we're forcing a write NOW
-    if (dbDebounceTimer) {
-      clearTimeout(dbDebounceTimer);
-      dbDebounceTimer = null;
-    }
-    await get().persistToDb();
-  },
-
-  // ════════════════════════════════════════════════════════════════════
-  // DB RESTORE — Load state from DB on startup
-  // Priority: DB > localStorage > defaults
-  // ════════════════════════════════════════════════════════════════════
-  loadFromDb: async () => {
-    try {
-      const res = await fetch('/api/state', {
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      if (!res.ok) {
-        set({ dbAvailable: false });
-        return false;
-      }
-
-      const data = await res.json();
-
-      if (data.fallback) {
-        // DB not configured — use localStorage
-        set({ dbAvailable: false });
-        return false;
-      }
-
-      if (!data.exists) {
-        // No DB state yet — use localStorage
-        return false;
-      }
-
-      // Parse DB state and merge
-      const dbState = data.data;
-      try {
-        const instruments = fixInstruments(JSON.parse(dbState.instruments));
-        const config = JSON.parse(dbState.config) as Config;
-        const position = dbState.position ? JSON.parse(dbState.position) as Position : null;
-        const transactions = JSON.parse(dbState.transactions) as Transaction[];
-
-        // Ensure config has capitalDisponible
-        if (config.capitalDisponible === undefined) {
-          config.capitalDisponible = DEFAULT_CONFIG.capitalDisponible;
-        }
-
-        // V3.4: Parse externalHistory and simulations from DB
-        const dbExternalHistory = (dbState as Record<string, unknown>).externalHistory
-          ? JSON.parse((dbState as Record<string, unknown>).externalHistory as string) as ExternalHistoryRecord[]
-          : [];
-        const dbSimulations = (dbState as Record<string, unknown>).simulations
-          ? JSON.parse((dbState as Record<string, unknown>).simulations as string) as SimulationRecord[]
-          : [];
-
-        set({
-          instruments: instruments.length > 0 ? instruments : SAMPLE_INSTRUMENTS,
-          config,
-          position,
-          transactions,
-          lastUpdate: dbState.lastUpdate,
-          rawInput: dbState.rawInput ?? '',
-          mepRate: dbState.mepRate ?? undefined,
-          cclRate: dbState.cclRate ?? undefined,
-          externalHistory: dbExternalHistory,
-          simulations: dbSimulations,
-          dbAvailable: true,
-          lastDbSync: new Date(),
-          // V3.1: Detect IOL Level 2 status from DB flag OR from instrument data
-          iolLevel2Online: dbState.iolLevel2Online === true || instruments.some(i => i.iolStatus === 'online'),
-        });
-
+        const data = await res.json();
+        set({ portfolioLastSaved: data.lastUpdated });
+        console.log('[store] Portfolio saved to file:', data.lastUpdated);
         return true;
-      } catch (parseError) {
-        console.error('[loadFromDb] Parse error:', parseError);
-        return false;
       }
+      console.warn('[store] Failed to save portfolio:', res.status);
+      return false;
     } catch (error) {
-      // Network error — DB unavailable, use localStorage
-      set({ dbAvailable: false });
-      console.warn('[loadFromDb] Network error, using localStorage:', error);
+      console.warn('[store] Error saving portfolio:', error);
       return false;
     }
   },
 
   // ════════════════════════════════════════════════════════════════════
-  // NUKE — Wipe everything (localStorage + DB)
+  // NUKE — Wipe localStorage only (portfolio.json stays untouched!)
   // ════════════════════════════════════════════════════════════════════
   nukeAll: () => {
     // Clear localStorage
@@ -570,28 +427,10 @@ export const useRadarStore = create<RadarState>((set, get) => ({
       marketTruthStale: false,
       cockpitScores: [],
       cockpitScoresLoading: false,
+      portfolioSource: 'defaults',
     });
 
-    // Clear DB via API
-    fetch('/api/state', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        instruments: JSON.stringify(SAMPLE_INSTRUMENTS),
-        config: JSON.stringify(DEFAULT_CONFIG),
-        position: null,
-        transactions: JSON.stringify(INITIAL_TRANSACTIONS),
-        lastUpdate: null,
-        rawInput: '',
-        mepRate: null,
-        cclRate: null,
-        liveActive: false,
-        externalHistory: '[]',
-        simulations: '[]',
-      }),
-    }).catch(() => { /* DB unavailable */ });
-
-    // Hard reload — clean slate
+    // Hard reload — will re-read portfolio.json on mount
     if (typeof window !== 'undefined') {
       window.location.reload();
     }
@@ -599,16 +438,13 @@ export const useRadarStore = create<RadarState>((set, get) => ({
 }));
 
 // ════════════════════════════════════════════════════════════════════════
-// Initialization helper — call once on app mount
+// Initialization — call once on app mount
 //
-// V3.4.1 PRIORITY (robust timestamp comparison with auto-heal):
-// 1. Load both DB and localStorage data
-// 2. Compare timestamps — use whichever is MORE RECENT
-// 3. If DB data is corrupt/empty → auto-heal from localStorage
-// 4. If DB has no data or is unreachable → use localStorage
-// 5. If localStorage has no data → use DB
-// 6. If neither has data → use defaults
-// 7. After loading → forceSyncToDb() to ensure cloud has latest
+// V4.0 BLINDADO PRIORITY:
+// 1. Read portfolio.json from server (the TRUTH file)
+// 2. If that fails, fall back to localStorage
+// 3. If that fails, use defaults
+// 4. After loading — portfolio.json data is king
 // ════════════════════════════════════════════════════════════════════════
 
 export async function initializeStore(): Promise<void> {
@@ -623,171 +459,94 @@ export async function initializeStore(): Promise<void> {
   const lsExternalHistory = loadFromStorage<ExternalHistoryRecord[]>(STORAGE_KEYS.EXTERNAL_HISTORY, []);
   const lsTheme = (localStorage.getItem('arbradar_theme') as AppTheme) || 'dark';
   const lsPriceHistory = loadPriceHistory();
-  const lsPersistTime = loadFromStorage<number | null>('arbradar_lastPersistTime', null);
 
   // Ensure config has capitalDisponible
   if (lsConfig.capitalDisponible === undefined) {
     lsConfig.capitalDisponible = DEFAULT_CONFIG.capitalDisponible;
   }
 
-  // ── Step 2: Try loading from DB (async) ──
-  let dbData: {
-    instruments: string;
-    config: string;
-    position: string | null;
-    transactions: string;
-    lastUpdate: string | null;
-    rawInput: string | null;
-    mepRate: number | null;
-    cclRate: number | null;
-    liveActive: boolean;
-    iolLevel2Online?: boolean;
-    externalHistory?: string;
-    simulations?: string;
-    updatedAt?: string;
+  // ── Step 2: Try loading from portfolio.json (the TRUTH file) ──
+  let fileData: {
+    capitalDisponible: number;
+    position: Position | null;
+    transactions: Transaction[];
+    config: {
+      caucion1d: number;
+      caucion7d: number;
+      caucion30d: number;
+      riesgoPais?: number;
+      comisionTotal: number;
+    };
+    lastUpdated?: string;
   } | null = null;
-  let dbAvailable = false;
+  let portfolioSource: 'file' | 'defaults' | 'localStorage' = 'defaults';
 
   try {
-    const res = await fetch('/api/state', {
-      headers: { 'Content-Type': 'application/json' },
-    });
-
+    const res = await fetch('/api/portfolio');
     if (res.ok) {
       const data = await res.json();
-      if (data.fallback) {
-        // DB not configured — signal to use localStorage
-        dbAvailable = false;
-      } else if (data.exists) {
-        dbData = data.data;
-        dbAvailable = true;
+      if (data.ok && data.data) {
+        fileData = data.data;
+        portfolioSource = data.source === 'local_file' ? 'file' : 'defaults';
       }
     }
   } catch {
-    // Network error — DB unreachable
-    dbAvailable = false;
+    // Server unreachable — use localStorage
+    portfolioSource = 'localStorage';
   }
 
-  // ── Step 3: Compare timestamps and decide source ──
-  // V3.4.1: Auto-heal — if DB data fails to parse, silently fall back to LS
-  let useDB = false;
+  // ── Step 3: Merge data — portfolio.json wins for position/config ──
+  let finalConfig = lsConfig;
+  let finalPosition: Position | null = lsPosition;
+  let finalTransactions = lsTransactions;
 
-  if (dbData) {
-    // V3.4.1: Validate DB data has essential fields before considering it
-    const dbHasInstruments = dbData.instruments && typeof dbData.instruments === 'string';
-    const dbHasConfig = dbData.config && typeof dbData.config === 'string';
-
-    if (!dbHasInstruments || !dbHasConfig) {
-      console.warn('[initializeStore] DB data missing essential fields — using localStorage');
-      useDB = false;
+  if (fileData) {
+    // Portfolio.json is the TRUTH for position and config
+    // BUT: riesgoPais is excluded from the file — it must come from the
+    // Market Truth API only. If the file has riesgoPais (legacy), use
+    // it only as a fallback; the API-fetched riesgoPaisAuto takes priority.
+    if (fileData.config) {
+      finalConfig = {
+        caucion1d: fileData.config.caucion1d ?? lsConfig.caucion1d,
+        caucion7d: fileData.config.caucion7d ?? lsConfig.caucion7d,
+        caucion30d: fileData.config.caucion30d ?? lsConfig.caucion30d,
+        riesgoPais: lsConfig.riesgoPais ?? fileData.config.riesgoPais ?? DEFAULT_CONFIG.riesgoPais,
+        comisionTotal: fileData.config.comisionTotal ?? lsConfig.comisionTotal,
+        capitalDisponible: fileData.capitalDisponible ?? lsConfig.capitalDisponible,
+      };
     } else {
-      const dbUpdatedAt = dbData.updatedAt ? new Date(dbData.updatedAt).getTime() : 0;
+      finalConfig = { ...lsConfig, capitalDisponible: fileData.capitalDisponible ?? lsConfig.capitalDisponible };
+    }
 
-      // V3.4.1: Try to parse DB instruments to verify they're valid
-      let dbInstrumentsValid = true;
-      try {
-        const parsed = JSON.parse(dbData.instruments);
-        dbInstrumentsValid = Array.isArray(parsed) && parsed.length > 0;
-      } catch {
-        dbInstrumentsValid = false;
-        console.warn('[initializeStore] DB instruments JSON is corrupt — using localStorage');
-      }
+    finalPosition = fileData.position !== undefined ? fileData.position : lsPosition;
 
-      if (!dbInstrumentsValid) {
-        useDB = false;
-      } else if (lsPersistTime && dbUpdatedAt > 0) {
-        // Both have timestamps → use the MORE RECENT one
-        useDB = dbUpdatedAt > lsPersistTime;
-        if (useDB) {
-          console.log(`[initializeStore] DB wins: DB updatedAt=${new Date(dbUpdatedAt).toISOString()} > LS persistTime=${new Date(lsPersistTime).toISOString()}`);
-        } else {
-          console.log(`[initializeStore] LS wins: LS persistTime=${new Date(lsPersistTime).toISOString()} >= DB updatedAt=${new Date(dbUpdatedAt).toISOString()}`);
-        }
-      } else if (dbUpdatedAt > 0) {
-        // DB has timestamp but localStorage doesn't → prefer DB (cross-device sync)
-        useDB = true;
-        console.log('[initializeStore] DB wins: no LS timestamp, DB has data');
-      } else {
-        // DB has no timestamp → can't determine recency, prefer localStorage (more reliable)
-        useDB = false;
-        console.log('[initializeStore] LS wins: DB has no updatedAt timestamp');
-      }
+    if (fileData.transactions && Array.isArray(fileData.transactions) && fileData.transactions.length > 0) {
+      finalTransactions = fileData.transactions;
     }
   }
 
-  // ── Step 4: Apply the chosen source ──
-  if (useDB && dbData) {
-    try {
-      const instruments = fixInstruments(JSON.parse(dbData.instruments));
-      const config = JSON.parse(dbData.config) as Config;
-      const position = dbData.position ? JSON.parse(dbData.position) as Position : null;
-      const transactions = JSON.parse(dbData.transactions) as Transaction[];
+  // ── Step 4: Apply ──
+  const validInstruments = fixInstruments(
+    lsInstruments.length > 0 ? lsInstruments : SAMPLE_INSTRUMENTS
+  );
 
-      if (config.capitalDisponible === undefined) {
-        config.capitalDisponible = DEFAULT_CONFIG.capitalDisponible;
-      }
+  useRadarStore.setState({
+    instruments: validInstruments,
+    config: finalConfig,
+    position: finalPosition,
+    transactions: finalTransactions,
+    lastUpdate: lsLastUpdate,
+    rawInput: lsRawInput,
+    simulations: lsSimulations,
+    externalHistory: lsExternalHistory,
+    theme: lsTheme,
+    priceHistory: lsPriceHistory,
+    portfolioSource,
+    mounted: true,
+  });
 
-      // V3.4: Parse externalHistory and simulations from DB (with LS fallback)
-      const dbExtHistory = dbData.externalHistory
-        ? JSON.parse(dbData.externalHistory) as ExternalHistoryRecord[]
-        : lsExternalHistory;
-      const dbSims = dbData.simulations
-        ? JSON.parse(dbData.simulations) as SimulationRecord[]
-        : lsSimulations;
-
-      useRadarStore.setState({
-        instruments: instruments.length > 0 ? instruments : SAMPLE_INSTRUMENTS,
-        config,
-        position,
-        transactions,
-        lastUpdate: dbData.lastUpdate,
-        rawInput: dbData.rawInput ?? '',
-        mepRate: dbData.mepRate ?? undefined,
-        cclRate: dbData.cclRate ?? undefined,
-        externalHistory: dbExtHistory.length > 0 ? dbExtHistory : lsExternalHistory,  // V3.4: DB first, LS fallback
-        simulations: dbSims.length > 0 ? dbSims : lsSimulations,                      // V3.4: DB first, LS fallback
-        theme: lsTheme, // Theme is local-only, not synced
-        priceHistory: lsPriceHistory, // Price history is local-only
-        dbAvailable: true,
-        lastDbSync: new Date(),
-        // V3.1: Detect IOL Level 2 from DB flag or instrument data
-        iolLevel2Online: (dbData as Record<string, unknown>).iolLevel2Online === true || instruments.some(i => i.iolStatus === 'online'),
-      });
-
-      // Apply theme from localStorage (theme is device-specific, not synced)
-      if (lsTheme === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.setAttribute('data-theme', 'light');
-        document.documentElement.classList.remove('dark');
-      }
-    } catch (parseError) {
-      console.error('[initializeStore] DB data corrupted, falling back to localStorage:', parseError);
-      useDB = false;
-    }
-  }
-
-  if (!useDB) {
-    const validInstruments = fixInstruments(
-      lsInstruments.length > 0 ? lsInstruments : SAMPLE_INSTRUMENTS
-    );
-
-    useRadarStore.setState({
-      instruments: validInstruments,
-      config: lsConfig,
-      position: lsPosition,
-      transactions: lsTransactions,
-      lastUpdate: lsLastUpdate,
-      rawInput: lsRawInput,
-      simulations: lsSimulations,
-      externalHistory: lsExternalHistory,
-      theme: lsTheme,
-      priceHistory: lsPriceHistory,
-      dbAvailable,
-    });
-
-    // Apply theme
+  // Apply theme
+  if (typeof document !== 'undefined') {
     if (lsTheme === 'dark') {
       document.documentElement.setAttribute('data-theme', 'dark');
       document.documentElement.classList.add('dark');
@@ -797,6 +556,5 @@ export async function initializeStore(): Promise<void> {
     }
   }
 
-  // Mark as mounted
-  useRadarStore.setState({ mounted: true });
+  console.log(`[initializeStore] Source: ${portfolioSource} | Position: ${finalPosition?.ticker || 'CASH'} | Capital: $${finalConfig.capitalDisponible?.toLocaleString('es-AR')}`);
 }

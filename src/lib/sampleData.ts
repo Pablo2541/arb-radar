@@ -6,10 +6,16 @@ export const DEFAULT_CONFIG: Config = {
   caucion30d: 18.5,
   riesgoPais: 528,
   comisionTotal: 0.30,
-  capitalDisponible: 467587.55, // V3.4.3: Current portfolio capital
+  capitalDisponible: 467587.55, // V3.4.5: Current portfolio capital
 };
 
-export const DEFAULT_POSITION: Position | null = null; // V2.0.4: No default position — clean slate
+export const DEFAULT_POSITION: Position | null = {
+  ticker: 'T30J7',
+  entryPrice: 1.1200,
+  vn: 417310,
+  entryDate: '05/05/2025',
+  precioConComision: 1.1234,
+}; // V3.4.5: Default position — T30J7 BONCAP compra 05/05/2025, VN 417310
 
 export const SAMPLE_INSTRUMENTS: Instrument[] = [
   { ticker: 'S30A6', type: 'LECAP', expiry: '30/04/2026', days: 13, price: 1.2480, change: 0.08, tna: 21.5, tem: 1.77, tir: 1.77, gananciaDirecta: 1.95, vsPlazoFijo: '' },

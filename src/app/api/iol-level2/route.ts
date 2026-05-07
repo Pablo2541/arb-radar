@@ -195,62 +195,49 @@ async function fetchTickersInBatches(
 ): Promise<Record<string, TickerLevel2Data>> {
   const results: Record<string, TickerLevel2Data> = {};
 
-  for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
-    const batch = tickers.slice(i, i + BATCH_SIZE);
-
-    // Process batch in parallel
-    const batchResults = await Promise.all(
-      batch.map(async (ticker) => {
-        try {
-          const l2Data = await getIOLCotizacion(ticker);
-          if (l2Data) {
-            return { ticker, data: enrichLevel2Data(ticker, l2Data) };
-          }
-          // getIOLCotizacion returned null — token or network error
-          return {
-            ticker,
-            data: {
-              volume: 0,
-              bid: 0,
-              ask: 0,
-              bid_depth: 0,
-              ask_depth: 0,
-              market_pressure: null,
-              avg_daily_volume: 0,
-              status: 'error' as const,
-              liquidity_alert: false,
-              puntas_detalle: { compra: [], venta: [] },
-              absorption_alert: null,
-            },
-          };
-        } catch {
-          return {
-            ticker,
-            data: {
-              volume: 0,
-              bid: 0,
-              ask: 0,
-              bid_depth: 0,
-              ask_depth: 0,
-              market_pressure: null,
-              avg_daily_volume: 0,
-              status: 'error' as const,
-              liquidity_alert: false,
-              puntas_detalle: { compra: [], venta: [] },
-              absorption_alert: null,
-            },
-          };
-        }
-      }),
-    );
-
-    for (const { ticker, data } of batchResults) {
-      results[ticker] = data;
+  // V3.4.5: Process tickers SEQUENTIALLY with 500ms delay between each external HTTP fetch
+  // Sandbox crashes if >1 external HTTP request is in-flight at the same time
+  for (let i = 0; i < tickers.length; i++) {
+    const ticker = tickers[i];
+    try {
+      const l2Data = await getIOLCotizacion(ticker);
+      if (l2Data) {
+        results[ticker] = enrichLevel2Data(ticker, l2Data);
+      } else {
+        // getIOLCotizacion returned null — token or network error
+        results[ticker] = {
+          volume: 0,
+          bid: 0,
+          ask: 0,
+          bid_depth: 0,
+          ask_depth: 0,
+          market_pressure: null,
+          avg_daily_volume: 0,
+          status: 'error' as const,
+          liquidity_alert: false,
+          puntas_detalle: { compra: [], venta: [] },
+          absorption_alert: null,
+        };
+      }
+    } catch {
+      results[ticker] = {
+        volume: 0,
+        bid: 0,
+        ask: 0,
+        bid_depth: 0,
+        ask_depth: 0,
+        market_pressure: null,
+        avg_daily_volume: 0,
+        status: 'error' as const,
+        liquidity_alert: false,
+        puntas_detalle: { compra: [], venta: [] },
+        absorption_alert: null,
+      };
     }
 
-    // Rate-limit delay between batches (skip after last batch)
-    if (i + BATCH_SIZE < tickers.length) {
-      await sleep(BATCH_DELAY_MS);
+    // V3.4.5: 500ms delay between each external HTTP fetch (skip after last ticker)
+    if (i < tickers.length - 1) {
+      await sleep(500);
     }
   }
 

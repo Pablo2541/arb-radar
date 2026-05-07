@@ -1144,3 +1144,193 @@ kbd {
   /* Isolate repaints to just this row — prevents full table repaint on animation */
   contain: layout style;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   V3.4.5 — QUICK STATS CARD STYLES
+   ══════════════════════════════════════════════════════════════ */
+.quick-stat-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  background: rgba(21, 29, 46, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.quick-stat-card:hover {
+  border-color: rgba(46, 235, 200, 0.15);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+}
+
+.quick-stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(46, 235, 200, 0.4), rgba(244, 114, 182, 0.3), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.quick-stat-card:hover::before {
+  opacity: 1;
+}
+
+:root[data-theme="light"] .quick-stat-card {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+:root[data-theme="light"] .quick-stat-card:hover {
+  border-color: rgba(5, 150, 105, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+:root[data-theme="light"] .quick-stat-card::before {
+  background: linear-gradient(90deg, rgba(5, 150, 105, 0.4), rgba(219, 39, 119, 0.3), transparent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   V3.4.5 — ALTERNATING TABLE ROW COLORS
+   ══════════════════════════════════════════════════════════════ */
+.table-row-alt {
+  contain: layout style;
+}
+
+.table-row-alt:nth-child(even) {
+  background: rgba(148, 163, 184, 0.03);
+}
+
+.table-row-alt:nth-child(even):hover {
+  background: linear-gradient(90deg, rgba(46, 235, 200, 0.06), rgba(46, 235, 200, 0.02), transparent);
+}
+
+:root[data-theme="light"] .table-row-alt:nth-child(even) {
+  background: rgba(0, 0, 0, 0.015);
+}
+
+:root[data-theme="light"] .table-row-alt:nth-child(even):hover {
+  background: linear-gradient(90deg, rgba(5, 150, 105, 0.05), rgba(5, 150, 105, 0.02), transparent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   V3.4.5 — IOL STATUS PULSING DOT (enhanced 3-state)
+   ══════════════════════════════════════════════════════════════ */
+@keyframes iolPulseGreen {
+  0%, 100% { box-shadow: 0 0 4px rgba(46, 235, 200, 0.4); transform: scale(1); }
+  50% { box-shadow: 0 0 10px rgba(46, 235, 200, 0.7); transform: scale(1.2); }
+}
+
+@keyframes iolPulseRed {
+  0%, 100% { box-shadow: 0 0 4px rgba(248, 113, 113, 0.4); transform: scale(1); }
+  50% { box-shadow: 0 0 8px rgba(248, 113, 113, 0.6); transform: scale(1.15); }
+}
+
+.iol-dot-online {
+  animation: iolPulseGreen 2s ease-in-out infinite;
+}
+
+.iol-dot-error {
+  animation: iolPulseRed 3s ease-in-out infinite;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   V3.4.5 — MARKET STATUS BADGE (OPEN/CLOSED)
+   ══════════════════════════════════════════════════════════════ */
+@keyframes marketOpenPulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(46, 235, 200, 0.3); }
+  50% { box-shadow: 0 0 14px rgba(46, 235, 200, 0.6); }
+}
+
+.market-badge-open {
+  animation: marketOpenPulse 3s ease-in-out infinite;
+  border: 1px solid rgba(46, 235, 200, 0.25);
+}
+
+.market-badge-closed {
+  border: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   V3.4.5 — HEADER GRADIENT PATTERN
+   ══════════════════════════════════════════════════════════════ */
+.header-gradient-bg {
+  background: linear-gradient(135deg, rgba(21, 29, 46, 0.95) 0%, rgba(12, 18, 32, 0.98) 50%, rgba(28, 38, 64, 0.92) 100%);
+}
+
+:root[data-theme="light"] .header-gradient-bg {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(241, 245, 249, 0.98) 50%, rgba(255, 255, 255, 0.92) 100%);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   V3.4.5 — CARD SHADOW UTILITY
+   ══════════════════════════════════════════════════════════════ */
+.card-shadow {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+.card-shadow-lg {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+:root[data-theme="light"] .card-shadow {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+:root[data-theme="light"] .card-shadow-lg {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   V3.4.5 — LAST UPDATED TIMESTAMP
+   ══════════════════════════════════════════════════════════════ */
+@keyframes timestampRefresh {
+  0% { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.timestamp-refresh {
+  animation: timestampRefresh 0.3s ease-out both;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   V3.4.5 — VALUE CHANGE ANIMATION (flash on update)
+   ══════════════════════════════════════════════════════════════ */
+@keyframes valueFlashGreen {
+  0% { color: #2eebc8; text-shadow: 0 0 8px rgba(46, 235, 200, 0.5); }
+  100% { text-shadow: none; }
+}
+
+@keyframes valueFlashRed {
+  0% { color: #f87171; text-shadow: 0 0 8px rgba(248, 113, 113, 0.5); }
+  100% { text-shadow: none; }
+}
+
+.value-flash-up {
+  animation: valueFlashGreen 0.8s ease-out;
+}
+
+.value-flash-down {
+  animation: valueFlashRed 0.8s ease-out;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   V3.4.5 — COMPACT FOOTER
+   ══════════════════════════════════════════════════════════════ */
+.footer-compact {
+  background: linear-gradient(180deg, rgba(21, 29, 46, 0.6), rgba(12, 18, 32, 0.8));
+  border-top: 1px solid rgba(148, 163, 184, 0.06);
+}
+
+:root[data-theme="light"] .footer-compact {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(241, 245, 249, 0.9));
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}

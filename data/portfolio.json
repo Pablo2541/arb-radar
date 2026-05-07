@@ -1,0 +1,32 @@
+{
+  "_comment": "ARB//RADAR V4.0 — Archivo de Cartera Local. El Radar SOLO LEE este archivo. Usted lo edita manualmente.",
+  "_instructions": [
+    "CAMPO OBLIGATORIO: capitalDisponible = su capital líquido en pesos",
+    "CAMPO OBLIGATORIO: position = su posición actual (o null si está en caja)",
+    "position.ticker = el ticker del bono/letra que tiene",
+    "position.entryPrice = precio de compra por $1 VN",
+    "position.vn = valor nominal de los títulos",
+    "position.entryDate = fecha de compra (DD/MM/YYYY)",
+    "position.precioConComision = precio con comisión incluida (opcional)",
+    "Para volver a caja: ponga position = null",
+    "Para cambiar de bono: actualice ticker, entryPrice, vn y entryDate",
+    "El Radar lee este archivo al arrancar y actualiza precios automáticamente",
+    "RIESGO PAIS y DOLAR MEP vienen de las APIs, NO de este archivo"
+  ],
+  "capitalDisponible": 467587.55,
+  "position": {
+    "ticker": "T30J7",
+    "entryPrice": 1.1200,
+    "vn": 417310,
+    "entryDate": "05/05/2025",
+    "precioConComision": 1.1234
+  },
+  "transactions": [],
+  "config": {
+    "caucion1d": 21.0,
+    "caucion7d": 19.2,
+    "caucion30d": 18.5,
+    "comisionTotal": 0.30
+  },
+  "lastUpdated": "2025-05-07"
+}

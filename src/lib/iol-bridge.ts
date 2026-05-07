@@ -1,18 +1,15 @@
 // ════════════════════════════════════════════════════════════════════════
-// IOL BRIDGE — ARB//RADAR V3.2.3-PRO
+// IOL BRIDGE — ARB//RADAR V4.0 BLINDADO
 // InvertirOnline authentication & Level-2 data fetching
 //
-// Extracted from scripts/update-prices.ts and adapted for Next.js
-// API routes (server-side only).
-//
-// V3.2.3-PRO: Now calculates bid_depth / ask_depth / market_pressure
-// from puntas_detalle order-book levels.
+// V4.0 ARCHITECTURE:
+//   - Credentials come from .env (IOL_USERNAME, IOL_PASSWORD)
+//   - If credentials exist, bridge MUST connect. Period.
+//   - Circuit breaker prevents brute-force lockout (3→30min, 5→hard lock)
+//   - Token auto-refreshes at 12 min (IOL expires at 15 min)
+//   - All credential parsing handles special characters (#, $, !, etc.)
 //
 // ⚠️  SERVER-SIDE MODULE — never import in client components.
-//
-// ENV VARS:
-//   IOL_USERNAME  → InvertirOnline email
-//   IOL_PASSWORD  → InvertirOnline password
 // ════════════════════════════════════════════════════════════════════════
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -27,10 +24,10 @@ const IOL_TOKEN_REFRESH_MS = 12 * 60 * 1000;
 const IOL_LOW_VOLUME_PCT = 0.10;
 
 /** Request timeout for token endpoint (ms) */
-const TOKEN_TIMEOUT_MS = 10_000;
+const TOKEN_TIMEOUT_MS = 15_000;
 
 /** Request timeout for cotización endpoint (ms) */
-const COTIZACION_TIMEOUT_MS = 5_000;
+const COTIZACION_TIMEOUT_MS = 8_000;
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -83,18 +80,70 @@ export interface IOLLevel2Data {
   };
 }
 
+/** Diagnostic info for the IOL status endpoint. */
+export interface IOLDiagnostic {
+  credentials_configured: boolean;
+  username_present: boolean;
+  password_present: boolean;
+  username_length: number;
+  password_length: number;
+  token_cached: boolean;
+  token_expires_at: string | null;
+  iol_available: boolean;
+  circuit_breaker: {
+    failures: number;
+    locked: boolean;
+    backoff_until: string | null;
+  };
+  last_auth_error: string | null;
+  last_auth_status: number | null;
+}
+
 // ── Module-level token cache ──────────────────────────────────────────
 
 let iolAccessToken: string | null = null;
 let iolTokenExpiry: number = 0;
 let iolAvailable = false;
 
-// ── Helpers ────────────────────────────────────────────────────────────
+// ── Circuit Breaker ──────────────────────────────────────────────────
+let consecutiveAuthFailures = 0;
+let circuitBreakerUntil = 0;
+let lastAuthError: string | null = null;
+let lastAuthStatus: number | null = null;
+const CB_MAX_RETRIES = 3;
+const CB_HARD_LOCK = 5;
+const CB_BACKOFF_MS = 30 * 60 * 1000; // 30 minutes
+
+// ── Credential Parsing ──────────────────────────────────────────────
 
 /**
- * Get current trading hours elapsed in Argentina timezone.
- * Market opens at 10:00, closes at 17:00 (7 hours total).
+ * Get IOL credentials from environment.
+ * Handles the case where .env values might be quoted or unquoted.
+ * The .env loader (dotenv) strips quotes, so by the time we read
+ * process.env, the values should be clean.
  */
+function getCredentials(): { username: string; password: string } {
+  let username = process.env.IOL_USERNAME || '';
+  let password = process.env.IOL_PASSWORD || '';
+
+  // Strip surrounding whitespace (common .env mistake)
+  username = username.trim();
+  password = password.trim();
+
+  // Strip surrounding quotes if dotenv didn't already remove them
+  // (belt-and-suspenders: some environments don't strip quotes)
+  if ((username.startsWith('"') && username.endsWith('"')) || (username.startsWith("'") && username.endsWith("'"))) {
+    username = username.slice(1, -1);
+  }
+  if ((password.startsWith('"') && password.endsWith('"')) || (password.startsWith("'") && password.endsWith("'"))) {
+    password = password.slice(1, -1);
+  }
+
+  return { username, password };
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────
+
 function tradingHoursElapsed(): number {
   const now = new Date();
   const arTime = new Date(
@@ -103,20 +152,11 @@ function tradingHoursElapsed(): number {
   return Math.max(1, arTime.getHours() - 10);
 }
 
-/**
- * Calculate total quantity across all order book levels.
- */
 function calcDepth(levels: IOLPunta[]): number {
   if (!levels || levels.length === 0) return 0;
   return levels.reduce((sum, p) => sum + (p.cantidad || 0), 0);
 }
 
-/**
- * Calculate market pressure ratio from bid/ask depth.
- *   > 1 → buying pressure (more bid depth)
- *   = 1 → balanced
- *   < 1 → selling pressure (more ask depth)
- */
 function calcMarketPressure(bidDepth: number, askDepth: number): number {
   if (bidDepth === 0 && askDepth === 0) return 0;
   if (askDepth === 0) return bidDepth > 0 ? 99 : 0;
@@ -128,34 +168,45 @@ function calcMarketPressure(bidDepth: number, askDepth: number): number {
 
 /**
  * Authenticate with the IOL API and return an access token.
- *
- * Uses `IOL_USERNAME` / `IOL_PASSWORD` env vars.  The token is cached
- * at module level and auto-refreshed when it approaches expiry
- * (refresh at 12 min, token expires at 15 min).
- *
- * @returns The Bearer access token, or `null` if credentials are missing
- *          or authentication failed.
+ * If credentials exist in .env, this MUST succeed.
  */
 export async function getIOLToken(): Promise<string | null> {
-  const username = process.env.IOL_USERNAME;
-  const password = process.env.IOL_PASSWORD;
+  const { username, password } = getCredentials();
 
   if (!username || !password) {
+    iolAvailable = false;
+    lastAuthError = 'Credentials not configured in .env (IOL_USERNAME / IOL_PASSWORD are empty)';
+    return null;
+  }
+
+  // Circuit breaker: check if we're in cooldown
+  if (circuitBreakerUntil > Date.now()) {
+    return null;
+  }
+
+  // Hard lock: too many failures
+  if (consecutiveAuthFailures >= CB_HARD_LOCK) {
+    console.error(
+      `[iol-bridge] 🔒 CIRCUIT BREAKER LOCKED — ${consecutiveAuthFailures} consecutive auth failures. ` +
+      `Call resetIOLState() or fix credentials in .env to retry.`
+    );
     iolAvailable = false;
     return null;
   }
 
-  // Return cached token if still valid (120 s safety buffer — avoid blind spots)
+  // Return cached token if still valid
   if (iolAccessToken && Date.now() < iolTokenExpiry - 120_000) {
     return iolAccessToken;
   }
 
   try {
-    const params = new URLSearchParams({
-      username,
-      password,
-      grant_type: 'password',
-    });
+    // Build the form data — this is the standard IOL auth flow
+    const params = new URLSearchParams();
+    params.append('username', username);
+    params.append('password', password);
+    params.append('grant_type', 'password');
+
+    console.log(`[iol-bridge] Attempting auth for user: ${username.substring(0, 3)}***@*** (pass length: ${password.length})`);
 
     const res = await fetch(IOL_TOKEN_URL, {
       method: 'POST',
@@ -164,11 +215,32 @@ export async function getIOLToken(): Promise<string | null> {
       signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS),
     });
 
+    lastAuthStatus = res.status;
+
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      console.error(
-        `[iol-bridge] Auth failed (${res.status}): ${errText}`,
-      );
+      consecutiveAuthFailures++;
+      lastAuthError = `HTTP ${res.status}: ${errText.substring(0, 200)}`;
+
+      if (consecutiveAuthFailures >= CB_HARD_LOCK) {
+        console.error(
+          `[iol-bridge] 🔒 CIRCUIT BREAKER HARD LOCK — ${consecutiveAuthFailures} failures. ` +
+          `IOL DISABLED until manual resetIOLState().`
+        );
+        circuitBreakerUntil = Infinity;
+      } else if (consecutiveAuthFailures >= CB_MAX_RETRIES) {
+        circuitBreakerUntil = Date.now() + CB_BACKOFF_MS;
+        console.error(
+          `[iol-bridge] ⚠️ CIRCUIT BREAKER BACKOFF — ${consecutiveAuthFailures} failures. ` +
+          `Backing off for 30 min. Auth failed (${res.status}): ${errText.substring(0, 100)}`
+        );
+      } else {
+        console.error(
+          `[iol-bridge] Auth failed (${res.status}): ${errText.substring(0, 100)} ` +
+          `[attempt ${consecutiveAuthFailures}/${CB_HARD_LOCK}]`
+        );
+      }
+
       iolAvailable = false;
       return null;
     }
@@ -178,15 +250,33 @@ export async function getIOLToken(): Promise<string | null> {
       expires_in: number;
     };
 
+    if (!data.access_token) {
+      consecutiveAuthFailures++;
+      lastAuthError = 'Token response missing access_token field';
+      iolAvailable = false;
+      return null;
+    }
+
     iolAccessToken = data.access_token;
     iolTokenExpiry = Date.now() + (data.expires_in || 900) * 1000;
     iolAvailable = true;
+    lastAuthError = null;
+    lastAuthStatus = 200;
+
+    // Reset circuit breaker on success
+    if (consecutiveAuthFailures > 0) {
+      console.log(`[iol-bridge] ✅ Auth restored after ${consecutiveAuthFailures} previous failures — circuit breaker reset`);
+      consecutiveAuthFailures = 0;
+      circuitBreakerUntil = 0;
+    } else {
+      console.log(`[iol-bridge] ✅ Auth successful — token cached for ${data.expires_in || 900}s`);
+    }
 
     return iolAccessToken;
   } catch (error) {
-    console.error(
-      `[iol-bridge] Auth error: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    const errMsg = error instanceof Error ? error.message : String(error);
+    lastAuthError = `Network error: ${errMsg}`;
+    console.error(`[iol-bridge] Auth error: ${errMsg}`);
     iolAvailable = false;
     return null;
   }
@@ -194,14 +284,6 @@ export async function getIOLToken(): Promise<string | null> {
 
 /**
  * Fetch cotización (Level-2) data for a specific ticker from IOL.
- *
- * Automatically obtains / refreshes the Bearer token before making
- * the request.  Returns processed `IOLLevel2Data` with volume,
- * bid/ask, depth, market pressure, estimated average daily volume,
- * and liquidity alert.
- *
- * @param ticker - Instrument ticker (e.g. "T5W3" or "LECAPX9S").
- * @returns `IOLLevel2Data` with status, or `null` on unrecoverable error.
  */
 export async function getIOLCotizacion(
   ticker: string,
@@ -253,25 +335,19 @@ export async function getIOLCotizacion(
       }
     }
 
-    // Volume fields
     const cantidadOperada = data.cantidadOperada || 0;
     const volumenNominal = data.volumen || 0;
-
-    // Estimate average daily volume:
-    //   avgDaily ≈ currentNominal × (7 / tradingHoursElapsed)
     const hoursElapsed = tradingHoursElapsed();
     const estimatedAvgDaily =
       volumenNominal > 0
         ? volumenNominal * (7 / hoursElapsed)
         : cantidadOperada * 100 * (7 / hoursElapsed);
 
-    // Liquidity alert: volume ratio < 10 % of estimated avg daily
     const volumeRatio =
       estimatedAvgDaily > 0 ? volumenNominal / estimatedAvgDaily : 0;
     const liquidityAlert =
       volumeRatio < IOL_LOW_VOLUME_PCT && volumenNominal > 0;
 
-    // Raw puntas for depth calculations
     const puntasDetalle = data.puntas
       ? {
           compra: data.puntas.compra?.map((p) => ({ cantidad: p.cantidad, precio: p.precio })) ?? [],
@@ -279,7 +355,6 @@ export async function getIOLCotizacion(
         }
       : { compra: [], venta: [] };
 
-    // V3.2.3-PRO: Calculate depth & market pressure from puntas
     const bidDepth = calcDepth(puntasDetalle.compra);
     const askDepth = calcDepth(puntasDetalle.venta);
     const marketPressure = calcMarketPressure(bidDepth, askDepth);
@@ -297,29 +372,75 @@ export async function getIOLCotizacion(
       puntas_detalle: puntasDetalle,
     };
   } catch {
-    // Intentionally silent — per-ticker failures should not cascade
     return null;
   }
 }
 
 /**
  * Check whether IOL credentials are configured and the token is valid.
- *
- * @returns `true` if credentials exist and the last token fetch succeeded.
  */
 export function isIOLAvailable(): boolean {
-  if (!process.env.IOL_USERNAME || !process.env.IOL_PASSWORD) {
-    return false;
-  }
+  const { username, password } = getCredentials();
+  if (!username || !password) return false;
   return iolAvailable;
 }
 
 /**
+ * Check if IOL credentials exist in .env (regardless of auth state).
+ */
+export function iolCredentialsExist(): boolean {
+  const { username, password } = getCredentials();
+  return !!(username && password);
+}
+
+/**
  * Reset IOL connection state — allows re-authentication after a failure.
- * Useful for recovery from transient auth errors.
  */
 export function resetIOLState(): void {
   iolAccessToken = null;
   iolTokenExpiry = 0;
   iolAvailable = false;
+  consecutiveAuthFailures = 0;
+  circuitBreakerUntil = 0;
+  lastAuthError = null;
+  lastAuthStatus = null;
+  console.log('[iol-bridge] State reset — circuit breaker cleared, ready to retry');
+}
+
+/**
+ * Get full diagnostic info about IOL state.
+ * Used by the /api/iol-status endpoint to show the user exactly what's wrong.
+ */
+export function getIOLDiagnostic(): IOLDiagnostic {
+  const { username, password } = getCredentials();
+  const cbStatus = getIOLCircuitBreakerStatus();
+
+  return {
+    credentials_configured: !!(username && password),
+    username_present: !!username,
+    password_present: !!password,
+    username_length: username.length,
+    password_length: password.length,
+    token_cached: !!iolAccessToken,
+    token_expires_at: iolTokenExpiry > 0 ? new Date(iolTokenExpiry).toISOString() : null,
+    iol_available: iolAvailable,
+    circuit_breaker: cbStatus,
+    last_auth_error: lastAuthError,
+    last_auth_status: lastAuthStatus,
+  };
+}
+
+/**
+ * Get circuit breaker status for diagnostics.
+ */
+export function getIOLCircuitBreakerStatus(): {
+  failures: number;
+  locked: boolean;
+  backoff_until: string | null;
+} {
+  return {
+    failures: consecutiveAuthFailures,
+    locked: consecutiveAuthFailures >= CB_HARD_LOCK,
+    backoff_until: circuitBreakerUntil > 0 && circuitBreakerUntil < Infinity ? new Date(circuitBreakerUntil).toISOString() : null,
+  };
 }

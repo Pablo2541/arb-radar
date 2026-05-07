@@ -16,6 +16,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getIOLCotizacion, isIOLAvailable, getIOLToken, type IOLLevel2Data } from '@/lib/iol-bridge';
 import { detectAbsorption, type AbsorptionAlert } from '@/lib/absorption-rule';
 
+// V3.4.5: Sequential fetch helper — sandbox crashes if >1 external HTTP request is in-flight concurrently
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+
 export const dynamic = 'force-dynamic';
 export const revalidate = 30;
 
@@ -80,69 +83,66 @@ export async function GET(request: NextRequest) {
   const results: MarketPressureEntry[] = [];
   const now = Date.now();
 
-  // Process in batches of 5
-  for (let i = 0; i < tickers.length; i += 5) {
-    const batch = tickers.slice(i, i + 5);
-    const batchResults = await Promise.all(
-      batch.map(async (ticker) => {
-        try {
-          const l2Data = await getIOLCotizacion(ticker);
-          if (!l2Data) {
-            return { ticker, bid_depth: 0, ask_depth: 0, market_pressure: null, status: 'error' as const, absorption_alert: null, puntas_detalle: { compra: [], venta: [] } };
-          }
+  // V3.4.5: Process tickers SEQUENTIALLY with 500ms delay between each external HTTP fetch
+  // Sandbox crashes if >1 external HTTP request is in-flight at the same time
+  for (let i = 0; i < tickers.length; i++) {
+    const ticker = tickers[i];
+    try {
+      const l2Data = await getIOLCotizacion(ticker);
+      if (!l2Data) {
+        results.push({ ticker, bid_depth: 0, ask_depth: 0, market_pressure: null, status: 'error' as const, absorption_alert: null, puntas_detalle: { compra: [], venta: [] } });
+        if (i < tickers.length - 1) await sleep(500);
+        continue;
+      }
 
-          const compraPuntas = l2Data.puntas_detalle?.compra ?? [];
-          const ventaPuntas = l2Data.puntas_detalle?.venta ?? [];
-          const bidDepth = compraPuntas.reduce((s, p) => s + (p.cantidad || 0), 0);
-          const askDepth = ventaPuntas.reduce((s, p) => s + (p.cantidad || 0), 0);
-          const marketPressure = askDepth > 0 ? parseFloat((bidDepth / askDepth).toFixed(2)) : (bidDepth > 0 ? null : null);
+      const compraPuntas = l2Data.puntas_detalle?.compra ?? [];
+      const ventaPuntas = l2Data.puntas_detalle?.venta ?? [];
+      const bidDepth = compraPuntas.reduce((s, p) => s + (p.cantidad || 0), 0);
+      const askDepth = ventaPuntas.reduce((s, p) => s + (p.cantidad || 0), 0);
+      const marketPressure = askDepth > 0 ? parseFloat((bidDepth / askDepth).toFixed(2)) : (bidDepth > 0 ? null : null);
 
-          // Update depth history for rolling average
-          const history = depthHistory.get(ticker) || [];
-          history.push({ askDepth, timestamp: now });
-          // Keep only last 15 minutes
-          const cutoff = now - HISTORY_WINDOW_MS;
-          const recentHistory = history.filter(h => h.timestamp >= cutoff);
-          depthHistory.set(ticker, recentHistory);
+      // Update depth history for rolling average
+      const history = depthHistory.get(ticker) || [];
+      history.push({ askDepth, timestamp: now });
+      // Keep only last 15 minutes
+      const cutoff = now - HISTORY_WINDOW_MS;
+      const recentHistory = history.filter(h => h.timestamp >= cutoff);
+      depthHistory.set(ticker, recentHistory);
 
-          // Calculate rolling average
-          const avgAskDepth = recentHistory.length > 1
-            ? recentHistory.reduce((s, h) => s + h.askDepth, 0) / recentHistory.length
-            : 0;
+      // Calculate rolling average
+      const avgAskDepth = recentHistory.length > 1
+        ? recentHistory.reduce((s, h) => s + h.askDepth, 0) / recentHistory.length
+        : 0;
 
-          // Detect absorption
-          const absorptionAlert = detectAbsorption({
-            ticker,
-            bidDepth,
-            askDepth,
-            marketPressure: marketPressure ?? 0,
-            puntasCompra: compraPuntas,
-            puntasVenta: ventaPuntas,
-            avgAskDepth15min: avgAskDepth,
-            instrumentType: ticker.startsWith('T') ? 'BONCAP' : 'LECAP',
-            tem: 0, // We don't have TEM here; the frontend can supplement
-          });
+      // Detect absorption
+      const absorptionAlert = detectAbsorption({
+        ticker,
+        bidDepth,
+        askDepth,
+        marketPressure: marketPressure ?? 0,
+        puntasCompra: compraPuntas,
+        puntasVenta: ventaPuntas,
+        avgAskDepth15min: avgAskDepth,
+        instrumentType: ticker.startsWith('T') ? 'BONCAP' : 'LECAP',
+        tem: 0, // We don't have TEM here; the frontend can supplement
+      });
 
-          return {
-            ticker,
-            bid_depth: bidDepth,
-            ask_depth: askDepth,
-            market_pressure: marketPressure,
-            status: l2Data.iol_status as 'online' | 'offline' | 'no_data',
-            absorption_alert: absorptionAlert,
-            puntas_detalle: { compra: compraPuntas, venta: ventaPuntas },
-          };
-        } catch {
-          return { ticker, bid_depth: 0, ask_depth: 0, market_pressure: null, status: 'error' as const, absorption_alert: null, puntas_detalle: { compra: [], venta: [] } };
-        }
-      })
-    );
+      results.push({
+        ticker,
+        bid_depth: bidDepth,
+        ask_depth: askDepth,
+        market_pressure: marketPressure,
+        status: l2Data.iol_status as 'online' | 'offline' | 'no_data',
+        absorption_alert: absorptionAlert,
+        puntas_detalle: { compra: compraPuntas, venta: ventaPuntas },
+      });
+    } catch {
+      results.push({ ticker, bid_depth: 0, ask_depth: 0, market_pressure: null, status: 'error' as const, absorption_alert: null, puntas_detalle: { compra: [], venta: [] } });
+    }
 
-    results.push(...batchResults);
-
-    // Rate limit delay between batches
-    if (i + 5 < tickers.length) {
-      await new Promise(r => setTimeout(r, 200));
+    // V3.4.5: 500ms delay between each external HTTP fetch
+    if (i < tickers.length - 1) {
+      await sleep(500);
     }
   }
 

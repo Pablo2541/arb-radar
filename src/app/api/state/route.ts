@@ -1,15 +1,16 @@
 // ════════════════════════════════════════════════════════════════════════
-// V3.4 — /api/state: Persist & Restore Application State
+// V3.4.4 — /api/state: Persist & Restore Application State
 //
 // GET  → Load last persisted state from DB
 // PUT  → Save current state to DB (called every 60s by debounced Zustand)
 //        ?forceSync=true → immediate write (bypasses debounce on client)
 //
-// If DATABASE_URL is not configured, returns { fallback: true }
-// so the client knows to use localStorage instead.
+// CRITICAL: Uses safeDbOp() — never crashes the server.
+// If DB is unavailable, returns { fallback: true } immediately.
 // ════════════════════════════════════════════════════════════════════════
 
 import { NextRequest, NextResponse } from 'next/server';
+import { safeDbOp, isDbAvailable, reEnableDb } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -33,17 +34,23 @@ interface PersistedState {
 
 // ── GET: Load persisted state ─────────────────────────────────────────
 export async function GET() {
+  // Quick check — if DB is known to be down, skip immediately
+  if (!isDbAvailable()) {
+    return NextResponse.json({ fallback: true, error: 'Database temporarily unavailable' });
+  }
+
   try {
-    const { db } = await import('@/lib/db');
+    const state = await safeDbOp((db) =>
+      db.appState.findUnique({ where: { id: 'main' } })
+    );
 
-    // V3.3-PRO: Handle null db (DATABASE_URL invalid/missing)
-    if (!db) {
-      return NextResponse.json({ fallback: true, error: 'Database not configured' });
-    }
-
-    const state = await db.appState.findUnique({ where: { id: 'main' } });
-
-    if (!state) {
+    if (state === null) {
+      // null means either DB failed or no record found
+      // If DB is available but no record, return { exists: false }
+      // If DB failed, safeDbOp already handled the error
+      if (!isDbAvailable()) {
+        return NextResponse.json({ fallback: true, error: 'Database temporarily unavailable' });
+      }
       return NextResponse.json({ exists: false });
     }
 
@@ -66,64 +73,77 @@ export async function GET() {
       } satisfies PersistedState,
     });
   } catch (error) {
-    // DB not available — signal fallback to localStorage
-    console.error('[/api/state GET] DB error, falling back to localStorage:', error);
+    // Shouldn't reach here since safeDbOp catches errors, but just in case
+    console.error('[/api/state GET] Unexpected error:', error);
     return NextResponse.json({ fallback: true, error: 'Database unavailable' });
   }
 }
 
 // ── PUT: Persist state to DB ──────────────────────────────────────────
 export async function PUT(request: NextRequest) {
+  // Quick check — if DB is known to be down, skip immediately
+  if (!isDbAvailable()) {
+    return NextResponse.json({ ok: false, fallback: true, error: 'Database temporarily unavailable' });
+  }
+
   try {
     const body = await request.json() as PersistedState;
 
-    const { db } = await import('@/lib/db');
+    const state = await safeDbOp((db) =>
+      db.appState.upsert({
+        where: { id: 'main' },
+        update: {
+          instruments: body.instruments,
+          config: body.config,
+          position: body.position,
+          transactions: body.transactions,
+          lastUpdate: body.lastUpdate,
+          rawInput: body.rawInput,
+          mepRate: body.mepRate,
+          cclRate: body.cclRate,
+          liveActive: body.liveActive,
+          iolLevel2Online: body.iolLevel2Online ?? false,
+          externalHistory: body.externalHistory ?? '[]',
+          simulations: body.simulations ?? '[]',
+        },
+        create: {
+          id: 'main',
+          instruments: body.instruments,
+          config: body.config,
+          position: body.position,
+          transactions: body.transactions,
+          lastUpdate: body.lastUpdate,
+          rawInput: body.rawInput,
+          mepRate: body.mepRate,
+          cclRate: body.cclRate,
+          liveActive: body.liveActive,
+          iolLevel2Online: body.iolLevel2Online ?? false,
+          externalHistory: body.externalHistory ?? '[]',
+          simulations: body.simulations ?? '[]',
+        },
+      })
+    );
 
-    // V3.3-PRO: Handle null db (DATABASE_URL invalid/missing)
-    if (!db) {
-      return NextResponse.json({ ok: false, fallback: true, error: 'Database not configured' });
+    if (state === null) {
+      return NextResponse.json(
+        { ok: false, fallback: true, error: 'Database temporarily unavailable' },
+        { status: 503 }
+      );
     }
-
-    // Upsert: create if not exists, update if exists
-    const state = await db.appState.upsert({
-      where: { id: 'main' },
-      update: {
-        instruments: body.instruments,
-        config: body.config,
-        position: body.position,
-        transactions: body.transactions,
-        lastUpdate: body.lastUpdate,
-        rawInput: body.rawInput,
-        mepRate: body.mepRate,
-        cclRate: body.cclRate,
-        liveActive: body.liveActive,
-        iolLevel2Online: body.iolLevel2Online ?? false,
-        externalHistory: body.externalHistory ?? '[]',
-        simulations: body.simulations ?? '[]',
-      },
-      create: {
-        id: 'main',
-        instruments: body.instruments,
-        config: body.config,
-        position: body.position,
-        transactions: body.transactions,
-        lastUpdate: body.lastUpdate,
-        rawInput: body.rawInput,
-        mepRate: body.mepRate,
-        cclRate: body.cclRate,
-        liveActive: body.liveActive,
-        iolLevel2Online: body.iolLevel2Online ?? false,
-        externalHistory: body.externalHistory ?? '[]',
-        simulations: body.simulations ?? '[]',
-      },
-    });
 
     return NextResponse.json({ ok: true, updatedAt: state.updatedAt });
   } catch (error) {
-    console.error('[/api/state PUT] DB error:', error);
+    console.error('[/api/state PUT] Unexpected error:', error);
     return NextResponse.json(
-      { ok: false, error: 'Database unavailable' },
+      { ok: false, fallback: true, error: 'Database unavailable' },
       { status: 503 }
     );
   }
+}
+
+// ── POST: Re-enable DB connection ──────────────────────────────────────
+// Client can call this after detecting a DB failure to force a retry
+export async function POST() {
+  reEnableDb();
+  return NextResponse.json({ ok: true, message: 'DB connection re-enabled' });
 }

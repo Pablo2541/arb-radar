@@ -9,12 +9,13 @@ import {
 import { useRadarStore, initializeStore } from '@/lib/store';
 import type { AppTheme, TabId, ActivityItem } from '@/lib/store';
 import { filterForCharts } from '@/lib/outlierFilter';
+import { startApiSequence, stopApiSequence, type ApiCallback } from '@/lib/api-orchestrator';
 import { spreadVsCaucion, caucionTEMFromTNA, getCaucionForDays, analyzeCurveShape } from '@/lib/calculations';
 import { useSessionHistory } from '@/hooks/useSessionHistory';
 import { useLiveInstruments } from '@/hooks/useLiveInstruments';
 import type { PriceHistoryFile } from '@/lib/priceHistory';
 
-// ── V3.4-PRO: Static imports — Eliminates ChunkLoadError ──
+// ── V4.0 BLINDADO: Static imports — Eliminates ChunkLoadError ──
 // Dynamic imports caused ChunkLoadError in preview environments.
 // All tabs now load eagerly — zero chunk fetch failures possible.
 import ThresholdAlerts from '@/components/dashboard/ThresholdAlerts';
@@ -40,7 +41,7 @@ const TAB_CONFIG: { id: TabId; icon: string; label: string; shortcut: string }[]
 ];
 
 // ════════════════════════════════════════════════════════════════════════
-// V3.3-PRO — Global Absorption Alert Banner
+// V4.0 BLINDADO — Global Absorption Alert Banner
 // Polls /api/market-pressure for wall detection alerts
 // ════════════════════════════════════════════════════════════════════════
 
@@ -61,15 +62,16 @@ function AbsorptionAlertBanner() {
 
   const fetchAlerts = useCallback(async () => {
     try {
-      // Query top instruments by TEM (most likely to have walls)
-      const tickers = 'T15E7,T30J7,T5W3,S1L5';
-      const res = await fetch(`/api/market-pressure?tickers=${tickers}`);
-      if (!res.ok) return;
-      const json = await res.json();
-      if (json.iol_available && json.alerts && json.alerts.length > 0) {
-        setAlerts(json.alerts);
-      } else {
-        setAlerts([]);
+      // V4.0: Use the API orchestrator cache instead of direct fetch
+      const { getCachedResult } = await import('@/lib/api-orchestrator');
+      const cached = getCachedResult('market-pressure');
+      if (cached && !cached.error && cached.data) {
+        const json = cached.data as Record<string, unknown>;
+        if (json.iol_available && json.alerts && Array.isArray(json.alerts) && json.alerts.length > 0) {
+          setAlerts(json.alerts as AbsorptionAlertData[]);
+        } else {
+          setAlerts([]);
+        }
       }
     } catch {
       // Silent fail
@@ -77,8 +79,9 @@ function AbsorptionAlertBanner() {
   }, []);
 
   useEffect(() => {
-    const initialTimeout = setTimeout(() => fetchAlerts(), 0);
-    intervalRef.current = setInterval(fetchAlerts, 60_000);
+    // V4.0: Check orchestrator cache every 30s (no direct API calls)
+    const initialTimeout = setTimeout(() => fetchAlerts(), 25000);
+    intervalRef.current = setInterval(fetchAlerts, 30_000);
     return () => {
       clearTimeout(initialTimeout);
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -94,20 +97,20 @@ function AbsorptionAlertBanner() {
       {visibleAlerts.map((alert, idx) => {
         const isImminent = alert.alertType === 'ABSORPTION_IMMINENT';
         const isComplete = alert.alertType === 'ABSORPTION_COMPLETE';
-        const bgClass = isImminent 
-          ? 'bg-[#f87171]/10 border-[#f87171]/30' 
-          : isComplete 
+        const bgClass = isImminent
+          ? 'bg-[#f87171]/10 border-[#f87171]/30'
+          : isComplete
             ? 'bg-[#2eebc8]/10 border-[#2eebc8]/30'
             : 'bg-[#fbbf24]/8 border-[#fbbf24]/20';
-        const textClass = isImminent 
-          ? 'text-[#f87171]' 
-          : isComplete 
+        const textClass = isImminent
+          ? 'text-[#f87171]'
+          : isComplete
             ? 'text-[#2eebc8]'
             : 'text-[#fbbf24]';
         const emoji = isImminent ? '🚨' : isComplete ? '✅' : '🧱';
 
         return (
-          <div 
+          <div
             key={`${alert.ticker}-${alert.alertType}-${idx}`}
             className={`flex items-center justify-between p-2.5 rounded-lg border ${bgClass} ${isImminent ? 'animate-pulse' : ''}`}
           >
@@ -146,7 +149,8 @@ function AbsorptionAlertBanner() {
 
 function HomeContent() {
   // ════════════════════════════════════════════════════════════════
-  // V3.0 — Zustand Store (replaces ALL useState for shared state)
+  // V4.0 BLINDADO — Zustand Store (replaces ALL useState for shared state)
+  // NO NEON DB — File persistence only
   // ════════════════════════════════════════════════════════════════
   const instruments = useRadarStore(s => s.instruments);
   const config = useRadarStore(s => s.config);
@@ -163,13 +167,14 @@ function HomeContent() {
   const theme = useRadarStore(s => s.theme);
   const mounted = useRadarStore(s => s.mounted);
   const currentTime = useRadarStore(s => s.currentTime);
-  const dbAvailable = useRadarStore(s => s.dbAvailable);
-  const lastDbSyncStatus = useRadarStore(s => s.lastDbSyncStatus);
   const iolLevel2Online = useRadarStore(s => s.iolLevel2Online);
   const iolCredentialsExist = useRadarStore(s => s.iolCredentialsExist);
   const iolConnectionFailed = useRadarStore(s => s.iolConnectionFailed);
   const riesgoPaisAuto = useRadarStore(s => s.riesgoPaisAuto);
-  // V3.4.1: MT indicator uses reactive hooks (not getState())
+  // V4.0: File persistence indicators (replaces DB sync)
+  const portfolioSource = useRadarStore(s => s.portfolioSource);
+  const portfolioLastSaved = useRadarStore(s => s.portfolioLastSaved);
+  // Market Truth indicator uses reactive hooks
   const marketTruth = useRadarStore(s => s.marketTruth);
   const marketTruthStale = useRadarStore(s => s.marketTruthStale);
 
@@ -188,15 +193,13 @@ function HomeContent() {
   const setPriceHistory = useRadarStore(s => s.setPriceHistory);
   const setCurrentTime = useRadarStore(s => s.setCurrentTime);
 
-
   // ── Local-only state (NOT in store) ──
   const [tabTransition, setTabTransition] = useState(false);
   const [isTabLoading, setIsTabLoading] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
   const [showHelp, setShowHelp] = useState(false);
-  const [showNukeConfirm, setShowNukeConfirm] = useState(false);
   const [dolarLastUpdateTime, setDolarLastUpdateTime] = useState<string>('');
-  // V3.3-PRO: Track previous Riesgo País value for trend arrow
+  // Track previous Riesgo País value for trend arrow
   const prevRiesgoPaisRef = useRef<number | null>(null);
   const [riesgoPaisTrend, setRiesgoPaisTrend] = useState<'up' | 'down' | 'flat' | null>(null);
 
@@ -233,7 +236,7 @@ function HomeContent() {
         tem: liveInst.tem * 100,
         tir: liveInst.tem * 100,
         days: liveInst.days_to_expiry,
-        // V3.4: IOL Level 2 enrichment from /api/letras — real-time order book data
+        // IOL Level 2 enrichment from /api/letras — real-time order book data
         iolVolume: liveInst.iol_volume ?? inst.iolVolume,
         iolBid: liveInst.iol_bid ?? inst.iolBid,
         iolAsk: liveInst.iol_ask ?? inst.iolAsk,
@@ -241,7 +244,7 @@ function HomeContent() {
         iolAskDepth: liveInst.iol_ask_depth ?? inst.iolAskDepth,
         iolMarketPressure: liveInst.iol_market_pressure ?? inst.iolMarketPressure,
         iolStatus: liveInst.iol_status ?? inst.iolStatus,
-        // V3.4: data912 volume as fallback for VOL column
+        // data912 volume as fallback for VOL column
         data912Volume: liveInst.volume ?? inst.data912Volume,
       };
     });
@@ -280,7 +283,7 @@ function HomeContent() {
   // V1.3 — Session History (Momentum Module)
   const sessionHistory = useSessionHistory();
 
-  // ── Theme toggle (V3.0 — uses store) ──
+  // ── Theme toggle (uses store) ──
   const toggleTheme = useCallback(() => {
     const current = useRadarStore.getState().theme;
     useRadarStore.getState().setTheme(current === 'dark' ? 'light' : 'dark');
@@ -329,6 +332,17 @@ function HomeContent() {
         e.preventDefault();
         toggleTheme();
       }
+      // Ctrl+L to toggle LIVE refresh mode (faster intervals)
+      if (e.ctrlKey && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        const liveToggleEvent = new CustomEvent('arb-radar-toggle-live');
+        window.dispatchEvent(liveToggleEvent);
+      }
+      // Ctrl+S to save portfolio to file
+      if (e.ctrlKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        useRadarStore.getState().savePortfolioToFile();
+      }
       // Show help modal on ? key
       if (e.key === '?' || (e.shiftKey && e.key === '/')) {
         e.preventDefault();
@@ -337,87 +351,95 @@ function HomeContent() {
       // Close help on Escape
       if (e.key === 'Escape') {
         setShowHelp(false);
-        setShowNukeConfirm(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleTabChange, toggleTheme]);
 
-  // ── V3.0: Initialize store (DB first, then localStorage fallback) ──
-  // V3.4: After init, force sync all local data to cloud DB (no debounce)
-  useEffect(() => {
-    initializeStore().then(() => {
-      const validInstruments = useRadarStore.getState().instruments;
-      sessionHistory.addSnapshot(validInstruments);
-      // V3.4: Force immediate DB sync — push all localStorage data to cloud
-      useRadarStore.getState().forceSyncToDb().catch(() => {
-        // Silent fail — DB unavailable, localStorage is the fallback
-      });
-    });
-  }, []);
+  // ════════════════════════════════════════════════════════════════
+  // V4.0 BLINDADO: Initialize store — File first, then localStorage fallback
+  // No DB sync. Portfolio.json is the TRUTH file.
+  // After initialization, auto-start the API orchestrator after 3s delay.
+  // ════════════════════════════════════════════════════════════════
+  const apiOrchestratorStartedRef = useRef(false);
 
-  // ── V3.4: Proactive IOL Level 2 availability check on startup ──
-  // Calls /api/iol-level2 with a test ticker to detect IOL status.
-  // Sets 3-state LED: online (purple pulsing), no credentials (gray), connection failed (orange)
-  useEffect(() => {
-    const checkIOL = async () => {
-      try {
-        const res = await fetch('/api/iol-level2?tickers=T5W3', {
-          signal: AbortSignal.timeout(8000),
-        });
-        if (!res.ok) {
-          // API error — likely credentials exist but connection failed
-          const store = useRadarStore.getState();
-          store.setIolCredentialsExist(true);
-          store.setIolConnectionFailed(true);
-          store.setIolLevel2Online(false);
-          return;
+  const handleApiResult = useCallback<ApiCallback>((name: string, data: unknown, error: boolean) => {
+    if (error) return; // Silent — cached data or defaults will be used
+
+    try {
+      if (name === 'market-truth' && data && typeof data === 'object') {
+        const mt = data as Record<string, unknown>;
+        // ── Process RP ──
+        const rp = mt.riesgo_pais as Record<string, unknown> | undefined;
+        if (rp?.value && rp.value as number > 0) {
+          const currentRP = useRadarStore.getState().riesgoPaisAuto ?? useRadarStore.getState().config.riesgoPais;
+          if (prevRiesgoPaisRef.current !== null && currentRP !== (rp.value as number)) {
+            setRiesgoPaisTrend((rp.value as number) > currentRP ? 'up' : (rp.value as number) < currentRP ? 'down' : 'flat');
+          }
+          prevRiesgoPaisRef.current = currentRP;
         }
-        const data = await res.json();
+        // ── Set full Market Truth data ──
+        useRadarStore.getState().setMarketTruth(data);
+      }
 
-        if (data.token_status === 'not_configured') {
-          // No credentials in .env
-          const store = useRadarStore.getState();
+      if (name === 'iol-status' && data && typeof data === 'object') {
+        const iolData = data as Record<string, unknown>;
+        const store = useRadarStore.getState();
+        if (iolData.token_status === 'not_configured') {
           store.setIolCredentialsExist(false);
           store.setIolConnectionFailed(false);
           store.setIolLevel2Online(false);
-        } else if (data.token_status === 'invalid') {
-          // Credentials exist but auth failed
-          const store = useRadarStore.getState();
+        } else if (iolData.token_status === 'invalid') {
           store.setIolCredentialsExist(true);
           store.setIolConnectionFailed(true);
           store.setIolLevel2Online(false);
-        } else if (data.iol_available) {
-          // IOL is online — check if any ticker has actual data
-          const hasOnlineData = Object.values(data.data as Record<string, { status: string }>)
+        } else if (iolData.iol_available) {
+          const hasOnlineData = Object.values(iolData.data as Record<string, { status: string }>)
             .some((td) => td.status === 'online');
-          const store = useRadarStore.getState();
           store.setIolCredentialsExist(true);
           store.setIolConnectionFailed(false);
           store.setIolLevel2Online(hasOnlineData);
         } else {
-          // iol_available is false but token isn't explicitly invalid
-          const store = useRadarStore.getState();
           store.setIolCredentialsExist(true);
           store.setIolConnectionFailed(true);
           store.setIolLevel2Online(false);
         }
-      } catch {
-        // Network error — can't determine status, leave as defaults
       }
-    };
-    checkIOL();
-    // V3.4.3: Re-check IOL status every 60s to recover from transient failures
-    const iolInterval = setInterval(checkIOL, 60_000);
-    return () => clearInterval(iolInterval);
+    } catch {
+      // Silent — orchestrator results are best-effort
+    }
   }, []);
 
-  // ── V3.0: Persist state changes (store handles localStorage + DB) ──
+  useEffect(() => {
+    initializeStore().then(() => {
+      const validInstruments = useRadarStore.getState().instruments;
+      sessionHistory.addSnapshot(validInstruments);
+
+      // Auto-start API orchestrator after 30-second delay
+      // The sandbox is fragile — page compilation + API calls = crash.
+      // Give the browser a full 30s to finish loading before hitting APIs.
+      if (!apiOrchestratorStartedRef.current) {
+        const startTimer = setTimeout(() => {
+          apiOrchestratorStartedRef.current = true;
+          startApiSequence(handleApiResult);
+          console.log('[page] API orchestrator auto-started after initialization');
+        }, 30000);
+        return () => clearTimeout(startTimer);
+      }
+    });
+    return () => {
+      if (apiOrchestratorStartedRef.current) {
+        stopApiSequence();
+        apiOrchestratorStartedRef.current = false;
+      }
+    };
+  }, []);
+
+  // ── V4.0: Persist state changes (store handles localStorage only) ──
   const updateInstruments = useCallback((v: Instrument[]) => {
     useRadarStore.getState().setInstruments(v);
     sessionHistory.addSnapshot(useRadarStore.getState().instruments);
-    // Activity feed removed — no layout shift
   }, [sessionHistory]);
 
   const updateConfig = useCallback((v: Config) => {
@@ -426,7 +448,6 @@ function HomeContent() {
 
   const updatePosition = useCallback((v: Position | null) => {
     useRadarStore.getState().setPosition(v);
-    // Activity feed removed — no layout shift
   }, []);
 
   const updateTransactions = useCallback((v: Transaction[]) => {
@@ -458,7 +479,6 @@ function HomeContent() {
   }, []);
   const handleDolarUpdate = useCallback((timestamp: string) => {
     setDolarLastUpdateTime(timestamp);
-    // Activity feed removed — no layout shift
   }, []);
 
   // V2.0.3: Sync new LIVE instruments to the permanent instruments list
@@ -470,7 +490,6 @@ function HomeContent() {
     if (trulyNew.length === 0) return;
     const updated = [...currentInstruments, ...trulyNew];
     useRadarStore.getState().setInstruments(updated);
-    // Activity feed removed — no layout shift
   }, []);
 
   // V2.0.3: Sync new LIVE instruments via useEffect (not during render!)
@@ -512,7 +531,6 @@ function HomeContent() {
       });
       if (hasChanges) {
         useRadarStore.getState().setInstruments(lastLive);
-        // Activity feed removed — no layout shift
       }
     }
     prevLiveActiveRef.current = liveData.active;
@@ -528,19 +546,11 @@ function HomeContent() {
   const curveShape = useMemo(() => analyzeCurveShape(sanitizedInstruments), [sanitizedInstruments]);
 
   // ════════════════════════════════════════════════════════════════
-  // V3.0 — NUKE BUTTON: Hard Reset via store.nukeAll()
+  // V4.0 BLINDADO — RESET: Simplified nuke (no confirmation dialog)
   // ════════════════════════════════════════════════════════════════
 
   const handleReset = () => {
-    setShowNukeConfirm(true);
-  };
-
-  const handleNukeConfirm = () => {
     useRadarStore.getState().nukeAll();
-  };
-
-  const handleNukeCancel = () => {
-    setShowNukeConfirm(false);
   };
 
   // ── Momentum ──
@@ -557,69 +567,15 @@ function HomeContent() {
     return day >= 1 && day <= 5 && hour >= 10 && hour < 17;
   }, [currentTime]);
 
-  // ── DB Sync indicator color ──
-  const dbSyncDotColor = useMemo(() => {
-    if (!dbAvailable) return '#6b7280'; // gray — DB not configured
-    switch (lastDbSyncStatus) {
-      case 'syncing': return '#fbbf24'; // yellow
-      case 'error': return '#f87171'; // red
-      case 'success': return '#2eebc8'; // green
-      default: return '#6b7280'; // gray — idle
+  // ── V4.0: FILE indicator color + label (replaces DB sync dot) ──
+  const fileIndicator = useMemo(() => {
+    switch (portfolioSource) {
+      case 'file': return { dotColor: '#2eebc8', label: 'FILE', title: 'Portfolio cargado desde portfolio.json' };
+      case 'localStorage': return { dotColor: '#fbbf24', label: 'FILE?', title: 'Portfolio desde localStorage (fallback — portfolio.json no disponible)' };
+      case 'defaults': return { dotColor: '#6b7280', label: 'FILE✗', title: 'Portfolio por defecto — sin archivo ni localStorage' };
+      default: return { dotColor: '#6b7280', label: 'FILE✗', title: 'Portfolio: estado desconocido' };
     }
-  }, [dbAvailable, lastDbSyncStatus]);
-
-  // V3.3-PRO: Market Truth Engine — Replaces old /api/country-risk polling
-  // Fetches RP + MEP with multi-source consensus and confidence levels
-  useEffect(() => {
-    const fetchMarketTruth = async () => {
-      try {
-        const res = await fetch('/api/market-truth');
-        if (!res.ok) return;
-        const data = await res.json();
-
-        // ── Process RP ──
-        if (data.riesgo_pais?.value && data.riesgo_pais.value > 0) {
-          const currentRP = useRadarStore.getState().riesgoPaisAuto ?? useRadarStore.getState().config.riesgoPais;
-          if (prevRiesgoPaisRef.current !== null && currentRP !== data.riesgo_pais.value) {
-            setRiesgoPaisTrend(data.riesgo_pais.value > currentRP ? 'up' : data.riesgo_pais.value < currentRP ? 'down' : 'flat');
-          }
-          prevRiesgoPaisRef.current = currentRP;
-        }
-
-        // ── Set full Market Truth data ──
-        useRadarStore.getState().setMarketTruth(data);
-
-        // ── Activity log ──
-        const rp = data.riesgo_pais;
-        const mep = data.mep;
-        // Activity feed removed — RP/MEP updates shown in status bar
-      } catch {
-        // silent — fallback to old /api/country-risk
-        try {
-          const res = await fetch('/api/country-risk');
-          if (!res.ok) return;
-          const data = await res.json();
-          if (data.value && data.value > 0) {
-            const currentRP = useRadarStore.getState().riesgoPaisAuto ?? useRadarStore.getState().config.riesgoPais;
-            if (prevRiesgoPaisRef.current !== null && currentRP !== data.value) {
-              setRiesgoPaisTrend(data.value > currentRP ? 'up' : data.value < currentRP ? 'down' : 'flat');
-            }
-            prevRiesgoPaisRef.current = currentRP;
-            useRadarStore.getState().setRiesgoPaisAuto(data.value);
-          }
-        } catch {
-          // completely silent
-        }
-      }
-    };
-
-    // PRIORITY HYDRATION: Fire immediately, no delay — cache must be warm on entry
-    fetchMarketTruth();
-    const interval = setInterval(fetchMarketTruth, 60 * 1000); // V3.4: 60s refresh — aligned with engine cache TTL (user directive)
-    return () => {
-      clearInterval(interval);
-    };
-  }, []);
+  }, [portfolioSource]);
 
   // ── Loading Screen ──
   if (!mounted) {
@@ -654,7 +610,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V3.4.3 PRO...
+            Cargando V4.0 BLINDADO...
           </p>
         </div>
       </div>
@@ -727,7 +683,7 @@ function HomeContent() {
   return (
     <div className="min-h-screen bg-app-bg text-app-text flex flex-col">
       {/* ── Header / Tab Bar ── */}
-      <header className="sticky top-0 z-30 bg-app-card/90 backdrop-blur-xl">
+      <header className="sticky top-0 z-30 header-gradient-bg backdrop-blur-xl">
         {/* Top row: Logo + clock + indicators + toggles */}
         <div className="flex items-center justify-between px-5 py-2 border-b border-app-border/40">
           <div className="flex items-center gap-3">
@@ -736,10 +692,18 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.4.3 — PRO TERMINAL</span>
-            {/* V3.0: DB Sync indicator dot */}
-            <div className="w-1.5 h-1.5 rounded-full hidden sm:block" style={{ backgroundColor: dbSyncDotColor }} title={dbAvailable ? `DB: ${lastDbSyncStatus}` : 'DB: no configurado'} />
-            {/* V3.4: IOL Level 2 indicator — 3-state LED */}
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V4.0 — BLINDADO</span>
+            {/* V4.0: FILE indicator — replaces DB sync dot */}
+            <div className="flex items-center gap-1 hidden sm:flex" title={fileIndicator.title}>
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: fileIndicator.dotColor, animation: portfolioSource === 'file' ? 'pulse 2s infinite' : 'none' }}
+              />
+              <span className="text-[7px] font-mono uppercase tracking-wider font-bold" style={{ color: fileIndicator.dotColor }}>
+                {fileIndicator.label}
+              </span>
+            </div>
+            {/* IOL Level 2 indicator — 3-state LED */}
             {(() => {
               // 3-state LED logic:
               // Online: credentials present AND API succeeds → "L2" purple pulsing
@@ -752,45 +716,39 @@ function HomeContent() {
               let dotColor: string;
               let label: string;
               let title: string;
-              let pulse: boolean;
 
               if (isOnline) {
                 dotColor = '#a78bfa'; // purple
                 label = 'L2';
                 title = 'IOL Nivel 2: ONLINE — Volumen validado';
-                pulse = true;
               } else if (noCreds) {
                 dotColor = '#6b7280'; // gray
                 label = 'L2✗';
                 title = 'IOL Nivel 2: SIN CREDENCIALES — Configure IOL_USERNAME/IOL_PASSWORD en .env';
-                pulse = false;
               } else if (connFailed) {
                 dotColor = '#fb923c'; // orange
                 label = 'L2⚠';
                 title = 'IOL Nivel 2: CONEXIÓN FALLIDA — Credenciales presentes pero API no responde';
-                pulse = false;
               } else {
                 dotColor = '#6b7280'; // gray (default/unknown)
                 label = 'L2✗';
                 title = 'IOL Nivel 2: OFFLINE';
-                pulse = false;
               }
 
               return (
                 <div className="flex items-center gap-1 hidden sm:flex" title={title}>
                   <div
-                    className={`w-1.5 h-1.5 rounded-full ${pulse ? 'animate-pulse' : ''}`}
+                    className={`w-2 h-2 rounded-full ${isOnline ? 'iol-dot-online' : connFailed ? 'iol-dot-error' : ''}`}
                     style={{ backgroundColor: dotColor }}
                   />
-                  <span className="text-[7px] font-mono uppercase tracking-wider" style={{ color: dotColor }}>
+                  <span className="text-[7px] font-mono uppercase tracking-wider font-bold" style={{ color: dotColor }}>
                     {label}
                   </span>
                 </div>
               );
             })()}
-            {/* V3.4.1-PRO: Market Truth Engine indicator — SWR stale aware (REACTIVE) */}
+            {/* Market Truth Engine indicator — SWR stale aware (REACTIVE) */}
             {(() => {
-              // V3.4.1: Uses reactive Zustand hooks instead of getState()
               const mt = marketTruth;
               const isStale = marketTruthStale;
               const mtOnline = mt !== null;
@@ -807,10 +765,12 @@ function HomeContent() {
                 </div>
               );
             })()}
-            {/* Market status indicator */}
-            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-[8px] font-medium ${marketOpen ? 'bg-[#2eebc8]/10 text-[#2eebc8]' : 'bg-app-subtle/50 text-app-text4'}`}>
-              <div className={`w-1.5 h-1.5 rounded-full ${marketOpen ? 'bg-[#2eebc8] animate-pulse' : 'bg-app-text4'}`} />
-              {marketOpen ? 'MERCADO ABIERTO' : 'MERCADO CERRADO'}
+            {/* Enhanced Market status indicator with pulsing badge */}
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[8px] font-bold tracking-wider ${marketOpen ? 'market-badge-open bg-[#2eebc8]/10 text-[#2eebc8]' : 'market-badge-closed bg-app-subtle/50 text-app-text4'}`}>
+              <div className={`w-2 h-2 rounded-full ${marketOpen ? 'bg-[#2eebc8]' : 'bg-app-text4'} ${marketOpen ? 'iol-dot-online' : ''}`} />
+              <span className="hidden sm:inline">{marketOpen ? 'MERCADO ABIERTO' : 'MERCADO CERRADO'}</span>
+              <span className="sm:hidden">{marketOpen ? 'OPEN' : 'CLOSED'}</span>
+              <span className="text-[7px] opacity-60 font-normal">10–17h</span>
             </div>
           </div>
 
@@ -864,8 +824,8 @@ function HomeContent() {
       {/* ── Main Content ── */}
       <main className="flex-1 overflow-y-auto">
         {/* Status Bar */}
-        <div className="sticky top-0 z-20 bg-app-bg/85 backdrop-blur-md border-b border-app-border/60 border-app-accent/10 px-5 py-2 flex items-center justify-between flex-wrap gap-y-1">
-          <div className="flex items-center gap-3">
+        <div className="sticky top-0 z-20 bg-app-bg/85 backdrop-blur-md border-b border-app-border/60 border-app-accent/10 px-4 md:px-5 py-2 flex items-center justify-between flex-wrap gap-y-1">
+          <div className="flex items-center gap-2 md:gap-3">
             <h2 className="text-sm font-light text-app-text2">
               {activeTab === 'mercado' && '📊 Mercado'}
               {activeTab === 'cockpit' && '🎯 Cockpit Táctico'}
@@ -877,12 +837,23 @@ function HomeContent() {
               {activeTab === 'historico' && '📈 Histórico'}
             </h2>
             {lastUpdate && (
-              <span className="text-[9px] text-app-text4 font-mono">
+              <span className="text-[9px] text-app-text4 font-mono hidden sm:inline">
                 {lastUpdate}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
+            {/* Last Updated Timestamp */}
+            {(() => {
+              const updateSource = dolarLastUpdateTime || lastUpdate;
+              if (!updateSource) return null;
+              return (
+                <div className="flex items-center gap-1 text-[8px] text-app-text4 font-mono bg-app-subtle/40 px-2 py-1 rounded-md border border-app-border/40">
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                  <span>{updateSource}</span>
+                </div>
+              );
+            })()}
             {/* Capital Disponible */}
             <div className="card-hover-lift flex items-center gap-1.5 text-[9px] bg-app-accent-dim/50 px-2.5 py-1.5 rounded-lg border border-app-accent-border/60">
               <span className="text-app-text3">Capital:</span>
@@ -890,7 +861,7 @@ function HomeContent() {
                 ${config.capitalDisponible.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
               </span>
             </div>
-            {/* Riesgo País — V3.3-PRO: Market Truth Engine with confidence + SWR stale */}
+            {/* Riesgo País — Market Truth Engine with confidence + SWR stale */}
             {(() => {
               const rp = riesgoPaisAuto ?? config.riesgoPais;
               const rpColor = rp > 700 ? '#f87171' : rp > 550 ? '#f472b6' : rp > 400 ? '#fbbf24' : '#2eebc8';
@@ -909,7 +880,7 @@ function HomeContent() {
                   </span>
                   {riesgoPaisTrend === 'up' && <span className="text-[8px] text-[#f87171]">↑</span>}
                   {riesgoPaisTrend === 'down' && <span className="text-[8px] text-[#2eebc8]">↓</span>}
-                  {/* V3.3-PRO: Confidence badge */}
+                  {/* Confidence badge */}
                   {rpConf && (
                     <span className="text-[7px] font-bold px-1 py-0.5 rounded border leading-none" style={{ color: rpConfColor, borderColor: rpConfColor + '40', backgroundColor: rpConfColor + '15' }}>
                       {rpConf}
@@ -923,7 +894,7 @@ function HomeContent() {
                 </div>
               );
             })()}
-            {/* MEP Rate — V3.3-PRO: Market Truth Engine with confidence + SWR stale */}
+            {/* MEP Rate — Market Truth Engine with confidence + SWR stale */}
             {(() => {
               const mepVal = useRadarStore.getState().mepConsensus ?? mepRate;
               const mepConf = useRadarStore.getState().mepConfidence;
@@ -936,7 +907,7 @@ function HomeContent() {
                   <span className={`font-mono font-medium ${mepVal > 1550 ? 'text-[#f87171]' : mepVal > 1450 ? 'text-[#fbbf24]' : 'text-[#2eebc8]'} ${isStale ? 'opacity-60' : ''}`}>
                     ${mepVal.toFixed(0)}
                   </span>
-                  {/* V3.3-PRO: Confidence badge + source detail */}
+                  {/* Confidence badge + source detail */}
                   {mepConf && (
                     <span className="text-[7px] font-bold px-1 py-0.5 rounded border leading-none" style={{ color: mepConfColor, borderColor: mepConfColor + '40', backgroundColor: mepConfColor + '15' }}>
                       {mepConf}
@@ -968,11 +939,11 @@ function HomeContent() {
               {effectiveInstruments.length} inst.
               {priceHistory && ' · 📜'}
             </div>
-            {/* V3.0: Nuke Button — Hard Reset */}
+            {/* V4.0 BLINDADO: Reset Button — Simplified (no confirmation dialog) */}
             <button
               onClick={handleReset}
               className="text-[9px] text-app-text4 hover:text-[#f87171] transition-colors px-1.5 py-1 rounded hover:bg-[#f87171]/10"
-              title="☢ Limpieza profunda — Borrar TODO y recargar"
+              title="☢ Reset — Borrar localStorage y recargar"
             >
               ☢
             </button>
@@ -984,15 +955,15 @@ function HomeContent() {
           <ThresholdAlerts instruments={sanitizedInstruments} config={config} position={position} momentumMap={momentumMap} />
         </div>
 
-        {/* V3.3-PRO: Global Absorption Alert Banner */}
+        {/* Global Absorption Alert Banner */}
         <AbsorptionAlertBanner />
 
-        {/* V3.3-PRO: Order Flow Imbalance Alert */}
+        {/* Order Flow Imbalance Alert */}
         <OrderFlowAlert />
 
-        {/* ── Market Summary Widget (Enhanced V1.6.2) ── */}
+        {/* ── Market Summary Widget ── */}
         <div className="px-4 md:px-6 lg:px-8 py-1">
-          <div className="glass-card flex items-center gap-4 px-4 py-1.5 overflow-x-auto scrollbar-hide">
+          <div className="glass-card card-shadow flex items-center gap-4 px-4 py-1.5 overflow-x-auto scrollbar-hide">
             {/* Total instruments */}
             <div className="flex items-center gap-1.5 shrink-0">
               <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#2eebc8" opacity="0.7" /></svg>
@@ -1006,7 +977,7 @@ function HomeContent() {
               )}
             </div>
             <div className="w-px h-3 bg-app-border/40 shrink-0" />
-            {/* Average TEM — V2.0.3: Use sanitized instruments (days >= 1) */}
+            {/* Average TEM */}
             {(() => {
               const avgTEM = sanitizedInstruments.length > 0 ? sanitizedInstruments.reduce((s, i) => s + i.tem, 0) / sanitizedInstruments.length : 0;
               const dotColor = avgTEM > 2.5 ? '#2eebc8' : avgTEM > 1.8 ? '#fbbf24' : '#f87171';
@@ -1019,7 +990,7 @@ function HomeContent() {
               );
             })()}
             <div className="w-px h-3 bg-app-border/40 shrink-0" />
-            {/* Best spread — V2.0.3: Use sanitized instruments */}
+            {/* Best spread */}
             {(() => {
               const spreads = sanitizedInstruments.map(inst => ({ ticker: inst.ticker, spread: spreadVsCaucion(inst.tem, config, inst.days) }));
               const bestSpread = spreads.reduce((best, s) => s.spread > best.spread ? s : best, spreads[0] || { ticker: '-', spread: 0 });
@@ -1034,7 +1005,7 @@ function HomeContent() {
               );
             })()}
             <div className="w-px h-3 bg-app-border/40 shrink-0" />
-            {/* V3.3-PRO: Spread MEDIAN — more robust metric than best spread */}
+            {/* Spread MEDIAN */}
             {(() => {
               const spreads = sanitizedInstruments.map(inst => spreadVsCaucion(inst.tem, config, inst.days)).filter(s => isFinite(s));
               const sorted = [...spreads].sort((a, b) => a - b);
@@ -1049,7 +1020,7 @@ function HomeContent() {
               );
             })()}
             <div className="w-px h-3 bg-app-border/40 shrink-0" />
-            {/* V3.3-PRO: Riesgo País Trend in Market Summary */}
+            {/* Riesgo País Trend */}
             {(() => {
               const rp = riesgoPaisAuto ?? config.riesgoPais;
               const rpColor = rp > 700 ? '#f87171' : rp > 550 ? '#f472b6' : rp > 400 ? '#fbbf24' : '#2eebc8';
@@ -1094,7 +1065,7 @@ function HomeContent() {
                 </>
               );
             })()}
-            {/* V1.6.2: MEP/CCL Brecha */}
+            {/* MEP/CCL Brecha */}
             {mepRate && cclRate && (() => {
               const brecha = Math.abs(cclRate - mepRate);
               const brechaPct = ((cclRate - mepRate) / mepRate * 100);
@@ -1111,7 +1082,7 @@ function HomeContent() {
                 </>
               );
             })()}
-            {/* V1.6.2: Yield Curve Shape */}
+            {/* Yield Curve Shape */}
             {(() => {
               const shapeColor = curveShape.shape === 'NORMAL' ? '#2eebc8' : curveShape.shape === 'PLANA' ? '#fbbf24' : curveShape.shape === 'INVERTIDA' ? '#f87171' : '#f472b6';
               return (
@@ -1125,7 +1096,7 @@ function HomeContent() {
                 </>
               );
             })()}
-            {/* V3.1: IOL Level 2 Status */}
+            {/* IOL Level 2 Status */}
             {(() => {
               const iolCount = effectiveInstruments.filter(i => i.iolStatus === 'online').length;
               const iolAlerts = effectiveInstruments.filter(i => i.iolLiquidityAlert).length;
@@ -1147,7 +1118,83 @@ function HomeContent() {
           </div>
         </div>
 
-        {/* Activity Feed Widget: REMOVED — was causing layout shift on auto-open/close */}
+        {/* ════════════════════════════════════════════════════════════════
+           V4.0 BLINDADO — QUICK STATS SUMMARY BAR
+           Portfolio overview: Total Capital, Current Position, P&L, Portfolio TEM
+           ════════════════════════════════════════════════════════════════ */}
+        <div className="px-4 md:px-6 lg:px-8 py-1">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {(() => {
+              const heldInstrument = position ? effectiveInstruments.find(i => i.ticker === position.ticker) : null;
+              const investedAtMarket = position && heldInstrument ? position.vn * heldInstrument.price : 0;
+              const totalCapital = config.capitalDisponible + investedAtMarket;
+              const unrealizedPnL = (() => {
+                if (!position || !heldInstrument) return 0;
+                const valorActual = position.vn * heldInstrument.price;
+                const costoEntrada = position.precioConComision
+                  ? position.vn * position.precioConComision
+                  : position.vn * position.entryPrice * (1 + config.comisionTotal / 2 / 100);
+                return valorActual - costoEntrada;
+              })();
+              const realizedPnL = transactions.filter(tx => tx.type === 'SELL').reduce((sum, tx) => sum + (tx.pnl || 0), 0);
+              const totalPnL = realizedPnL + unrealizedPnL;
+              const portfolioTEM = position && heldInstrument ? heldInstrument.tem : 0;
+
+              return (
+                <>
+                  {/* Total Capital */}
+                  <div className="quick-stat-card">
+                    <div className="text-[8px] text-app-text4 uppercase tracking-wider font-medium mb-0.5">Capital Total</div>
+                    <div className="text-[13px] font-mono font-semibold text-app-accent-text number-transition">
+                      ${totalCapital.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                    </div>
+                    <div className="text-[7px] text-app-text4 mt-0.5">
+                      Efectivo: ${config.capitalDisponible.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                    </div>
+                  </div>
+                  {/* Current Position */}
+                  <div className="quick-stat-card">
+                    <div className="text-[8px] text-app-text4 uppercase tracking-wider font-medium mb-0.5">Posición</div>
+                    <div className="text-[13px] font-mono font-semibold number-transition">
+                      {position ? (
+                        <span className="text-[#2eebc8]">{position.ticker}</span>
+                      ) : (
+                        <span className="text-app-text4">Sin posición</span>
+                      )}
+                    </div>
+                    {position && heldInstrument && (
+                      <div className="text-[7px] text-app-text4 mt-0.5">
+                        {position.vn.toLocaleString()} VN · ${heldInstrument.price.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                  {/* P&L Total */}
+                  <div className="quick-stat-card">
+                    <div className="text-[8px] text-app-text4 uppercase tracking-wider font-medium mb-0.5">P&L Total</div>
+                    <div className={`text-[13px] font-mono font-semibold number-transition ${totalPnL >= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
+                      {totalPnL >= 0 ? '+' : ''}${totalPnL.toLocaleString('es-AR', { maximumFractionDigits: 0, minimumFractionDigits: 0 })}
+                    </div>
+                    <div className="text-[7px] text-app-text4 mt-0.5">
+                      Realizado: ${realizedPnL.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                    </div>
+                  </div>
+                  {/* Portfolio TEM */}
+                  <div className="quick-stat-card">
+                    <div className="text-[8px] text-app-text4 uppercase tracking-wider font-medium mb-0.5">TEM Portafolio</div>
+                    <div className={`text-[13px] font-mono font-semibold number-transition ${portfolioTEM > 2 ? 'text-[#2eebc8]' : portfolioTEM > 0 ? 'text-[#fbbf24]' : 'text-app-text4'}`}>
+                      {portfolioTEM > 0 ? `${portfolioTEM.toFixed(2)}%` : '—'}
+                    </div>
+                    {position && heldInstrument && (
+                      <div className="text-[7px] text-app-text4 mt-0.5">
+                        Carry: {(heldInstrument.tem - (caucionTEMFromTNA(getCaucionForDays(config, heldInstrument.days)))).toFixed(3)}%
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
 
         {/* Page Content with fade transition */}
         <div className={`p-4 md:p-6 lg:p-8 transition-opacity duration-150 animate-fadeInUp ${tabTransition ? 'opacity-0' : 'opacity-100'}`}>
@@ -1179,12 +1226,14 @@ function HomeContent() {
         </div>
       </main>
 
-      {/* ── Footer (Enhanced V1.6.2) ── */}
+      {/* ── Footer (V4.0 BLINDADO — Compact + Professional) ── */}
       <div className="gradient-separator" />
-      <footer className="mt-auto bg-app-card/80 backdrop-blur-sm px-5 py-2.5 flex items-center justify-between flex-wrap gap-y-1 gap-x-3">
-        <div className="text-[8px] text-app-text4 font-mono flex items-center gap-2">
+      <footer className="mt-auto footer-compact backdrop-blur-sm px-4 md:px-6 py-1.5 flex items-center justify-between flex-wrap gap-y-0.5 gap-x-4">
+        <div className="text-[7px] text-app-text4 font-mono flex items-center gap-2">
           <span className="version-pulse-dot" />
-          <span>ARB//RADAR V3.4 — PRO TERMINAL</span>
+          <span className="font-semibold tracking-wide">ARB//RADAR</span>
+          <span className="text-app-border/60">·</span>
+          <span>V4.0 BLINDADO</span>
           <span className="text-app-border/60">·</span>
           <span>{sanitizedInstruments.length} inst.</span>
           {dolarLastUpdateTime && (
@@ -1196,14 +1245,34 @@ function HomeContent() {
           {position && (
             <>
               <span className="text-app-border/60">·</span>
-              <span className="text-[#2eebc8]">{position.ticker}</span>
+              <span className="text-[#2eebc8] font-medium">{position.ticker}</span>
             </>
           )}
         </div>
-        <div className="text-[8px] text-app-text4 font-mono flex items-center gap-3">
-          <span>Alt+1-9: Tabs</span>
-          <span>Alt+T: Tema</span>
-          <button onClick={() => setShowHelp(true)} className="hover:text-[#2eebc8] transition-colors cursor-pointer">?: Ayuda</button>
+        <div className="text-[7px] text-app-text4 font-mono flex items-center gap-2.5">
+          <span className="hidden sm:inline-flex items-center gap-0.5">
+            <kbd className="px-1 py-0 rounded text-[6px]">Alt</kbd>
+            <span>+</span>
+            <kbd className="px-1 py-0 rounded text-[6px]">1-9</kbd>
+            <span className="ml-0.5">Tabs</span>
+          </span>
+          <span className="hidden sm:inline-flex items-center gap-0.5">
+            <kbd className="px-1 py-0 rounded text-[6px]">Alt</kbd>
+            <span>+</span>
+            <kbd className="px-1 py-0 rounded text-[6px]">T</kbd>
+            <span className="ml-0.5">Tema</span>
+          </span>
+          <span className="hidden sm:inline-flex items-center gap-0.5">
+            <kbd className="px-1 py-0 rounded text-[6px]">Ctrl</kbd>
+            <span>+</span>
+            <kbd className="px-1 py-0 rounded text-[6px]">S</kbd>
+            <span className="ml-0.5">Guardar</span>
+          </span>
+          <span className="inline-flex items-center gap-0.5">
+            <kbd className="px-1 py-0 rounded text-[6px]">?</kbd>
+            <span className="ml-0.5">Ayuda</span>
+          </span>
+          <button onClick={() => setShowHelp(true)} className="hover:text-[#2eebc8] transition-colors cursor-pointer ml-1 text-[8px]">⌨️</button>
         </div>
       </footer>
 
@@ -1251,12 +1320,39 @@ function HomeContent() {
                   </div>
                 </div>
                 <div className="flex items-center justify-between text-xs">
+                  <span className="text-app-text2">Guardar portfolio a archivo</span>
+                  <div className="flex items-center gap-1">
+                    <kbd className="px-1.5 py-0.5 rounded bg-app-subtle/80 text-app-text3 font-mono text-[10px] border border-app-border/60">Ctrl</kbd>
+                    <span className="text-app-text4">+</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-app-subtle/80 text-app-text3 font-mono text-[10px] border border-app-border/60">S</kbd>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs">
                   <span className="text-app-text2">Mostrar/ocultar ayuda</span>
                   <kbd className="px-1.5 py-0.5 rounded bg-app-subtle/80 text-app-text3 font-mono text-[10px] border border-app-border/60">?</kbd>
                 </div>
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-app-text2">Cerrar diálogo</span>
                   <kbd className="px-1.5 py-0.5 rounded bg-app-subtle/80 text-app-text3 font-mono text-[10px] border border-app-border/60">Esc</kbd>
+                </div>
+              </div>
+            </div>
+
+            {/* LIVE shortcuts */}
+            <div className="mb-4">
+              <div className="text-[10px] uppercase tracking-wider text-[#2eebc8] font-semibold mb-2">Datos en Vivo</div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-app-text2">Toggle LIVE on/off</span>
+                  <div className="flex items-center gap-1">
+                    <kbd className="px-1.5 py-0.5 rounded bg-app-subtle/80 text-app-text3 font-mono text-[10px] border border-app-border/60">Ctrl</kbd>
+                    <span className="text-app-text4">+</span>
+                    <kbd className="px-1.5 py-0.5 rounded bg-app-subtle/80 text-app-text3 font-mono text-[10px] border border-app-border/60">L</kbd>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-app-text2">Ver detalle de instrumento</span>
+                  <span className="text-app-text3 text-[10px]">Clic en ticker</span>
                 </div>
               </div>
             </div>
@@ -1282,80 +1378,6 @@ function HomeContent() {
 
             <div className="mt-4 pt-3 border-t border-app-border/40 text-[9px] text-app-text4 text-center">
               Presioná <kbd className="px-1 py-0.5 rounded bg-app-subtle/80 font-mono text-[9px] border border-app-border/60">?</kbd> o <kbd className="px-1 py-0.5 rounded bg-app-subtle/80 font-mono text-[9px] border border-app-border/60">Esc</kbd> para cerrar
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── V3.0: Nuke Confirmation Dialog ── */}
-      {showNukeConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={handleNukeCancel}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative glass-card-accent p-6 w-full max-w-md mx-4 animate-scale-in" onClick={e => e.stopPropagation()}>
-            {/* Header */}
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-12 h-12 rounded-full bg-[#f87171]/10 border border-[#f87171]/30 flex items-center justify-center text-2xl">
-                ☢
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-[#f87171]">Limpieza Profunda</h3>
-                <p className="text-[10px] text-app-text4">Esta acción no se puede deshacer</p>
-              </div>
-            </div>
-
-            {/* Warning body */}
-            <div className="space-y-3 mb-6">
-              <div className="bg-[#f87171]/5 border border-[#f87171]/20 rounded-lg p-3">
-                <p className="text-sm text-app-text2 leading-relaxed">
-                  Se ejecutará <code className="text-[#f87171] font-mono text-xs bg-[#f87171]/10 px-1.5 py-0.5 rounded">localStorage.clear()</code> y la página se recargará desde cero.
-                </p>
-              </div>
-
-              <div className="text-xs text-app-text3 space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[#f87171]">✗</span>
-                  <span>Todas las operaciones (compras/ventas) serán eliminadas</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[#f87171]">✗</span>
-                  <span>La posición actual será eliminada</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[#f87171]">✗</span>
-                  <span>Historial de precios y snapshots serán eliminados</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[#f87171]">✗</span>
-                  <span>Configuración custom será eliminada</span>
-                </div>
-              </div>
-
-              <div className="bg-app-subtle/30 rounded-lg p-2.5 text-center">
-                <span className="text-[10px] text-app-text4">Estado post-nuke:</span>
-                <div className="text-sm font-mono text-[#2eebc8] mt-0.5">
-                  Capital: $390.000 · Posición: ninguna · Operaciones: 0
-                </div>
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleNukeCancel}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-app-subtle/60 text-app-text3 text-sm font-medium hover:bg-app-subtle/80 transition-colors border border-app-border/60"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleNukeConfirm}
-                className="flex-1 px-4 py-2.5 rounded-lg bg-[#f87171] text-white text-sm font-semibold hover:bg-[#ef4444] transition-colors shadow-lg shadow-[#f87171]/20"
-              >
-                ☢ Nuke — Borrar Todo
-              </button>
-            </div>
-
-            <div className="mt-3 text-center text-[9px] text-app-text4">
-              Presioná <kbd className="px-1 py-0.5 rounded bg-app-subtle/80 font-mono text-[9px] border border-app-border/60">Esc</kbd> para cancelar
             </div>
           </div>
         </div>

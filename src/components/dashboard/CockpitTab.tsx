@@ -353,7 +353,7 @@ export default function CockpitTab({
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-lg font-light text-app-text mb-1">
-              🎯 Cockpit Táctico — V3.4.3 PRO TERMINAL
+              🎯 Cockpit Táctico — V3.4.5 PRO TERMINAL
             </h2>
             <p className="text-sm text-app-text3">
               Señal de scalping compuesta · 5 factores ponderados · Horizonte: {horizonLabel}
@@ -546,7 +546,7 @@ export default function CockpitTab({
               return (
                 <div
                   key={`${score.ticker}-${score.type}`}
-                  className={`table-row-highlight px-4 py-2 animate-row-in ${getStaggerClass(idx)}`}
+                  className={`table-row-highlight table-row-alt px-4 py-2 animate-row-in ${getStaggerClass(idx)}`}
                   style={idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 70px' } : undefined}
                 >
                   {/* ── ROW 1: Main Data ── */}
