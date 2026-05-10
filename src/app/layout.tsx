@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ARB//RADAR V3.4.3 — PRO TERMINAL",
+  title: "ARB//RADAR V3.5.1 — PRO TERMINAL",
   description: "Cockpit Táctico · Market Truth Engine · cockpitScore — Dashboard de arbitraje de LECAPs y BONCAPs con datos en tiempo real. V3.4.3-PRO TERMINAL",
   keywords: ["arbitraje", "LECAP", "BONCAP", "Argentina", "tasas", "curvas", "dólar MEP", "CCL", "spread caución", "duration modified"],
   authors: [{ name: "ARB Radar" }],
