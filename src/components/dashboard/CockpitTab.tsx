@@ -580,11 +580,14 @@ export default function CockpitTab({
                       {fmtNum(tem, 2)}%
                     </div>
 
-                    {/* VOL — V3.4: IOL volume (primary) / data912 volume (fallback) from /api/letras enrichment */}
+                    {/* VOL — V3.5: Notional ARS volume (primary) / data912 volume (fallback) */}
                     <div className="text-right font-mono text-xs text-app-text2">
                       {(() => {
-                        // Priority: IOL volume (real-time order book) > data912 volume (notional ARS)
-                        const vol = instData?.iolVolume ?? liveData?.iol_volume ?? instData?.data912Volume ?? liveData?.volume;
+                        // V3.5: Always show notional ARS volume for comparability
+                        // Priority: IOL notional (ARS) > data912 volume (ARS) > IOL quantity (fallback)
+                        const volNotional = instData?.iolVolumeNotional ?? liveData?.iol_volume_notional ?? instData?.data912Volume ?? liveData?.volume;
+                        const volQty = instData?.iolVolume ?? liveData?.iol_volume;
+                        const vol = volNotional || volQty;
                         if (vol != null && vol > 0) {
                           return vol >= 1_000_000
                             ? `${(vol / 1_000_000).toFixed(1)}M`

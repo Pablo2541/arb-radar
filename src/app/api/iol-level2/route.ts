@@ -45,6 +45,7 @@ const BATCH_DELAY_MS = 200;
 
 interface TickerLevel2Data {
   volume: number;
+  volume_notional: number;   // V3.5: ARS notional volume (for display)
   bid: number;
   ask: number;
   bid_depth: number;
@@ -171,6 +172,7 @@ function enrichLevel2Data(ticker: string, l2: IOLLevel2Data): TickerLevel2Data {
 
   return {
     volume: l2.iol_volume,
+    volume_notional: l2.iol_volume_notional,  // V3.5: ARS notional
     bid: l2.iol_bid,
     ask: l2.iol_ask,
     bid_depth: bidDepth,
@@ -211,6 +213,7 @@ async function fetchTickersInBatches(
             ticker,
             data: {
               volume: 0,
+              volume_notional: 0,  // V3.5
               bid: 0,
               ask: 0,
               bid_depth: 0,
@@ -228,6 +231,7 @@ async function fetchTickersInBatches(
             ticker,
             data: {
               volume: 0,
+              volume_notional: 0,  // V3.5
               bid: 0,
               ask: 0,
               bid_depth: 0,

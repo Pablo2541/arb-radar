@@ -13,7 +13,8 @@ export interface Instrument {
   dm?: number; // V1.5: Duration Modified from historico_precios.json
 
   // ── V3.1: IOL Level 2 Fields (from Cerebro Táctico local script) ──
-  iolVolume?: number;              // cantidadOperada from IOL
+  iolVolume?: number;              // cantidadOperada from IOL (quantity of titles, NOT ARS)
+  iolVolumeNotional?: number;      // V3.5: volumen nominal en ARS from IOL (for radar display)
   iolBid?: number;                 // best bid price from IOL puntas
   iolAsk?: number;                 // best ask price from IOL puntas
   iolAvgDailyVolume?: number;      // estimated average daily volume
@@ -324,7 +325,8 @@ export interface LiveInstrument {
   last_close: number | null; // V2.0.2: previous close price per $1 VN, derived from pct_change
 
   // ── V3.4: IOL Level 2 Fields (enriched from IOL API) ──
-  iol_volume?: number;              // cantidadOperada from IOL
+  iol_volume?: number;              // cantidadOperada from IOL (quantity of titles)
+  iol_volume_notional?: number;     // V3.5: volumen nominal en ARS from IOL
   iol_bid?: number;                 // best bid price from IOL puntas
   iol_ask?: number;                 // best ask price from IOL puntas
   iol_bid_depth?: number;           // Total quantity across all compra puntas

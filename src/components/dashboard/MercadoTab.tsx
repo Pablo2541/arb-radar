@@ -949,10 +949,26 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-0.5">
-                        <span className="font-mono text-[10px] text-app-text3">{inst?.iolVolume ? (inst.iolVolume / 1000).toFixed(0) + 'K' : '—'}</span>
-                        {inst?.iolVolume != null && inst.iolVolume > 0 && (
-                          <span className="text-[7px] px-1 py-0.5 rounded bg-[#a78bfa]/10 text-[#a78bfa] font-mono">IOL</span>
-                        )}
+                        {(() => {
+                          // V3.5: Always show notional ARS volume for comparability
+                          // Priority: IOL notional (ARS) > data912 volume (ARS) > IOL quantity (fallback)
+                          const volNotional = inst?.iolVolumeNotional ?? inst?.data912Volume;
+                          const volQty = inst?.iolVolume;  // quantity of titles (fallback)
+                          const vol = volNotional ?? volQty;
+                          if (vol != null && vol > 0) {
+                            return (
+                              <>
+                                <span className="font-mono text-[10px] text-app-text3">
+                                  {vol >= 1_000_000 ? `${(vol / 1_000_000).toFixed(1)}M` : `${(vol / 1_000).toFixed(0)}K`}
+                                </span>
+                                <span className={`text-[7px] px-1 py-0.5 rounded font-mono ${volNotional ? 'bg-emerald-500/10 text-emerald-400' : 'bg-[#a78bfa]/10 text-[#a78bfa]'}`}>
+                                  {volNotional ? 'ARS' : 'QTY'}
+                                </span>
+                              </>
+                            );
+                          }
+                          return <span className="font-mono text-[10px] text-app-text3">—</span>;
+                        })()}
                       </div>
                     </td>
                   </tr>
