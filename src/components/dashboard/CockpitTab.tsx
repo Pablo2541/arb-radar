@@ -260,9 +260,9 @@ export default function CockpitTab({
     }
   }, [setCockpitScoresLoading]);
 
-  // PRIORITY HYDRATION: Fire immediately on mount, no setTimeout delay
+  // PRIORITY HYDRATION: Schedule via microtask to avoid synchronous setState in effect
   useEffect(() => {
-    fetchScores(); // IMMEDIATE — cache must be warm when user enters terminal
+    queueMicrotask(fetchScores); // IMMEDIATE — cache must be warm when user enters terminal
     intervalRef.current = setInterval(fetchScores, 50_000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);

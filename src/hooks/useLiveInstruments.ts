@@ -226,8 +226,8 @@ export function useLiveInstruments(): LiveInstrumentsState {
     mountedRef.current = true;
 
     if (active) {
-      // Fetch immediately when activating
-      fetchData();
+      // Schedule initial fetch via microtask to avoid synchronous setState in effect
+      queueMicrotask(fetchData);
 
       // Then poll every 60 seconds
       intervalRef.current = setInterval(fetchData, POLL_INTERVAL);
@@ -239,9 +239,12 @@ export function useLiveInstruments(): LiveInstrumentsState {
       // V2.0.2: Do NOT clear liveTickers when deactivating — 
       // we keep them to show "DATA OFFLINE" indicators
       // Clear the instruments list though (go back to manual data)
-      setInstruments([]);
-      setLiveInstruments([]);
-      setStale(false);
+      // Schedule via microtask to avoid synchronous setState in effect
+      queueMicrotask(() => {
+        setInstruments([]);
+        setLiveInstruments([]);
+        setStale(false);
+      });
       hasDataRef.current = false;
     }
 

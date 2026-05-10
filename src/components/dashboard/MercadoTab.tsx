@@ -96,7 +96,8 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
   const [priceFlash, setPriceFlash] = useState<Record<string, 'up' | 'down'>>({});
   const prevRatesRef = useRef<DolarRate[]>([]);
   // ── Dollar price history for sparklines (up to 20 snapshots per type) ──
-  const dolarHistoryRef = useRef<Record<string, number[]>>({});
+  // Using state instead of ref so React Compiler doesn't complain about ref access during render
+  const [dolarHistory, setDolarHistory] = useState<Record<string, number[]>>({});
 
   const fetchDolar = useCallback(async (forceFresh = false) => {
     setDolarLoading(true);
@@ -132,14 +133,17 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
         setDolarRates(data);
         prevRatesRef.current = data;
         // Append venta prices to sparkline history (max 20 snapshots)
-        const hist = dolarHistoryRef.current;
-        for (const rate of data) {
-          if (typeof rate.venta === 'number' && isFinite(rate.venta)) {
-            const key = rate.nombre;
-            if (!hist[key]) hist[key] = [];
-            hist[key] = [...hist[key], rate.venta].slice(-20);
+        setDolarHistory(prev => {
+          const hist = { ...prev };
+          for (const rate of data) {
+            if (typeof rate.venta === 'number' && isFinite(rate.venta)) {
+              const key = rate.nombre;
+              const existing = hist[key] ?? [];
+              hist[key] = [...existing, rate.venta].slice(-20);
+            }
           }
-        }
+          return hist;
+        });
         setDolarLastUpdate(new Date().toLocaleTimeString('es-AR'));
         setDolarError(false);
         // Notify parent of MEP rate and dolar update
@@ -167,7 +171,7 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
   }, [onMepRate, onCclRate, onDolarUpdate]);
 
   useEffect(() => {
-    fetchDolar();
+    queueMicrotask(fetchDolar);
     // Auto-refresh every 5 minutes
     const interval = setInterval(() => fetchDolar(), 300000);
     return () => clearInterval(interval);
@@ -177,7 +181,7 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
   const handleRetry = useCallback(() => {
     setDolarRates([]);
     prevRatesRef.current = [];
-    dolarHistoryRef.current = {};
+    setDolarHistory({});
     setDolarError(false);
     fetchDolar(true);
   }, [fetchDolar]);
@@ -194,8 +198,8 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
     return new Map(srArray.map(sr => [sr.ticker, sr]));
   }, [priceHistory, instruments]);
 
-  // ── Enriched Instruments ──
-  const instrumentsWithExtras = instruments.map(inst => {
+  // ── Enriched Instruments (memoized for stable reference in downstream useMemo) ──
+  const instrumentsWithExtras = useMemo(() => instruments.map(inst => {
     const spread = spreadVsCaucion(inst.tem, config, inst.days);
     const caucionUsed = getCaucionForDays(config, inst.days);
     const caucionLabel = caucionUsed === config.caucion1d ? '1d' : caucionUsed === config.caucion7d ? '7d' : '30d';
@@ -212,23 +216,23 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
     const dm = historyDM ?? inst.dm ?? durationMod(inst.days, inst.tem);
     const paridad = inst.type === 'LECAP' && inst.price > 0 ? ((1.41 / inst.price) * 100) : 100;
     return { ...inst, spread, caucionLabel, compositeSignal: signal.signal, signalColor: signal.signalColor, signalEmoji: signal.signalEmoji, compositeScore: signal.compositeScore, deltaTIR, tirHistory, dm, paridad };
-  });
-
-  const sorted = [...instrumentsWithExtras].sort((a, b) => {
-    let aVal: string | number = a[sortKey] ?? 0;
-    let bVal: string | number = b[sortKey] ?? 0;
-    if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-    if (typeof bVal === 'string') bVal = bVal.toLowerCase();
-    if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
-    if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
-    return 0;
-  });
+  }), [instruments, config, srDataMap, momentumMap, liveDeltaTIRMap, priceHistory]);
 
   const bestInstrument = [...instrumentsWithExtras].sort((a, b) => b.compositeScore - a.compositeScore)[0];
 
-  // ── Filter Logic ──
+  // ── Sort + Filter Logic (combined useMemo to avoid non-memoized dependency) ──
   const filtered = useMemo(() => {
-    return sorted.filter(inst => {
+    return [...instrumentsWithExtras]
+      .sort((a, b) => {
+        let aVal: string | number = a[sortKey] ?? 0;
+        let bVal: string | number = b[sortKey] ?? 0;
+        if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+        if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+        if (aVal < bVal) return sortDir === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortDir === 'asc' ? 1 : -1;
+        return 0;
+      })
+      .filter(inst => {
       // Search filter (case-insensitive ticker match)
       if (searchText) {
         const q = searchText.toLowerCase();
@@ -247,7 +251,7 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
       }
       return true;
     });
-  }, [sorted, searchText, typeFilter, daysFilter]);
+  }, [instrumentsWithExtras, sortKey, sortDir, searchText, typeFilter, daysFilter]);
 
   // ── CSV Export ──
   const handleCSVExport = useCallback(() => {
@@ -546,8 +550,8 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                 <span className="text-[7px] text-app-text4">V:</span>
                 <span className="text-[9px] font-mono text-app-text3">{oficial?.venta.toLocaleString('es-AR', { maximumFractionDigits: 0 }) ?? '—'}</span>
               </div>
-              {dolarHistoryRef.current['Oficial'] && dolarHistoryRef.current['Oficial'].length >= 2 && (
-                <div className="mt-1"><Sparkline data={dolarHistoryRef.current['Oficial']} width={60} height={20} /></div>
+              {dolarHistory['Oficial'] && dolarHistory['Oficial'].length >= 2 && (
+                <div className="mt-1"><Sparkline data={dolarHistory['Oficial']} width={60} height={20} /></div>
               )}
             </div>
             {/* ── Tarjeta ── */}
@@ -564,8 +568,8 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                 <span className="text-[9px] font-mono text-app-text3">{tarjeta?.venta.toLocaleString('es-AR', { maximumFractionDigits: 0 }) ?? '—'}</span>
               </div>
               {brechaTarjeta > 0 && <div className="text-[7px] text-app-text4 font-mono mt-0.5 flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: brechaTarjeta < 10 ? '#2eebc8' : brechaTarjeta < 20 ? '#fbbf24' : '#f87171' }} />+{brechaTarjeta.toFixed(0)}%</div>}
-              {dolarHistoryRef.current['Tarjeta'] && dolarHistoryRef.current['Tarjeta'].length >= 2 && (
-                <div className="mt-1"><Sparkline data={dolarHistoryRef.current['Tarjeta']} width={60} height={20} /></div>
+              {dolarHistory['Tarjeta'] && dolarHistory['Tarjeta'].length >= 2 && (
+                <div className="mt-1"><Sparkline data={dolarHistory['Tarjeta']} width={60} height={20} /></div>
               )}
             </div>
             {/* ── MEP (Bolsa) ── */}
@@ -585,8 +589,8 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                 <span className="text-[9px] font-mono text-app-text3">{mep?.venta.toLocaleString('es-AR', { maximumFractionDigits: 0 }) ?? '—'}</span>
               </div>
               {brechaMEP > 0 && <div className="text-[7px] text-app-text4 font-mono mt-0.5 flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: brechaMEP < 10 ? '#2eebc8' : brechaMEP < 20 ? '#fbbf24' : '#f87171' }} />+{brechaMEP.toFixed(0)}%</div>}
-              {dolarHistoryRef.current['Bolsa'] && dolarHistoryRef.current['Bolsa'].length >= 2 && (
-                <div className="mt-1"><Sparkline data={dolarHistoryRef.current['Bolsa']} width={60} height={20} /></div>
+              {dolarHistory['Bolsa'] && dolarHistory['Bolsa'].length >= 2 && (
+                <div className="mt-1"><Sparkline data={dolarHistory['Bolsa']} width={60} height={20} /></div>
               )}
             </div>
             {/* ── CCL ── */}
@@ -603,8 +607,8 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                 <span className="text-[9px] font-mono text-app-text3">{ccl?.venta.toLocaleString('es-AR', { maximumFractionDigits: 0 }) ?? '—'}</span>
               </div>
               {brechaCCL > 0 && <div className="text-[7px] text-app-text4 font-mono mt-0.5 flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: brechaCCL < 10 ? '#2eebc8' : brechaCCL < 20 ? '#fbbf24' : '#f87171' }} />+{brechaCCL.toFixed(0)}%</div>}
-              {dolarHistoryRef.current['Contado con liquidación'] && dolarHistoryRef.current['Contado con liquidación'].length >= 2 && (
-                <div className="mt-1"><Sparkline data={dolarHistoryRef.current['Contado con liquidación']} width={60} height={20} /></div>
+              {dolarHistory['Contado con liquidación'] && dolarHistory['Contado con liquidación'].length >= 2 && (
+                <div className="mt-1"><Sparkline data={dolarHistory['Contado con liquidación']} width={60} height={20} /></div>
               )}
             </div>
             {/* ── Blue ── */}
@@ -621,8 +625,8 @@ export default function MercadoTab({ instruments, config, position, momentumMap,
                 <span className="text-[9px] font-mono text-app-text3">{blue?.venta.toLocaleString('es-AR', { maximumFractionDigits: 0 }) ?? '—'}</span>
               </div>
               {brechaBlue > 0 && <div className="text-[7px] text-app-text4 font-mono mt-0.5 flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: brechaBlue < 10 ? '#2eebc8' : brechaBlue < 20 ? '#fbbf24' : '#f87171' }} />+{brechaBlue.toFixed(0)}%</div>}
-              {dolarHistoryRef.current['Blue'] && dolarHistoryRef.current['Blue'].length >= 2 && (
-                <div className="mt-1"><Sparkline data={dolarHistoryRef.current['Blue']} width={60} height={20} /></div>
+              {dolarHistory['Blue'] && dolarHistory['Blue'].length >= 2 && (
+                <div className="mt-1"><Sparkline data={dolarHistory['Blue']} width={60} height={20} /></div>
               )}
             </div>
           </div>

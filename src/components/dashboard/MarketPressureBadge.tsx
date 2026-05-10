@@ -57,9 +57,9 @@ export default function MarketPressureBadge({ ticker, compact = false }: MarketP
     }
   }, [ticker]);
 
-  // Fetch on mount and every 60s when market is open
+  // Fetch on mount and every 60s when market is open (microtask to avoid synchronous setState in effect)
   useEffect(() => {
-    fetchData();
+    queueMicrotask(fetchData);
     intervalRef.current = setInterval(fetchData, 60_000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);

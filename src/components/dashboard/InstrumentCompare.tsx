@@ -404,23 +404,21 @@ export default function InstrumentCompare({
     return best.ticker;
   }, [instruments, config]);
 
-  // Initialize slot A with best spread if not already set
-  React.useEffect(() => {
-    if (selections[0] === '' && bestSpreadTicker) {
-      setSelections((prev) => [bestSpreadTicker, prev[1], prev[2]]);
-    }
-  }, [bestSpreadTicker]);
+  // Initialize slot A with best spread if not already set (derived, no effect needed)
+  const effectiveSelections: [string, string, string] = selections[0] === '' && bestSpreadTicker
+    ? [bestSpreadTicker, selections[1], selections[2]]
+    : selections;
 
   // ─── Resolved selected instruments ───
   const selectedInstruments = useMemo(() => {
-    return selections
+    return effectiveSelections
       .map((ticker, idx) => {
         if (!ticker) return null;
         const inst = instruments.find((i) => i.ticker === ticker);
         return inst ? { inst, slotIndex: idx } : null;
       })
       .filter(Boolean) as { inst: Instrument; slotIndex: number }[];
-  }, [selections, instruments]);
+  }, [effectiveSelections, instruments]);
 
   const selectedCount = selectedInstruments.length;
 
@@ -513,7 +511,7 @@ export default function InstrumentCompare({
   const renderSelect = (slotIndex: number) => {
     const color = SLOT_COLORS[slotIndex];
     const label = SLOT_LABELS[slotIndex];
-    const value = selections[slotIndex];
+    const value = effectiveSelections[slotIndex];
 
     return (
       <div key={slotIndex} className="flex items-center gap-2">
