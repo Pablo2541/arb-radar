@@ -1,15 +1,12 @@
 // ════════════════════════════════════════════════════════════════════════
-// IOL BRIDGE — ARB//RADAR V3.5 (The Price Action Engine)
+// IOL BRIDGE — ARB//RADAR V3.2.3-PRO
 // InvertirOnline authentication & Level-2 data fetching
 //
-// V3.5 CHANGES:
-// - Case-insensitive key normalization for IOL JSON responses
-//   (handles 'Puntas'/'puntas', 'Compra'/'compra', etc.)
-// - Separated volume fields: iol_volume_notional (ARS monto) vs
-//   iol_volume_qty (cantidad de títulos)
-// - iol_volume_notional is the PRIMARY volume for cross-asset comparison
-// - Robust fallback: if IOL is offline, returns null instead of zeros
-//   to avoid overwriting valid data from other sources
+// Extracted from scripts/update-prices.ts and adapted for Next.js
+// API routes (server-side only).
+//
+// V3.2.3-PRO: Now calculates bid_depth / ask_depth / market_pressure
+// from puntas_detalle order-book levels.
 //
 // ⚠️  SERVER-SIDE MODULE — never import in client components.
 //
@@ -35,42 +32,10 @@ const TOKEN_TIMEOUT_MS = 10_000;
 /** Request timeout for cotización endpoint (ms) */
 const COTIZACION_TIMEOUT_MS = 5_000;
 
-// ── Case-Insensitive Key Normalization ─────────────────────────────────
-
-/**
- * Recursively normalize all keys in an object to lowercase.
- * This handles IOL API inconsistencies like:
- *   'Puntas' / 'puntas' / 'PUNTAS'
- *   'Compra' / 'compra' / 'COMPRA'
- *   'ultimoPrecio' / 'UltimoPrecio'
- *   'cantidadOperada' / 'CantidadOperada'
- *
- * After normalization, all keys are lowercase, so we can safely
- * access them with consistent lowercase property names.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizeKeys(obj: any): any {
-  if (obj === null || obj === undefined) return obj;
-  if (Array.isArray(obj)) return obj.map(normalizeKeys);
-  if (typeof obj === 'object') {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result: Record<string, any> = {};
-    for (const key of Object.keys(obj)) {
-      result[key.toLowerCase()] = normalizeKeys(obj[key]);
-    }
-    return result;
-  }
-  return obj;
-}
-
 // ── Types ──────────────────────────────────────────────────────────────
 
-/**
- * Normalized IOL cotización response (all keys lowercase).
- * The raw IOL API can return keys in various casings (Puntas/puntas,
- * Compra/compra, etc.), so we normalize before typing.
- */
-export interface IOLCotizacionNormalized {
+/** Raw IOL cotización response from the API. */
+export interface IOLCotizacion {
   titulo: {
     simbolo: string;
     descripcion: string;
@@ -78,13 +43,13 @@ export interface IOLCotizacionNormalized {
     mercado: string;
     tipo: string;
   };
-  ultimoprecio: number;
+  ultimoPrecio: number;
   variacion: number;
   apertura: number;
   maximo: number;
   minimo: number;
-  volumen: number;            // Monto total operado en ARS (NOTIONAL)
-  cantidadoperada: number;    // Cantidad de títulos operados (QTY)
+  volumen: number;
+  cantidadOperada: number;
   puntas?: {
     compra: Array<{ cantidad: number; precio: number }>;
     venta: Array<{ cantidad: number; precio: number }>;
@@ -99,12 +64,7 @@ export interface IOLPunta {
 
 /** Processed Level-2 data returned by getIOLCotizacion(). */
 export interface IOLLevel2Data {
-  /** V3.5: Monto total operado en ARS — PRIMARY volume for cross-asset comparison */
-  iol_volume_notional: number;
-  /** V3.5: Cantidad de títulos operados — informational only */
-  iol_volume_qty: number;
-  /** @deprecated Use iol_volume_notional for ARS volume or iol_volume_qty for quantity */
-  iol_volume: number;  // kept for backward compat = iol_volume_qty (original behavior)
+  iol_volume: number;
   iol_bid: number;
   iol_ask: number;
   iol_avg_daily_volume: number;
@@ -164,35 +124,6 @@ function calcMarketPressure(bidDepth: number, askDepth: number): number {
   return parseFloat(ratio.toFixed(2));
 }
 
-/**
- * Extract puntas from the normalized IOL response.
- * Handles both 'puntas' and 'Puntas' keys after normalization.
- */
-function extractPuntas(data: IOLCotizacionNormalized): {
-  compra: IOLPunta[];
-  venta: IOLPunta[];
-} {
-  const puntas = data.puntas;
-  if (!puntas) return { compra: [], venta: [] };
-
-  // After normalizeKeys, keys are lowercase, so 'compra' and 'venta'
-  const compra: IOLPunta[] = Array.isArray(puntas.compra)
-    ? puntas.compra.map((p: { cantidad: number; precio: number }) => ({
-        cantidad: Number(p.cantidad) || 0,
-        precio: Number(p.precio) || 0,
-      }))
-    : [];
-
-  const venta: IOLPunta[] = Array.isArray(puntas.venta)
-    ? puntas.venta.map((p: { cantidad: number; precio: number }) => ({
-        cantidad: Number(p.cantidad) || 0,
-        precio: Number(p.precio) || 0,
-      }))
-    : [];
-
-  return { compra, venta };
-}
-
 // ── Public API ─────────────────────────────────────────────────────────
 
 /**
@@ -214,7 +145,7 @@ export async function getIOLToken(): Promise<string | null> {
     return null;
   }
 
-  // Return cached token if still valid (120 s safety buffer)
+  // Return cached token if still valid (120 s safety buffer — avoid blind spots)
   if (iolAccessToken && Date.now() < iolTokenExpiry - 120_000) {
     return iolAccessToken;
   }
@@ -264,11 +195,10 @@ export async function getIOLToken(): Promise<string | null> {
 /**
  * Fetch cotización (Level-2) data for a specific ticker from IOL.
  *
- * V3.5 KEY CHANGES:
- * 1. Case-insensitive key normalization via normalizeKeys()
- * 2. Clear separation of iol_volume_notional (ARS) vs iol_volume_qty (títulos)
- * 3. If IOL is offline/closed, returns null (not zeros) so callers can
- *    preserve existing valid data from other sources
+ * Automatically obtains / refreshes the Bearer token before making
+ * the request.  Returns processed `IOLLevel2Data` with volume,
+ * bid/ask, depth, market pressure, estimated average daily volume,
+ * and liquidity alert.
  *
  * @param ticker - Instrument ticker (e.g. "T5W3" or "LECAPX9S").
  * @returns `IOLLevel2Data` with status, or `null` on unrecoverable error.
@@ -291,11 +221,9 @@ export async function getIOLCotizacion(
     });
 
     if (!res.ok) {
-      // 404 = ticker not listed on IOL — return no_data sentinel
+      // 404 = ticker not listed on IOL
       if (res.status === 404) {
         return {
-          iol_volume_notional: 0,
-          iol_volume_qty: 0,
           iol_volume: 0,
           iol_bid: 0,
           iol_ask: 0,
@@ -308,58 +236,56 @@ export async function getIOLCotizacion(
           puntas_detalle: { compra: [], venta: [] },
         };
       }
-      // Other errors (rate limit, server error) → return null so caller
-      // preserves existing data instead of overwriting with zeros
       return null;
     }
 
-    const rawData = await res.json();
+    const data = (await res.json()) as IOLCotizacion;
 
-    // V3.5: Normalize all keys to lowercase for case-insensitive access
-    const data = normalizeKeys(rawData) as IOLCotizacionNormalized;
-
-    // ── Volume fields (V3.5: clearly separated) ──────────────────────
-    // IOL API: 'volumen' = Monto total operado en ARS (NOTIONAL)
-    // IOL API: 'cantidadoperada' = Cantidad de títulos operados (QTY)
-    const volumenNotionalARS = Number(data.volumen) || 0;        // ARS monto
-    const cantidadOperadaQty = Number(data.cantidadoperada) || 0; // títulos
-
-    // Best bid / ask from puntas (order book) — case-insensitive access
-    const puntas = extractPuntas(data);
+    // Best bid / ask from puntas (order book)
     let iolBid = 0;
     let iolAsk = 0;
-    if (puntas.compra.length > 0) {
-      iolBid = puntas.compra[0].precio;
-    }
-    if (puntas.venta.length > 0) {
-      iolAsk = puntas.venta[0].precio;
+    if (data.puntas) {
+      if (data.puntas.compra?.length) {
+        iolBid = data.puntas.compra[0].precio;
+      }
+      if (data.puntas.venta?.length) {
+        iolAsk = data.puntas.venta[0].precio;
+      }
     }
 
+    // Volume fields
+    const cantidadOperada = data.cantidadOperada || 0;
+    const volumenNominal = data.volumen || 0;
+
     // Estimate average daily volume:
-    //   avgDaily ≈ currentNotional × (7 / tradingHoursElapsed)
-    // V3.5: Use notional ARS for avg daily (cross-asset comparable)
+    //   avgDaily ≈ currentNominal × (7 / tradingHoursElapsed)
     const hoursElapsed = tradingHoursElapsed();
     const estimatedAvgDaily =
-      volumenNotionalARS > 0
-        ? volumenNotionalARS * (7 / hoursElapsed)
-        : cantidadOperadaQty * 100 * (7 / hoursElapsed);
+      volumenNominal > 0
+        ? volumenNominal * (7 / hoursElapsed)
+        : cantidadOperada * 100 * (7 / hoursElapsed);
 
     // Liquidity alert: volume ratio < 10 % of estimated avg daily
     const volumeRatio =
-      estimatedAvgDaily > 0 ? volumenNotionalARS / estimatedAvgDaily : 0;
+      estimatedAvgDaily > 0 ? volumenNominal / estimatedAvgDaily : 0;
     const liquidityAlert =
-      volumeRatio < IOL_LOW_VOLUME_PCT && volumenNotionalARS > 0;
+      volumeRatio < IOL_LOW_VOLUME_PCT && volumenNominal > 0;
+
+    // Raw puntas for depth calculations
+    const puntasDetalle = data.puntas
+      ? {
+          compra: data.puntas.compra?.map((p) => ({ cantidad: p.cantidad, precio: p.precio })) ?? [],
+          venta: data.puntas.venta?.map((p) => ({ cantidad: p.cantidad, precio: p.precio })) ?? [],
+        }
+      : { compra: [], venta: [] };
 
     // V3.2.3-PRO: Calculate depth & market pressure from puntas
-    const bidDepth = calcDepth(puntas.compra);
-    const askDepth = calcDepth(puntas.venta);
+    const bidDepth = calcDepth(puntasDetalle.compra);
+    const askDepth = calcDepth(puntasDetalle.venta);
     const marketPressure = calcMarketPressure(bidDepth, askDepth);
 
     return {
-      // V3.5: Primary volume fields — clearly separated
-      iol_volume_notional: volumenNotionalARS,     // ARS — use for radar VOL column
-      iol_volume_qty: cantidadOperadaQty,           // Títulos — informational
-      iol_volume: cantidadOperadaQty,               // Backward compat (original behavior)
+      iol_volume: cantidadOperada,
       iol_bid: iolBid,
       iol_ask: iolAsk,
       iol_avg_daily_volume: Math.round(estimatedAvgDaily),
@@ -368,11 +294,10 @@ export async function getIOLCotizacion(
       iol_bid_depth: bidDepth,
       iol_ask_depth: askDepth,
       iol_market_pressure: marketPressure,
-      puntas_detalle: puntas,
+      puntas_detalle: puntasDetalle,
     };
   } catch {
-    // V3.5: Return null (not zeros) so caller can preserve existing data
-    // This is the KEY robustness fix for weekends/off-hours
+    // Intentionally silent — per-ticker failures should not cascade
     return null;
   }
 }

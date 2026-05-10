@@ -13,7 +13,7 @@ export interface Instrument {
   dm?: number; // V1.5: Duration Modified from historico_precios.json
 
   // ── V3.1: IOL Level 2 Fields (from Cerebro Táctico local script) ──
-  iolVolume?: number;              // @deprecated Use iolVolumeNotional for ARS or iolVolumeQty for titles
+  iolVolume?: number;              // cantidadOperada from IOL
   iolBid?: number;                 // best bid price from IOL puntas
   iolAsk?: number;                 // best ask price from IOL puntas
   iolAvgDailyVolume?: number;      // estimated average daily volume
@@ -25,10 +25,6 @@ export interface Instrument {
   iolMarketPressure?: number;    // V3.2.1: bid_depth / ask_depth ratio (>1 = buying pressure)
   iolVerdict?: string;           // V3.2.1: Human-readable Filtro de Verdad verdict
   data912Volume?: number;        // V3.4: Notional ARS volume from data912 (fallback for VOL column)
-
-  // ── V3.5: IOL Volume Separation (Price Action Engine) ──
-  iolVolumeNotional?: number;     // V3.5: Monto total en ARS from IOL — PRIMARY for radar VOL comparison
-  iolVolumeQty?: number;          // V3.5: Cantidad de títulos from IOL — informational only
 }
 
 export interface Config {
@@ -197,42 +193,42 @@ export interface MomentumData {
 // V1.5: Support/Resistance data from historico_precios.json
 export interface SRData {
   ticker: string;
-  soporte: number;
-  resistencia: number;
+  soporte: number;  // min price from last 15 days (V1.8.3: unified 1.XXXX scale)
+  resistencia: number;  // max price from last 15 days (V1.8.3: unified 1.XXXX scale)
   precioActual: number;
-  distanciaSoporte: number;
-  distanciaResistencia: number;
-  posicionEnCanal: number;
-  upsideCapital: number;
-  downsideRisk: number;
-  minTEM15d: number;
-  maxTEM15d: number;
-  temPosition: 'CERCANO_MIN' | 'CERCANO_MAX' | 'MEDIO';
+  distanciaSoporte: number;  // % distance to support
+  distanciaResistencia: number;  // % distance to resistance
+  posicionEnCanal: number;  // V1.8.4: 0-100% position within S/R channel (0=at support, 100=at resistance)
+  upsideCapital: number;    // V1.7: % upside to resistance
+  downsideRisk: number;     // V1.7: % downside to support
+  minTEM15d: number;        // V1.7: minimum TEM in last 15 days
+  maxTEM15d: number;        // V1.7: maximum TEM in last 15 days
+  temPosition: 'CERCANO_MIN' | 'CERCANO_MAX' | 'MEDIO';  // V1.7
 }
 
 // V1.5: Price history record from historico_precios.json
 export interface PriceHistoryEntry {
-  p: number;
+  p: number;   // price
   tna: number;
   tem: number;
-  dm: number;
+  dm: number;  // duration modified
 }
 
 // V1.7: Rotation Score with Capital Run Potential
 export interface RotationScoreV17 {
   ticker: string;
-  compositeScore: number;
-  upsideCapital: number;
-  downsideRisk: number;
+  compositeScore: number;         // from calculateCompositeSignal
+  upsideCapital: number;          // % upside to resistance
+  downsideRisk: number;           // % downside to support
   temPosition: 'CERCANO_MIN' | 'CERCANO_MAX' | 'MEDIO';
-  deltaTIR: number | null;
-  spreadVsCaucion: number;
-  tem: number;
-  temCompressionScore: number;
-  capitalRunScore: number;
-  tacticalScore: number;
-  isPositionExhausted: boolean;
-  shouldRotateForRun: boolean;
+  deltaTIR: number | null;        // momentum ΔTIR
+  spreadVsCaucion: number;        // spread vs caución
+  tem: number;                    // current TEM
+  temCompressionScore: number;    // V1.7: 0-10 score for rate compression potential
+  capitalRunScore: number;        // V1.7: 0-10 score for upside potential
+  tacticalScore: number;          // V1.7: weighted combination of all factors
+  isPositionExhausted: boolean;   // V1.7: upside < 0.1% → "POSICIÓN AGOTADA"
+  shouldRotateForRun: boolean;    // V1.7: even with similar TEM, better upside + score
 }
 
 // V3.3-PRO Phase 2: Cockpit Score — Unified scalping signal
@@ -241,26 +237,26 @@ export interface CockpitScore {
   type: 'LECAP' | 'BONCAP';
   
   // ── Component Scores (0-10 each) ──
-  spreadNetoScore: number;
-  deltaTIRScore: number;
-  presionPuntasScore: number;
-  upsideCapitalScore: number;
-  velocidadScore: number;
+  spreadNetoScore: number;     // 25% weight — Carry inmediato vs Caución
+  deltaTIRScore: number;       // 25% weight — Momentum de tasa intradía
+  presionPuntasScore: number;  // 20% weight — Presión de puntas (IOL/bid-ask)
+  upsideCapitalScore: number;  // 20% weight — Recorrido a resistencia S/R
+  velocidadScore: number;      // 10% weight — Penaliza largos, premia cortos
   
   // ── Composite ──
-  cockpitScore: number;
+  cockpitScore: number;        // Weighted total (0-10)
   
   // ── Verdict ──
   verdict: 'SALTO_TACTICO' | 'PUNTO_CARAMELO' | 'ATRACTIVO' | 'NEUTRAL' | 'EVITAR';
   verdictReason: string;
   
   // ── Raw data for display ──
-  spreadNeto: number;
-  deltaTIR: number | null;
-  presionPuntas: number | null;
-  upsideCapital: number;
-  days: number;
-  withinHorizon: boolean;
+  spreadNeto: number;          // TEM - CauciónTEM - comisionAmortizada
+  deltaTIR: number | null;     // Rate momentum
+  presionPuntas: number | null; // Bid/ask pressure ratio (>1 = buying)
+  upsideCapital: number;       // % to resistance
+  days: number;                // Days to expiry
+  withinHorizon: boolean;      // Within horizon filter (default 45 days — Scalping Extendido)
 }
 
 export type TabId = 'mercado' | 'cockpit' | 'curvas' | 'estrategias' | 'cartera' | 'historial' | 'historico' | 'configuracion';
@@ -305,40 +301,36 @@ export interface LiveInstrument {
   ticker: string;
   type: 'LECAP' | 'BONCAP';
   days_to_expiry: number;
-  last_price: number;
-  bid: number;
-  ask: number;
-  vpv: number;
-  paridad: number;
-  tir: number;
-  tem: number;
-  tna: number;
-  spread_neto: number;
-  ganancia_directa: number;
-  payback_days: number;
-  change_pct: number;
-  volume: number;
-  low_liquidity: boolean;
-  price_estimated: boolean;
-  tem_emision: number | null;
-  fecha_vencimiento: string;
-  updated_at: string;
-  source: 'arg_notes' | 'arg_bonds';
-  delta_tir: number | null;
-  last_close: number | null;
+  last_price: number;          // per $1 VN (data912 price / 100)
+  bid: number;                 // per $1 VN
+  ask: number;                 // per $1 VN
+  vpv: number;                 // valor al vencimiento per $100 VN
+  paridad: number;             // (price / VPV) * 100
+  tir: number;                 // annualized TIR (decimal, e.g. 0.2421)
+  tem: number;                 // monthly TEM (decimal, e.g. 0.0197)
+  tna: number;                 // annualized from TEM (decimal)
+  spread_neto: number;         // TEM - TEM_caucion (decimal)
+  ganancia_directa: number;    // (TEM - TEM_caucion) * (days/30)
+  payback_days: number;        // days to recover commission
+  change_pct: number;          // daily change %
+  volume: number;              // notional ARS volume
+  low_liquidity: boolean;      // volume below threshold
+  price_estimated: boolean;    // bid/ask were 0, using last_price
+  tem_emision: number | null;  // TEM at issuance (from ArgentinaDatos)
+  fecha_vencimiento: string;   // ISO date
+  updated_at: string;          // ISO-8601 timestamp
+  source: 'arg_notes' | 'arg_bonds'; // V2.0.1: which data912 endpoint provided the price
+  delta_tir: number | null;  // V2.0.2: TIR(live) - TIR(last_close) in decimal, null if no last_close
+  last_close: number | null; // V2.0.2: previous close price per $1 VN, derived from pct_change
 
   // ── V3.4: IOL Level 2 Fields (enriched from IOL API) ──
-  iol_volume?: number;              // @deprecated Use iol_volume_notional for ARS or iol_volume_qty for titles
-  iol_bid?: number;
-  iol_ask?: number;
-  iol_bid_depth?: number;
-  iol_ask_depth?: number;
-  iol_market_pressure?: number;
-  iol_status?: 'online' | 'offline' | 'no_data';
-
-  // ── V3.5: IOL Volume Separation (Price Action Engine) ──
-  iol_volume_notional?: number;     // V3.5: Monto total en ARS — PRIMARY for radar VOL comparison
-  iol_volume_qty?: number;          // V3.5: Cantidad de títulos — informational only
+  iol_volume?: number;              // cantidadOperada from IOL
+  iol_bid?: number;                 // best bid price from IOL puntas
+  iol_ask?: number;                 // best ask price from IOL puntas
+  iol_bid_depth?: number;           // Total quantity across all compra puntas
+  iol_ask_depth?: number;           // Total quantity across all venta puntas
+  iol_market_pressure?: number;     // bid_depth / ask_depth ratio
+  iol_status?: 'online' | 'offline' | 'no_data'; // IOL data availability
 }
 
 /** Full /api/letras response (V2.0.1 with multi-source) */
