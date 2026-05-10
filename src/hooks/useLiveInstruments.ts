@@ -1,11 +1,19 @@
 // ════════════════════════════════════════════════════════════════════════
-// V2.0.2 — useLiveInstruments Hook
+// V3.5 — useLiveInstruments Hook (The Price Action Engine)
 //
 // Polls /api/letras every 60 seconds for live market data.
 // Converts LiveInstrument[] → Instrument[] for seamless integration
 // with the existing ARB-RADAR dashboard.
 //
-// V2.0.2 FIXES:
+// V3.5 KEY CHANGES:
+// 1. REMOVED duplicate IOL fetch from client — the server /api/letras
+//    already performs IOL Level-2 enrichment. The old client-side
+//    fetch to /api/iol-level2 would overwrite valid server-enriched
+//    data with zeros when IOL was offline (weekends, off-hours).
+// 2. Maps iol_volume_notional and iol_volume_qty from API response
+// 3. Preserves last valid data when API returns stale/error — SWR pattern
+//
+// V2.0.2 ORIGINAL FIXES (preserved):
 // 1. Persists active (LIVE) state to localStorage — survives tab changes
 // 2. Calls onNewInstruments callback when LIVE discovers new tickers
 // 3. Tracks which tickers are LIVE vs OFFLINE
@@ -55,17 +63,17 @@ function liveToInstrument(live: LiveInstrument): Instrument {
   return {
     ticker: live.ticker,
     type: live.type,
-    expiry: live.fecha_vencimiento, // ISO format, will be displayed as-is
+    expiry: live.fecha_vencimiento,
     days: live.days_to_expiry,
     price: live.last_price,
     change: live.change_pct,
-    tna: live.tna * 100,       // convert decimal to percentage
-    tem: live.tem * 100,       // convert decimal to percentage
-    tir: live.tem * 100,       // In ARB-RADAR, tir = TEM (monthly rate)
-    gananciaDirecta: live.ganancia_directa * 100, // convert to percentage
+    tna: live.tna * 100,
+    tem: live.tem * 100,
+    tir: live.tem * 100,
+    gananciaDirecta: live.ganancia_directa * 100,
     vsPlazoFijo,
-    dm: undefined, // Not available from live data
-    // V3.4: IOL Level 2 fields — populated by /api/letras enrichment or /api/iol-level2
+    dm: undefined,
+    // V3.4: IOL Level 2 fields — populated by /api/letras enrichment
     iolVolume: live.iol_volume,
     iolBid: live.iol_bid,
     iolAsk: live.iol_ask,
@@ -75,6 +83,9 @@ function liveToInstrument(live: LiveInstrument): Instrument {
     iolStatus: live.iol_status,
     // V3.4: data912 notional volume — fallback for VOL column when IOL is offline
     data912Volume: live.volume,
+    // V3.5: IOL Volume Separation — PRIMARY volume for radar comparison
+    iolVolumeNotional: live.iol_volume_notional,  // ARS monto from IOL
+    iolVolumeQty: live.iol_volume_qty,            // títulos from IOL
   };
 }
 
@@ -107,7 +118,6 @@ export function useLiveInstruments(): LiveInstrumentsState {
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [sources, setSources] = useState<LiveInstrumentsState['sources']>(null);
   const [stats, setStats] = useState<LiveInstrumentsState['stats']>(null);
-  // V2.0.2: Initialize active from localStorage
   const [active, setActiveRaw] = useState<boolean>(getPersistedActive);
   const [liveTickers, setLiveTickers] = useState<Set<string>>(new Set());
   const [deltaTIRMap, setDeltaTIRMap] = useState<Map<string, number>>(new Map());
@@ -116,7 +126,6 @@ export function useLiveInstruments(): LiveInstrumentsState {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
 
-  // V2.0.2: Wrap setActive to persist to localStorage
   const setActive = useCallback((value: boolean) => {
     persistActive(value);
     setActiveRaw(value);
@@ -124,7 +133,6 @@ export function useLiveInstruments(): LiveInstrumentsState {
 
   const fetchData = useCallback(async () => {
     // SWR: Only show full loading spinner on first fetch (no existing data)
-    // On subsequent fetches, just mark as stale while revalidating in background
     const isFirstFetch = !hasDataRef.current;
     if (isFirstFetch) {
       setLoading(true);
@@ -144,6 +152,15 @@ export function useLiveInstruments(): LiveInstrumentsState {
         return;
       }
 
+      // ── V3.5: Single source of truth — /api/letras ──────────────
+      // The server route already performs:
+      //   1. data912 merge (notes + bonds)
+      //   2. ArgentinaDatos merge (VPV + vencimiento)
+      //   3. IOL Level-2 enrichment (if credentials configured)
+      //   4. SWR stale cache on total source failure
+      //
+      // NO MORE client-side IOL fetch — it was overwriting valid
+      // server-enriched data with zeros when IOL was offline.
       const res = await fetch('/api/letras', {
         signal: AbortSignal.timeout(15000),
       });
@@ -191,67 +208,17 @@ export function useLiveInstruments(): LiveInstrumentsState {
         setStale(true);
       }
 
-      // ── V3.4: IOL Level 2 enrichment ─────────────────────────────
-      // Fetch IOL L2 data (volume, depth, pressure) from /api/iol-level2
-      // and merge into instruments. This provides real-time order book
-      // data beyond what /api/letras may already include.
-      // Best-effort: failures don't block the main data pipeline.
-      const tickers = data.instruments.map(i => i.ticker);
-      if (tickers.length > 0) {
-        try {
-          // Fetch in chunks of 20 (API limit)
-          const CHUNK_SIZE = 20;
-          const iolDataMap = new Map<string, {
-            volume: number;
-            bid: number;
-            ask: number;
-            bid_depth: number;
-            ask_depth: number;
-            market_pressure: number | null;
-            status: string;
-          }>();
-
-          for (let ci = 0; ci < tickers.length; ci += CHUNK_SIZE) {
-            const chunk = tickers.slice(ci, ci + CHUNK_SIZE);
-            const l2Res = await fetch(`/api/iol-level2?tickers=${chunk.join(',')}`, {
-              signal: AbortSignal.timeout(10000),
-            });
-            if (!l2Res.ok) continue;
-            const l2Data = await l2Res.json();
-            if (l2Data.iol_available && l2Data.data) {
-              for (const [ticker, td] of Object.entries(l2Data.data as Record<string, {
-                volume: number;
-                bid: number;
-                ask: number;
-                bid_depth: number;
-                ask_depth: number;
-                market_pressure: number | null;
-                status: string;
-              }>)) {
-                iolDataMap.set(ticker, td);
-              }
-            }
-          }
-
-          // Merge IOL data into instruments
-          if (iolDataMap.size > 0) {
-            for (const inst of mappedInstruments) {
-              const iol = iolDataMap.get(inst.ticker);
-              if (iol) {
-                inst.iolVolume = iol.volume;
-                inst.iolBid = iol.bid;
-                inst.iolAsk = iol.ask;
-                inst.iolBidDepth = iol.bid_depth;
-                inst.iolAskDepth = iol.ask_depth;
-                inst.iolMarketPressure = iol.market_pressure ?? undefined;
-                inst.iolStatus = iol.status as 'online' | 'offline' | 'no_data';
-              }
-            }
-          }
-        } catch {
-          // IOL enrichment failed — continue with base data only
-        }
-      }
+      // ── V3.5: NO MORE client-side IOL enrichment ────────────────
+      // Previously, this block fetched /api/iol-level2 from the client
+      // and merged IOL data. This was REDUNDANT because /api/letras
+      // already enriches with IOL data server-side. Worse, when IOL
+      // was offline (weekends/off-hours), this client fetch returned
+      // zeros that OVERWROTE the valid server-enriched data.
+      //
+      // The fix: trust the server. /api/letras is the single source
+      // of truth. If IOL is offline, the server leaves iol_* fields
+      // as undefined (not zeros), preserving data912/ArgDatos values.
+      // ─────────────────────────────────────────────────────────────
 
       setInstruments(mappedInstruments);
     } catch (err) {
@@ -274,10 +241,7 @@ export function useLiveInstruments(): LiveInstrumentsState {
     mountedRef.current = true;
 
     if (active) {
-      // Fetch immediately when activating
       fetchData();
-
-      // Then poll every 60 seconds
       intervalRef.current = setInterval(fetchData, POLL_INTERVAL);
     } else {
       if (intervalRef.current) {
@@ -286,7 +250,6 @@ export function useLiveInstruments(): LiveInstrumentsState {
       }
       // V2.0.2: Do NOT clear liveTickers when deactivating — 
       // we keep them to show "DATA OFFLINE" indicators
-      // Clear the instruments list though (go back to manual data)
       setInstruments([]);
       setLiveInstruments([]);
       setStale(false);
