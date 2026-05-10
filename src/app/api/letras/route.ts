@@ -93,8 +93,10 @@ interface LiveInstrument {
   delta_tir: number | null;   // V2.0.2: TIR(live) - TIR(last_close)
   last_close: number | null;  // V2.0.2: previous close per $1 VN
 
-  // V3.4: IOL Level 2 Fields (enriched from IOL API)
-  iol_volume?: number;
+  // V3.5: IOL Level 2 Fields (enriched from IOL API)
+  iol_volume?: number;                    // @deprecated — use iol_volume_notional
+  iol_volume_notional?: number;           // V3.5: Monto total operado en ARS (notional)
+  iol_volume_qty?: number;                // V3.5: Cantidad de títulos operados
   iol_bid?: number;
   iol_ask?: number;
   iol_bid_depth?: number;
@@ -413,7 +415,10 @@ export async function GET() {
         if (l2) {
           const inst = instruments.find(ii => ii.ticker === ticker);
           if (inst) {
-            inst.iol_volume = l2.iol_volume;
+            // V3.5: Pass both notional and qty volume fields
+            inst.iol_volume = l2.iol_volume_notional;           // backward compat alias
+            inst.iol_volume_notional = l2.iol_volume_notional;  // ARS notional (PRIORITIZED)
+            inst.iol_volume_qty = l2.iol_volume_qty;            // Cantidad de títulos
             inst.iol_bid = l2.iol_bid;
             inst.iol_ask = l2.iol_ask;
             inst.iol_bid_depth = l2.iol_bid_depth;

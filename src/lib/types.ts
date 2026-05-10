@@ -12,11 +12,16 @@ export interface Instrument {
   vsPlazoFijo: string;
   dm?: number; // V1.5: Duration Modified from historico_precios.json
 
-  // ── V3.1: IOL Level 2 Fields (from Cerebro Táctico local script) ──
-  iolVolume?: number;              // cantidadOperada from IOL
+  // ── V3.5: IOL Level 2 Fields (Price Action Engine) ──
+  /** @deprecated Use iolVolumeNotional instead. Kept for backward compat. */
+  iolVolume?: number;              // V3.5: alias for iolVolumeNotional (was cantidadOperada, now notional ARS)
+  /** V3.5: Monto total operado en ARS (notional) — PRIORITIZED for cross-asset comparison */
+  iolVolumeNotional?: number;
+  /** V3.5: Cantidad de títulos operados (qty of instruments traded) */
+  iolVolumeQty?: number;
   iolBid?: number;                 // best bid price from IOL puntas
   iolAsk?: number;                 // best ask price from IOL puntas
-  iolAvgDailyVolume?: number;      // estimated average daily volume
+  iolAvgDailyVolume?: number;      // estimated average daily volume (ARS notional)
   iolStatus?: 'online' | 'offline' | 'no_data'; // IOL data availability
   iolLiquidityAlert?: boolean;     // True when volume < 10% avg daily
   iolHuntingAdjustment?: number;   // Score adjustment from Filtro de Verdad
@@ -323,8 +328,13 @@ export interface LiveInstrument {
   delta_tir: number | null;  // V2.0.2: TIR(live) - TIR(last_close) in decimal, null if no last_close
   last_close: number | null; // V2.0.2: previous close price per $1 VN, derived from pct_change
 
-  // ── V3.4: IOL Level 2 Fields (enriched from IOL API) ──
-  iol_volume?: number;              // cantidadOperada from IOL
+  // ── V3.5: IOL Level 2 Fields (enriched from IOL API via /api/letras) ──
+  /** @deprecated Use iol_volume_notional instead. Kept for backward compat. */
+  iol_volume?: number;              // V3.5: alias for iol_volume_notional
+  /** V3.5: Monto total operado en ARS (notional) — PRIORITIZED for comparison */
+  iol_volume_notional?: number;
+  /** V3.5: Cantidad de títulos operados (qty of instruments traded) */
+  iol_volume_qty?: number;
   iol_bid?: number;                 // best bid price from IOL puntas
   iol_ask?: number;                 // best ask price from IOL puntas
   iol_bid_depth?: number;           // Total quantity across all compra puntas

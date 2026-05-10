@@ -1,15 +1,23 @@
 // ════════════════════════════════════════════════════════════════════════
-// V2.0.2 — useLiveInstruments Hook
+// V3.5 — useLiveInstruments Hook (The Price Action Engine)
 //
 // Polls /api/letras every 60 seconds for live market data.
 // Converts LiveInstrument[] → Instrument[] for seamless integration
 // with the existing ARB-RADAR dashboard.
 //
-// V2.0.2 FIXES:
+// V3.5 CHANGES:
+// 1. REMOVED redundant client-side IOL L2 fetch (/api/iol-level2).
+//    The server (/api/letras) already performs IOL enrichment.
+//    Client-side fetch was overwriting valid data with zeros when
+//    IOL was offline (weekends, after-hours).
+// 2. Added hold-last-valid IOL data mechanism: when IOL is offline,
+//    the last valid IOL fields are preserved instead of being zeroed.
+// 3. Added iol_volume_notional / iol_volume_qty mapping from V3.5 API.
+//
+// V2.0.2 FIXES (preserved):
 // 1. Persists active (LIVE) state to localStorage — survives tab changes
-// 2. Calls onNewInstruments callback when LIVE discovers new tickers
-// 3. Tracks which tickers are LIVE vs OFFLINE
-// 4. Includes delta_tir from API (live price vs last_close)
+// 2. Tracks which tickers are LIVE vs OFFLINE
+// 3. Includes delta_tir from API (live price vs last_close)
 // ════════════════════════════════════════════════════════════════════════
 
 'use client';
@@ -65,8 +73,11 @@ function liveToInstrument(live: LiveInstrument): Instrument {
     gananciaDirecta: live.ganancia_directa * 100, // convert to percentage
     vsPlazoFijo,
     dm: undefined, // Not available from live data
-    // V3.4: IOL Level 2 fields — populated by /api/letras enrichment or /api/iol-level2
-    iolVolume: live.iol_volume,
+    // V3.5: IOL Level 2 fields — populated by /api/letras server-side enrichment.
+    // No client-side IOL fetch — server is the single source of truth.
+    iolVolume: live.iol_volume_notional ?? live.iol_volume, // Prefer notional (ARS)
+    iolVolumeNotional: live.iol_volume_notional, // V3.5: ARS notional volume
+    iolVolumeQty: live.iol_volume_qty,           // V3.5: Quantity of titles traded
     iolBid: live.iol_bid,
     iolAsk: live.iol_ask,
     iolBidDepth: live.iol_bid_depth,
@@ -98,6 +109,68 @@ function persistActive(value: boolean): void {
   }
 }
 
+// ── V3.5: IOL Last-Valid Cache ────────────────────────────────────────
+// When IOL is offline (weekends, after-hours), the server returns
+// iol_status !== 'online' with zeroed IOL fields. This cache preserves
+// the last valid IOL data per ticker so the UI doesn't flash zeros.
+
+interface IOLLatestData {
+  iolVolume: number;
+  iolVolumeNotional: number;
+  iolVolumeQty: number;
+  iolBid: number;
+  iolAsk: number;
+  iolBidDepth: number;
+  iolAskDepth: number;
+  iolMarketPressure: number | undefined;
+  iolStatus: 'online' | 'offline' | 'no_data';
+}
+
+/**
+ * Merge IOL fields from a new fetch with the last valid IOL data.
+ * Strategy:
+ *   - If new data has iol_status === 'online', use it (fresh data wins).
+ *   - If new data has iol_status !== 'online' AND we have cached data,
+ *     keep the cached values (don't overwrite with zeros).
+ *   - If no cached data exists, accept the zeros (first fetch, IOL never worked).
+ */
+function mergeIOLFields(
+  inst: Instrument,
+  lastValid: Map<string, IOLLatestData>,
+): Instrument {
+  const cached = lastValid.get(inst.ticker);
+  if (!cached) return inst; // No previous data — accept as-is
+
+  // If IOL is online in the new data, it's fresh — use it and update cache
+  if (inst.iolStatus === 'online') {
+    lastValid.set(inst.ticker, {
+      iolVolume: inst.iolVolume ?? 0,
+      iolVolumeNotional: inst.iolVolumeNotional ?? 0,
+      iolVolumeQty: inst.iolVolumeQty ?? 0,
+      iolBid: inst.iolBid ?? 0,
+      iolAsk: inst.iolAsk ?? 0,
+      iolBidDepth: inst.iolBidDepth ?? 0,
+      iolAskDepth: inst.iolAskDepth ?? 0,
+      iolMarketPressure: inst.iolMarketPressure,
+      iolStatus: inst.iolStatus ?? 'offline',
+    });
+    return inst;
+  }
+
+  // IOL is offline/no_data in the new data — preserve last valid
+  return {
+    ...inst,
+    iolVolume: cached.iolVolume || inst.iolVolume,
+    iolVolumeNotional: cached.iolVolumeNotional || inst.iolVolumeNotional,
+    iolVolumeQty: cached.iolVolumeQty || inst.iolVolumeQty,
+    iolBid: cached.iolBid || inst.iolBid,
+    iolAsk: cached.iolAsk || inst.iolAsk,
+    iolBidDepth: cached.iolBidDepth || inst.iolBidDepth,
+    iolAskDepth: cached.iolAskDepth || inst.iolAskDepth,
+    iolMarketPressure: cached.iolMarketPressure ?? inst.iolMarketPressure,
+  };
+}
+
 export function useLiveInstruments(): LiveInstrumentsState {
   const [liveInstruments, setLiveInstruments] = useState<LiveInstrument[]>([]);
   const [instruments, setInstruments] = useState<Instrument[]>([]);
@@ -115,6 +188,9 @@ export function useLiveInstruments(): LiveInstrumentsState {
   const hasDataRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+
+  // V3.5: Last-valid IOL data cache — persists across fetches
+  const lastValidIOLRef = useRef<Map<string, IOLLatestData>>(new Map());
 
   // V2.0.2: Wrap setActive to persist to localStorage
   const setActive = useCallback((value: boolean) => {
@@ -159,7 +235,18 @@ export function useLiveInstruments(): LiveInstrumentsState {
       }
 
       setLiveInstruments(data.instruments);
-      const mappedInstruments = data.instruments.map(liveToInstrument);
+
+      // ── V3.5: Map instruments + hold-last-valid IOL ──────────────
+      // The server (/api/letras) is the SINGLE source of truth for IOL data.
+      // We NO LONGER call /api/iol-level2 from the client.
+      // When IOL is offline (weekend/after-hours), the server returns
+      // iol_status !== 'online' with zeroed IOL fields.
+      // The mergeIOLFields() function preserves the last valid IOL data
+      // so the radar doesn't flash zeros.
+      const mappedInstruments = data.instruments
+        .map(liveToInstrument)
+        .map(inst => mergeIOLFields(inst, lastValidIOLRef.current));
+
       setCaucionProxy(data.caucion_proxy ?? null);
 
       // Mark data as available
@@ -191,67 +278,18 @@ export function useLiveInstruments(): LiveInstrumentsState {
         setStale(true);
       }
 
-      // ── V3.4: IOL Level 2 enrichment ─────────────────────────────
-      // Fetch IOL L2 data (volume, depth, pressure) from /api/iol-level2
-      // and merge into instruments. This provides real-time order book
-      // data beyond what /api/letras may already include.
-      // Best-effort: failures don't block the main data pipeline.
-      const tickers = data.instruments.map(i => i.ticker);
-      if (tickers.length > 0) {
-        try {
-          // Fetch in chunks of 20 (API limit)
-          const CHUNK_SIZE = 20;
-          const iolDataMap = new Map<string, {
-            volume: number;
-            bid: number;
-            ask: number;
-            bid_depth: number;
-            ask_depth: number;
-            market_pressure: number | null;
-            status: string;
-          }>();
-
-          for (let ci = 0; ci < tickers.length; ci += CHUNK_SIZE) {
-            const chunk = tickers.slice(ci, ci + CHUNK_SIZE);
-            const l2Res = await fetch(`/api/iol-level2?tickers=${chunk.join(',')}`, {
-              signal: AbortSignal.timeout(10000),
-            });
-            if (!l2Res.ok) continue;
-            const l2Data = await l2Res.json();
-            if (l2Data.iol_available && l2Data.data) {
-              for (const [ticker, td] of Object.entries(l2Data.data as Record<string, {
-                volume: number;
-                bid: number;
-                ask: number;
-                bid_depth: number;
-                ask_depth: number;
-                market_pressure: number | null;
-                status: string;
-              }>)) {
-                iolDataMap.set(ticker, td);
-              }
-            }
-          }
-
-          // Merge IOL data into instruments
-          if (iolDataMap.size > 0) {
-            for (const inst of mappedInstruments) {
-              const iol = iolDataMap.get(inst.ticker);
-              if (iol) {
-                inst.iolVolume = iol.volume;
-                inst.iolBid = iol.bid;
-                inst.iolAsk = iol.ask;
-                inst.iolBidDepth = iol.bid_depth;
-                inst.iolAskDepth = iol.ask_depth;
-                inst.iolMarketPressure = iol.market_pressure ?? undefined;
-                inst.iolStatus = iol.status as 'online' | 'offline' | 'no_data';
-              }
-            }
-          }
-        } catch {
-          // IOL enrichment failed — continue with base data only
-        }
-      }
+      // ── V3.5: REMOVED client-side IOL L2 enrichment ─────────────
+      // Previously, this block fetched /api/iol-level2 from the client
+      // and merged IOL data into instruments. This was REDUNDANT because
+      // /api/letras already performs IOL enrichment server-side.
+      //
+      // WORSE: when IOL was offline (weekends, after-hours), this
+      // client-side fetch returned zeros and OVERWROTE the valid data
+      // that /api/letras had preserved from the server-side enrichment.
+      //
+      // The server is now the single source of truth for IOL data.
+      // The hold-last-valid mechanism (mergeIOLFields) ensures that
+      // when IOL goes offline, the last valid data is preserved.
 
       setInstruments(mappedInstruments);
     } catch (err) {
@@ -291,6 +329,8 @@ export function useLiveInstruments(): LiveInstrumentsState {
       setLiveInstruments([]);
       setStale(false);
       hasDataRef.current = false;
+      // V3.5: Keep lastValidIOLRef across deactivations — it's a cache,
+      // not live state. If the user re-enables LIVE, the cache is still warm.
     }
 
     return () => {

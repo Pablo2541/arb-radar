@@ -44,7 +44,9 @@ const BATCH_DELAY_MS = 200;
 // ── Types ──────────────────────────────────────────────────────────────
 
 interface TickerLevel2Data {
-  volume: number;
+  volume: number;              // @deprecated — use volume_notional
+  volume_notional: number;     // V3.5: Monto total operado en ARS (notional)
+  volume_qty: number;          // V3.5: Cantidad de títulos operados
   bid: number;
   ask: number;
   bid_depth: number;
@@ -170,7 +172,9 @@ function enrichLevel2Data(ticker: string, l2: IOLLevel2Data): TickerLevel2Data {
   });
 
   return {
-    volume: l2.iol_volume,
+    volume: l2.iol_volume_notional,       // V3.5: Use notional (backward compat)
+    volume_notional: l2.iol_volume_notional,
+    volume_qty: l2.iol_volume_qty,
     bid: l2.iol_bid,
     ask: l2.iol_ask,
     bid_depth: bidDepth,
@@ -211,6 +215,8 @@ async function fetchTickersInBatches(
             ticker,
             data: {
               volume: 0,
+              volume_notional: 0,
+              volume_qty: 0,
               bid: 0,
               ask: 0,
               bid_depth: 0,
@@ -228,6 +234,8 @@ async function fetchTickersInBatches(
             ticker,
             data: {
               volume: 0,
+              volume_notional: 0,
+              volume_qty: 0,
               bid: 0,
               ask: 0,
               bid_depth: 0,
