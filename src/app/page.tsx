@@ -220,11 +220,12 @@ function HomeContent() {
   const effectiveInstruments = useMemo(() => {
     if (!liveData.active || liveData.instruments.length === 0) return instruments;
 
-    // Merge: update existing instruments with live data, add new ones from live
     const manualTickerSet = new Set(instruments.map(i => i.ticker));
+    
     const updated = instruments.map(inst => {
       const liveInst = liveDataMap.get(inst.ticker);
-      if (!liveInst) return inst; // No live data for this ticker, keep manual
+      if (!liveInst) return inst;
+
       return {
         ...inst,
         price: liveInst.last_price,
@@ -233,7 +234,7 @@ function HomeContent() {
         tem: liveInst.tem * 100,
         tir: liveInst.tir * 100,
         days: liveInst.days_to_expiry,
-        // V3.5.1: IOL Level 2 enrichment from /api/letras — real-time order book data
+        
         iolVolume: liveInst.iol_volume_notional ?? liveInst.iol_volume ?? inst.iolVolume,
         iolVolumeNotional: liveInst.iol_volume_notional ?? inst.iolVolumeNotional,
         iolVolumeQty: liveInst.iol_volume_qty ?? inst.iolVolumeQty,
@@ -243,10 +244,17 @@ function HomeContent() {
         iolAskDepth: liveInst.iol_ask_depth ?? inst.iolAskDepth,
         iolMarketPressure: liveInst.iol_market_pressure ?? inst.iolMarketPressure,
         iolStatus: liveInst.iol_status ?? inst.iolStatus,
-        // V3.4: data912 volume as fallback for VOL column
         data912Volume: liveInst.volume ?? inst.data912Volume,
       };
     });
+
+    const newLiveInstruments = liveData.instruments.filter(
+      li => !manualTickerSet.has(li.ticker)
+    );
+    
+    return newLiveInstruments.length > 0 ? [...updated, ...newLiveInstruments] : updated;
+    
+  }, [liveData.active, liveData.instruments, liveDataMap, instruments]);
 
     // Add truly new instruments from LIVE that aren't in manual list
     const newLiveInstruments = liveData.instruments.filter(

@@ -240,13 +240,19 @@ export const useRadarStore = create<RadarState>((set, get) => ({
   setPosition: (v: Position | null) => {
     set({ position: v });
     saveToStorage(STORAGE_KEYS.POSITION, v);
-    scheduleDbPersist(get);
+    // Escritura Atómica: Sincroniza con la DB inmediatamente
+    get().forceSyncToDb().catch(() => {
+      console.warn('Sync atómico falló, datos preservados en LocalStorage');
+    });
   },
 
   setTransactions: (v: Transaction[]) => {
     set({ transactions: v });
     saveToStorage(STORAGE_KEYS.TRANSACTIONS, v);
-    scheduleDbPersist(get);
+    // Escritura Atómica: Sincroniza con la DB inmediatamente
+    get().forceSyncToDb().catch(() => {
+      console.warn('Sync atómico falló, datos preservados en LocalStorage');
+    });
   },
 
   setSimulations: (v: SimulationRecord[]) => {
