@@ -235,7 +235,6 @@ function HomeContent() {
         days: liveInst.days_to_expiry,
         // V3.4: IOL Level 2 enrichment from /api/letras — real-time order book data
         iolVolume: liveInst.iol_volume ?? inst.iolVolume,
-        iolVolumeNotional: liveInst.iol_volume_notional ?? inst.iolVolumeNotional,  // V3.5: ARS notional
         iolBid: liveInst.iol_bid ?? inst.iolBid,
         iolAsk: liveInst.iol_ask ?? inst.iolAsk,
         iolBidDepth: liveInst.iol_bid_depth ?? inst.iolBidDepth,

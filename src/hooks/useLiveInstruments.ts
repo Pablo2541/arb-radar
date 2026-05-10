@@ -67,7 +67,6 @@ function liveToInstrument(live: LiveInstrument): Instrument {
     dm: undefined, // Not available from live data
     // V3.4: IOL Level 2 fields — populated by /api/letras enrichment or /api/iol-level2
     iolVolume: live.iol_volume,
-    iolVolumeNotional: live.iol_volume_notional,  // V3.5: ARS notional volume
     iolBid: live.iol_bid,
     iolAsk: live.iol_ask,
     iolBidDepth: live.iol_bid_depth,
@@ -192,19 +191,68 @@ export function useLiveInstruments(): LiveInstrumentsState {
         setStale(true);
       }
 
-      // ── V3.5: NO MORE CLIENT-SIDE IOL ENRICHMENT ───────────────────
-      // The server /api/letras is now the SOLE source of truth for IOL data.
-      // It already enriches instruments with IOL Level 2 data (volume,
-      // bid/ask, depth, pressure) during the server-side fetch.
-      //
-      // Previously (V3.4), the client did a SECOND fetch to /api/iol-level2
-      // and OVERWROTE the server-provided data. This caused the "volume loss"
-      // bug: if the second fetch failed (timeout, expired token, rate-limit),
-      // it would overwrite valid IOL data with zeros.
-      //
-      // The /api/iol-level2 endpoint still exists for on-demand queries
-      // (e.g., manual refresh, detail view), but is NO LONGER called
-      // automatically on every 60s polling cycle.
+      // ── V3.4: IOL Level 2 enrichment ─────────────────────────────
+      // Fetch IOL L2 data (volume, depth, pressure) from /api/iol-level2
+      // and merge into instruments. This provides real-time order book
+      // data beyond what /api/letras may already include.
+      // Best-effort: failures don't block the main data pipeline.
+      const tickers = data.instruments.map(i => i.ticker);
+      if (tickers.length > 0) {
+        try {
+          // Fetch in chunks of 20 (API limit)
+          const CHUNK_SIZE = 20;
+          const iolDataMap = new Map<string, {
+            volume: number;
+            bid: number;
+            ask: number;
+            bid_depth: number;
+            ask_depth: number;
+            market_pressure: number | null;
+            status: string;
+          }>();
+
+          for (let ci = 0; ci < tickers.length; ci += CHUNK_SIZE) {
+            const chunk = tickers.slice(ci, ci + CHUNK_SIZE);
+            const l2Res = await fetch(`/api/iol-level2?tickers=${chunk.join(',')}`, {
+              signal: AbortSignal.timeout(10000),
+            });
+            if (!l2Res.ok) continue;
+            const l2Data = await l2Res.json();
+            if (l2Data.iol_available && l2Data.data) {
+              for (const [ticker, td] of Object.entries(l2Data.data as Record<string, {
+                volume: number;
+                bid: number;
+                ask: number;
+                bid_depth: number;
+                ask_depth: number;
+                market_pressure: number | null;
+                status: string;
+              }>)) {
+                iolDataMap.set(ticker, td);
+              }
+            }
+          }
+
+          // Merge IOL data into instruments
+          if (iolDataMap.size > 0) {
+            for (const inst of mappedInstruments) {
+              const iol = iolDataMap.get(inst.ticker);
+              if (iol) {
+                inst.iolVolume = iol.volume;
+                inst.iolBid = iol.bid;
+                inst.iolAsk = iol.ask;
+                inst.iolBidDepth = iol.bid_depth;
+                inst.iolAskDepth = iol.ask_depth;
+                inst.iolMarketPressure = iol.market_pressure ?? undefined;
+                inst.iolStatus = iol.status as 'online' | 'offline' | 'no_data';
+              }
+            }
+          }
+        } catch {
+          // IOL enrichment failed — continue with base data only
+        }
+      }
+
       setInstruments(mappedInstruments);
     } catch (err) {
       // SWR: If we have existing data, mark as stale but DON'T clear it
@@ -226,8 +274,8 @@ export function useLiveInstruments(): LiveInstrumentsState {
     mountedRef.current = true;
 
     if (active) {
-      // Schedule initial fetch via microtask to avoid synchronous setState in effect
-      queueMicrotask(fetchData);
+      // Fetch immediately when activating
+      fetchData();
 
       // Then poll every 60 seconds
       intervalRef.current = setInterval(fetchData, POLL_INTERVAL);
@@ -239,12 +287,9 @@ export function useLiveInstruments(): LiveInstrumentsState {
       // V2.0.2: Do NOT clear liveTickers when deactivating — 
       // we keep them to show "DATA OFFLINE" indicators
       // Clear the instruments list though (go back to manual data)
-      // Schedule via microtask to avoid synchronous setState in effect
-      queueMicrotask(() => {
-        setInstruments([]);
-        setLiveInstruments([]);
-        setStale(false);
-      });
+      setInstruments([]);
+      setLiveInstruments([]);
+      setStale(false);
       hasDataRef.current = false;
     }
 

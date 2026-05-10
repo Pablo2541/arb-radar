@@ -94,8 +94,7 @@ interface LiveInstrument {
   last_close: number | null;  // V2.0.2: previous close per $1 VN
 
   // V3.4: IOL Level 2 Fields (enriched from IOL API)
-  iol_volume?: number;              // cantidadOperada (quantity of titles)
-  iol_volume_notional?: number;     // V3.5: volumen nominal en ARS (for display)
+  iol_volume?: number;
   iol_bid?: number;
   iol_ask?: number;
   iol_bid_depth?: number;
@@ -379,15 +378,10 @@ export async function GET() {
   // Sort by days_to_expiry ascending
   instruments.sort((a, b) => a.days_to_expiry - b.days_to_expiry);
 
-  // ── V3.5: IOL Level 2 Enrichment (SERVER-SIDE, single source of truth) ──
+  // ── V3.4: IOL Level 2 Enrichment ────────────────────────────────────
   // If IOL credentials are configured, fetch IOL data for each ticker
   // using batched requests with rate limiting. Best-effort — failures
   // don't block the response.
-  //
-  // V3.5 CHANGE: The client (useLiveInstruments) NO LONGER fetches /api/iol-level2
-  // separately. This route is the SOLE source of IOL-enriched data.
-  // This eliminates the double-enrichment bug where the client overwrote
-  // server-provided IOL data with stale/empty data from a second fetch.
   let iolEnrichedCount = 0;
   // V3.4.3: Try IOL enrichment if credentials exist (fixes chicken-and-egg bug)
   // isIOLAvailable() returns false on first call, so we check credentials directly
@@ -420,7 +414,6 @@ export async function GET() {
           const inst = instruments.find(ii => ii.ticker === ticker);
           if (inst) {
             inst.iol_volume = l2.iol_volume;
-            inst.iol_volume_notional = l2.iol_volume_notional;  // V3.5: ARS notional
             inst.iol_bid = l2.iol_bid;
             inst.iol_ask = l2.iol_ask;
             inst.iol_bid_depth = l2.iol_bid_depth;

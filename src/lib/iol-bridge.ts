@@ -1,19 +1,12 @@
 // ════════════════════════════════════════════════════════════════════════
-// IOL BRIDGE — ARB//RADAR V3.5-PRO (Price Action Engine)
+// IOL BRIDGE — ARB//RADAR V3.2.3-PRO
 // InvertirOnline authentication & Level-2 data fetching
 //
 // Extracted from scripts/update-prices.ts and adapted for Next.js
 // API routes (server-side only).
 //
-// V3.5 CHANGES:
-//   - Case-insensitive parser: normalizeResponseKeys() handles PascalCase
-//     vs camelCase variations in IOL API responses.
-//   - Separated volumen_notional (ARS) from cantidadOperada (quantity).
-//     The notional ARS volume is the correct field for display/comparison.
-//   - iol_volume → cantidadOperada (backward compat, quantity of titles)
-//   - iol_volume_notional → volumen (ARS notional, for radar display)
-//
-// V3.2.3-PRO: bid_depth / ask_depth / market_pressure from puntas_detalle
+// V3.2.3-PRO: Now calculates bid_depth / ask_depth / market_pressure
+// from puntas_detalle order-book levels.
 //
 // ⚠️  SERVER-SIDE MODULE — never import in client components.
 //
@@ -71,8 +64,7 @@ export interface IOLPunta {
 
 /** Processed Level-2 data returned by getIOLCotizacion(). */
 export interface IOLLevel2Data {
-  iol_volume: number;              // cantidadOperada (quantity of titles — backward compat)
-  iol_volume_notional: number;     // V3.5: volumen nominal en ARS (for radar display)
+  iol_volume: number;
   iol_bid: number;
   iol_ask: number;
   iol_avg_daily_volume: number;
@@ -130,36 +122,6 @@ function calcMarketPressure(bidDepth: number, askDepth: number): number {
   if (askDepth === 0) return bidDepth > 0 ? 99 : 0;
   const ratio = bidDepth / askDepth;
   return parseFloat(ratio.toFixed(2));
-}
-
-// ── Case-Insensitive Parser (V3.5) ──────────────────────────────────
-
-/**
- * Deep-normalize all object keys to camelCase (first char lowercase).
- *
- * The IOL API may return keys in PascalCase (Puntas, Compra, CantidadOperada)
- * or camelCase (puntas, compra, cantidadOperada) depending on endpoint version.
- * This ensures consistent access regardless of API response format.
- *
- * Examples:
- *   Puntas → puntas
- *   Compra → compra
- *   CantidadOperada → cantidadOperada
- *   UltimoPrecio → ultimoPrecio
- *   puntas → puntas (idempotent)
- */
-function normalizeResponseKeys(obj: unknown): unknown {
-  if (obj === null || obj === undefined) return obj;
-  if (Array.isArray(obj)) return obj.map(normalizeResponseKeys);
-  if (typeof obj === 'object' && obj.constructor === Object) {
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-      const normalizedKey = key.charAt(0).toLowerCase() + key.slice(1);
-      result[normalizedKey] = normalizeResponseKeys(value);
-    }
-    return result;
-  }
-  return obj;
 }
 
 // ── Public API ─────────────────────────────────────────────────────────
@@ -263,7 +225,6 @@ export async function getIOLCotizacion(
       if (res.status === 404) {
         return {
           iol_volume: 0,
-          iol_volume_notional: 0,      // V3.5: ARS notional (empty for 404)
           iol_bid: 0,
           iol_ask: 0,
           iol_avg_daily_volume: 0,
@@ -278,10 +239,7 @@ export async function getIOLCotizacion(
       return null;
     }
 
-    const rawData = await res.json();
-    // V3.5: Normalize keys to camelCase (case-insensitive parsing)
-    // Handles IOL API variations: Puntas/puntas, Compra/compra, etc.
-    const data = normalizeResponseKeys(rawData) as IOLCotizacion;
+    const data = (await res.json()) as IOLCotizacion;
 
     // Best bid / ask from puntas (order book)
     let iolBid = 0;
@@ -295,9 +253,9 @@ export async function getIOLCotizacion(
       }
     }
 
-    // Volume fields — V3.5: Separate quantity from notional ARS
-    const cantidadOperada = data.cantidadOperada || 0;   // Quantity of titles operated
-    const volumenNominal = data.volumen || 0;              // ARS notional volume
+    // Volume fields
+    const cantidadOperada = data.cantidadOperada || 0;
+    const volumenNominal = data.volumen || 0;
 
     // Estimate average daily volume:
     //   avgDaily ≈ currentNominal × (7 / tradingHoursElapsed)
@@ -327,8 +285,7 @@ export async function getIOLCotizacion(
     const marketPressure = calcMarketPressure(bidDepth, askDepth);
 
     return {
-      iol_volume: cantidadOperada,           // V3.5: Quantity of titles (backward compat)
-      iol_volume_notional: volumenNominal,    // V3.5: ARS notional volume (for display)
+      iol_volume: cantidadOperada,
       iol_bid: iolBid,
       iol_ask: iolAsk,
       iol_avg_daily_volume: Math.round(estimatedAvgDaily),
@@ -339,11 +296,8 @@ export async function getIOLCotizacion(
       iol_market_pressure: marketPressure,
       puntas_detalle: puntasDetalle,
     };
-  } catch (err) {
-    // V3.5: Log the error for diagnostics instead of silently swallowing
-    console.error(
-      `[iol-bridge] getIOLCotizacion(${ticker}) error: ${err instanceof Error ? err.message : String(err)}`,
-    );
+  } catch {
+    // Intentionally silent — per-ticker failures should not cascade
     return null;
   }
 }

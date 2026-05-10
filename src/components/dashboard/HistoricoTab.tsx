@@ -154,12 +154,16 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
     })).sort((a, b) => a.ticker.localeCompare(b.ticker));
   }, [tickers, instruments]);
 
-  // ── Auto-select first ticker if none selected (derived, no effect needed) ──
-  const effectiveTicker = selectedTicker || (availableTickers.length > 0 ? availableTickers[0].ticker : '');
+  // ── Auto-select first ticker if none selected ──
+  useEffect(() => {
+    if (!selectedTicker && availableTickers.length > 0) {
+      setSelectedTicker(availableTickers[0].ticker);
+    }
+  }, [availableTickers, selectedTicker]);
 
   // ── Fetch OHLC data when ticker or range changes ──
   useEffect(() => {
-    if (!effectiveTicker) return;
+    if (!selectedTicker) return;
 
     async function fetchData() {
       setLoading(true);
@@ -167,8 +171,8 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
       try {
         const effectiveDays = dateRange === 999 ? 3650 : dateRange;
         const [ohlcRes, snapRes] = await Promise.all([
-          fetch(`/api/price-history?type=ohlc&ticker=${encodeURIComponent(effectiveTicker)}&days=${effectiveDays}`),
-          fetch(`/api/price-history?type=snapshots&ticker=${encodeURIComponent(effectiveTicker)}&hours=${effectiveDays * 24}`),
+          fetch(`/api/price-history?type=ohlc&ticker=${encodeURIComponent(selectedTicker)}&days=${effectiveDays}`),
+          fetch(`/api/price-history?type=snapshots&ticker=${encodeURIComponent(selectedTicker)}&hours=${effectiveDays * 24}`),
         ]);
 
         if (ohlcRes.ok) {
@@ -193,8 +197,8 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
       }
     }
 
-    queueMicrotask(fetchData);
-  }, [effectiveTicker, dateRange]);
+    fetchData();
+  }, [selectedTicker, dateRange]);
 
   // ── Chart data transformation ──
   const chartData = useMemo(() => {
@@ -249,8 +253,8 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
 
   // ── Selected instrument info ──
   const selectedInstrument = useMemo(() => {
-    return instruments.find(i => i.ticker === effectiveTicker);
-  }, [instruments, effectiveTicker]);
+    return instruments.find(i => i.ticker === selectedTicker);
+  }, [instruments, selectedTicker]);
 
   return (
     <div className="space-y-5 animate-fadeInUp">
@@ -328,7 +332,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
 
           {/* Export Button */}
           <button
-            onClick={() => ohlcData.length > 0 && exportOHCLCSV(ohlcData, effectiveTicker)}
+            onClick={() => ohlcData.length > 0 && exportOHCLCSV(ohlcData, selectedTicker)}
             disabled={ohlcData.length === 0}
             className="px-3 py-1.5 rounded-lg text-[11px] font-medium bg-app-subtle/60 text-app-text3 border border-app-border/60 hover:bg-app-hover hover:text-app-text2 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 ml-auto"
             title="Exportar CSV"
@@ -343,7 +347,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
         <div className="glass-card p-4">
           <div className="flex items-center gap-4">
             <div>
-              <span className="text-sm font-mono font-medium text-app-text">{effectiveTicker}</span>
+              <span className="text-sm font-mono font-medium text-app-text">{selectedTicker}</span>
               <span className={`ml-2 text-[9px] px-1.5 py-0.5 rounded border ${
                 selectedInstrument.type === 'LECAP'
                   ? 'bg-[#2eebc8]/10 text-[#2eebc8] border-[#2eebc8]/20'
@@ -479,7 +483,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
           <div className="glass-card p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-app-text2">Precio de Cierre</h3>
-              <span className="text-[9px] text-app-text4 font-mono">{effectiveTicker} · {dateRange}d</span>
+              <span className="text-[9px] text-app-text4 font-mono">{selectedTicker} · {dateRange}d</span>
             </div>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -514,7 +518,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
           <div className="glass-card p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-app-text2">TEM (Tasa Efectiva Mensual)</h3>
-              <span className="text-[9px] text-app-text4 font-mono">{effectiveTicker}</span>
+              <span className="text-[9px] text-app-text4 font-mono">{selectedTicker}</span>
             </div>
             <div className="h-56">
               <ResponsiveContainer width="100%" height="100%">
@@ -549,7 +553,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
           <div className="glass-card p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-app-text2">Spread vs Caución</h3>
-              <span className="text-[9px] text-app-text4 font-mono">{effectiveTicker}</span>
+              <span className="text-[9px] text-app-text4 font-mono">{selectedTicker}</span>
             </div>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
@@ -573,7 +577,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
             <div className="glass-card p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-app-text2">Volumen</h3>
-                <span className="text-[9px] text-app-text4 font-mono">{effectiveTicker}</span>
+                <span className="text-[9px] text-app-text4 font-mono">{selectedTicker}</span>
               </div>
               <div className="h-36">
                 <ResponsiveContainer width="100%" height="100%">
@@ -594,7 +598,7 @@ export default function HistoricoTab({ instruments }: HistoricoTabProps) {
             <div className="glass-card p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-app-text2">Volumen IOL</h3>
-                <span className="text-[9px] text-app-text4 font-mono">{effectiveTicker}</span>
+                <span className="text-[9px] text-app-text4 font-mono">{selectedTicker}</span>
               </div>
               <div className="h-36">
                 <ResponsiveContainer width="100%" height="100%">

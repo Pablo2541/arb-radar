@@ -260,9 +260,9 @@ export default function CockpitTab({
     }
   }, [setCockpitScoresLoading]);
 
-  // PRIORITY HYDRATION: Schedule via microtask to avoid synchronous setState in effect
+  // PRIORITY HYDRATION: Fire immediately on mount, no setTimeout delay
   useEffect(() => {
-    queueMicrotask(fetchScores); // IMMEDIATE — cache must be warm when user enters terminal
+    fetchScores(); // IMMEDIATE — cache must be warm when user enters terminal
     intervalRef.current = setInterval(fetchScores, 50_000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -580,14 +580,11 @@ export default function CockpitTab({
                       {fmtNum(tem, 2)}%
                     </div>
 
-                    {/* VOL — V3.5: Notional ARS volume (primary) / data912 volume (fallback) */}
+                    {/* VOL — V3.4: IOL volume (primary) / data912 volume (fallback) from /api/letras enrichment */}
                     <div className="text-right font-mono text-xs text-app-text2">
                       {(() => {
-                        // V3.5: Always show notional ARS volume for comparability
-                        // Priority: IOL notional (ARS) > data912 volume (ARS) > IOL quantity (fallback)
-                        const volNotional = instData?.iolVolumeNotional ?? liveData?.iol_volume_notional ?? instData?.data912Volume ?? liveData?.volume;
-                        const volQty = instData?.iolVolume ?? liveData?.iol_volume;
-                        const vol = volNotional || volQty;
+                        // Priority: IOL volume (real-time order book) > data912 volume (notional ARS)
+                        const vol = instData?.iolVolume ?? liveData?.iol_volume ?? instData?.data912Volume ?? liveData?.volume;
                         if (vol != null && vol > 0) {
                           return vol >= 1_000_000
                             ? `${(vol / 1_000_000).toFixed(1)}M`
