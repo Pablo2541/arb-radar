@@ -552,11 +552,14 @@ export function gDiaNeta(tem: number, days: number, comisionTotal: number): numb
  */
 export function diasRecuperoComision(tem: number, comisionTotal: number): number {
   if (tem <= 0 || !isFinite(tem) || !isFinite(comisionTotal)) return 999;
-  const dailyReturn = (tem / 100) / 30.44; // daily return in decimal
+  
+  // Fórmula de interés compuesto para retorno diario
+  const dailyReturn = Math.pow(1 + tem / 100, 1 / 30.44) - 1;
+  
   if (dailyReturn <= 0) return 999;
   const result = (comisionTotal / 100) / dailyReturn;
-  if (!isFinite(result)) return 999;
-  return result;
+  
+  return isFinite(result) ? result : 999;
 }
 
 /**
@@ -1614,7 +1617,7 @@ export function calculateCockpitScore(
     velocidadScore * 0.10;
 
   // ── 20-day Temporal Horizon Filter ─────────────────────────
-  const withinHorizon = days <= 20;
+  const withinHorizon = days <= 45;
 
   // ── Verdict ────────────────────────────────────────────────
   let verdict: CockpitScore['verdict'];
