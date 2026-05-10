@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
         tir: (inst.tir as number) * 100,   // convert from decimal to %
         gananciaDirecta: (inst.ganancia_directa as number) * 100,
         vsPlazoFijo: '',
-        iolMarketPressure: inst.iolMarketPressure as number | undefined,
+        iolMarketPressure: inst.iol_market_pressure as number | undefined,
       };
 
       // deltaTIR: from live data, convert from decimal to %
@@ -214,7 +214,7 @@ export async function GET(request: NextRequest) {
       horizon_days: horizon,
       summary,
       timestamp: new Date(now).toISOString(),
-      engine_version: 'V3.4.2-PRO',
+      engine_version: 'V3.5-PRO',
       stale: false,
     };
 

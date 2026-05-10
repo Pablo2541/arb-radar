@@ -53,10 +53,12 @@ export function daysFromExpiry(expiry: string): number {
  */
 export function ensureValidDays(instruments: Instrument[]): Instrument[] {
   return instruments.map(inst => {
-    // V1.4.3 FIX: ALWAYS set tir = tem (TEM is source of truth from broker)
-    const effectiveRate = inst.tem || inst.tir || 0;
-    const protectedTEM = effectiveRate;
-    const protectedTIR = effectiveRate;  // tir always equals tem
+    // V3.5 FIX: TIR and TEM are SEPARATE rates from the server.
+    // - TIR = annualized internal rate of return (Tasa Interna de Retorno)
+    // - TEM = monthly effective rate (Tasa Efectiva Mensual)
+    // Server (/api/letras) is the source of truth — do NOT override tir with tem.
+    const protectedTEM = inst.tem;
+    const protectedTIR = inst.tir;
 
     // V3.0.1: If we have an expiry date, ALWAYS recalculate days from it
     // This guarantees real days-to-maturity even with stale price data

@@ -231,7 +231,7 @@ function HomeContent() {
         change: liveInst.change_pct,
         tna: liveInst.tna * 100,
         tem: liveInst.tem * 100,
-        tir: liveInst.tem * 100,
+        tir: liveInst.tir * 100,
         days: liveInst.days_to_expiry,
         // V3.5: IOL Level 2 enrichment from /api/letras — real-time order book data
         iolVolume: liveInst.iol_volume_notional ?? liveInst.iol_volume ?? inst.iolVolume,

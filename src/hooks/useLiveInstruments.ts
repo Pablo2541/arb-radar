@@ -69,7 +69,7 @@ function liveToInstrument(live: LiveInstrument): Instrument {
     change: live.change_pct,
     tna: live.tna * 100,       // convert decimal to percentage
     tem: live.tem * 100,       // convert decimal to percentage
-    tir: live.tem * 100,       // In ARB-RADAR, tir = TEM (monthly rate)
+    tir: live.tir * 100,       // V3.5 FIX: TIR is annualized, TEM is monthly — these are DIFFERENT rates
     gananciaDirecta: live.ganancia_directa * 100, // convert to percentage
     vsPlazoFijo,
     dm: undefined, // Not available from live data
@@ -188,6 +188,9 @@ export function useLiveInstruments(): LiveInstrumentsState {
   const hasDataRef = useRef(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
+  // V3.5: AbortController to cancel in-flight fetches when a new one starts
+  // Prevents race conditions where a slow old response overwrites fresher data
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // V3.5: Last-valid IOL data cache — persists across fetches
   const lastValidIOLRef = useRef<Map<string, IOLLatestData>>(new Map());
@@ -199,6 +202,15 @@ export function useLiveInstruments(): LiveInstrumentsState {
   }, []);
 
   const fetchData = useCallback(async () => {
+    // V3.5: Abort any in-flight fetch to prevent race conditions.
+    // If a slow old fetch is still pending when we start a new one,
+    // the old one must be cancelled so it doesn't overwrite fresh data.
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     // SWR: Only show full loading spinner on first fetch (no existing data)
     // On subsequent fetches, just mark as stale while revalidating in background
     const isFirstFetch = !hasDataRef.current;
@@ -221,7 +233,7 @@ export function useLiveInstruments(): LiveInstrumentsState {
       }
 
       const res = await fetch('/api/letras', {
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]),
       });
 
       if (!res.ok) {
@@ -293,6 +305,10 @@ export function useLiveInstruments(): LiveInstrumentsState {
 
       setInstruments(mappedInstruments);
     } catch (err) {
+      // V3.5: Ignore AbortError — this means a newer fetch cancelled this one
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return; // Silently ignore aborted requests
+      }
       // SWR: If we have existing data, mark as stale but DON'T clear it
       if (hasDataRef.current) {
         setStale(true);
@@ -338,6 +354,11 @@ export function useLiveInstruments(): LiveInstrumentsState {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
+      }
+      // V3.5: Abort any in-flight fetch on unmount
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
       }
     };
   }, [active, fetchData]);
