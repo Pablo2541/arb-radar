@@ -95,7 +95,8 @@ export function ensureValidDays(instruments: Instrument[]): Instrument[] {
  * Si un LECAP rinde 1.91% TEM, el spread es +0.43% (ATRACTIVO).
  */
 export function caucionTEMFromTNA(tna: number): number {
-  return (Math.pow(1 + tna / 100, 1 / 12) - 1) * 100;
+  if (tna <= 0) return 0;
+  return (Math.pow(1 + (tna / 100) / 365, 30) - 1) * 100;
 }
 
 /**
@@ -539,11 +540,10 @@ export function scenarioPnL(
 export function gDiaNeta(tem: number, days: number, comisionTotal: number): number {
   if (days <= 0 || tem <= 0) return 0;
   if (!isFinite(days) || !isFinite(tem) || !isFinite(comisionTotal)) return 0;
-  const totalReturn = Math.pow(1 + tem / 100, days / 30.44) - 1;
+  const totalReturn = Math.pow(1 + tem / 100, days / 30) - 1;
   const netReturn = totalReturn - comisionTotal / 100;
   const result = (netReturn / days) * 100;
-  if (!isFinite(result)) return 0;
-  return result;
+  return isFinite(result) ? result : 0;
 }
 
 /**

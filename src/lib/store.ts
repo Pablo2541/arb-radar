@@ -240,13 +240,13 @@ export const useRadarStore = create<RadarState>((set, get) => ({
   setPosition: (v: Position | null) => {
     set({ position: v });
     saveToStorage(STORAGE_KEYS.POSITION, v);
-    scheduleDbPersist(get);
+    get().forceSyncToDb().catch(() => console.warn('Sync atómico falló'));
   },
 
   setTransactions: (v: Transaction[]) => {
     set({ transactions: v });
     saveToStorage(STORAGE_KEYS.TRANSACTIONS, v);
-    scheduleDbPersist(get);
+    get().forceSyncToDb().catch(() => console.warn('Sync atómico falló'));
   },
 
   setSimulations: (v: SimulationRecord[]) => {

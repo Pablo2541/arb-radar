@@ -233,7 +233,7 @@ function HomeContent() {
         tem: liveInst.tem * 100,
         tir: liveInst.tir * 100,
         days: liveInst.days_to_expiry,
-        // V3.5.1: IOL Level 2 enrichment from /api/letras — real-time order book data
+        // V3.5.2: IOL Level 2 enrichment — ?? null-safe merge (no pisa existentes si vienen null)
         iolVolume: liveInst.iol_volume_notional ?? liveInst.iol_volume ?? inst.iolVolume,
         iolVolumeNotional: liveInst.iol_volume_notional ?? inst.iolVolumeNotional,
         iolVolumeQty: liveInst.iol_volume_qty ?? inst.iolVolumeQty,
@@ -656,7 +656,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V3.5.1 PRO...
+            Cargando V3.5.2 PRO...
           </p>
         </div>
       </div>
@@ -738,7 +738,7 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.5.1 — PRICE ACTION ENGINE</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V3.5.2 — PRICE ACTION ENGINE</span>
             {/* V3.0: DB Sync indicator dot */}
             <div className="w-1.5 h-1.5 rounded-full hidden sm:block" style={{ backgroundColor: dbSyncDotColor }} title={dbAvailable ? `DB: ${lastDbSyncStatus}` : 'DB: no configurado'} />
             {/* V3.4: IOL Level 2 indicator — 3-state LED */}
