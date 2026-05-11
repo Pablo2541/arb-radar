@@ -38,7 +38,7 @@ export function daysFromExpiry(expiry: string): number {
   now.setHours(0, 0, 0, 0);
   expiryDate.setHours(0, 0, 0, 0);
   const diff = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-  return Math.max(0.1, diff);
+  return Math.max(0, diff);
 }
 
 /**
@@ -95,8 +95,7 @@ export function ensureValidDays(instruments: Instrument[]): Instrument[] {
  * Si un LECAP rinde 1.91% TEM, el spread es +0.43% (ATRACTIVO).
  */
 export function caucionTEMFromTNA(tna: number): number {
-  if (tna <= 0) return 0;
-  return (Math.pow(1 + (tna / 100) / 365, 30) - 1) * 100;
+  return (Math.pow(1 + tna / 100, 1 / 12) - 1) * 100;
 }
 
 /**
@@ -532,19 +531,19 @@ export function scenarioPnL(
 // ============================================================
 
 /**
- * G/día neta (after commission) — Estandarizado a 30 días exactos
- * Reemplaza la función completa
+ * G/día neta (after commission)
+ * How much % gain per day after accounting for round-trip commission
+ * gDiaNeta = ((1 + TEM/100)^(days/30.44) - 1 - comisionRT) / days * 100
+ * Returns the daily net percentage gain. Can be negative if commission exceeds yield.
  */
 export function gDiaNeta(tem: number, days: number, comisionTotal: number): number {
   if (days <= 0 || tem <= 0) return 0;
   if (!isFinite(days) || !isFinite(tem) || !isFinite(comisionTotal)) return 0;
-  
-  // Usamos 30 días exactos en lugar de 30.44 para coherencia con el mercado local
-  const totalReturn = Math.pow(1 + tem / 100, days / 30) - 1;
+  const totalReturn = Math.pow(1 + tem / 100, days / 30.44) - 1;
   const netReturn = totalReturn - comisionTotal / 100;
   const result = (netReturn / days) * 100;
-  
-  return isFinite(result) ? result : 0;
+  if (!isFinite(result)) return 0;
+  return result;
 }
 
 /**
