@@ -205,7 +205,7 @@ function isMarketHours(): boolean {
   const arTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
   const hour = arTime.getHours();
   const day = arTime.getDay();
-  return day >= 1 && day <= 5 && hour >= 10 && hour < 17;
+  return day >= 1 && day <= 5 && hour >= 10 && hour < 18;
 }
 
 /** Fetch with timeout and error handling */
@@ -466,8 +466,8 @@ async function getIOLCotizacion(ticker: string): Promise<IOLLevel2Data | null> {
     const currentHour = new Date(hourAR).getHours();
     const tradingHoursElapsed = Math.max(1, currentHour - 10); // Market opens at 10
     const estimatedAvgDaily = volumenNominal > 0
-      ? volumenNominal * (7 / tradingHoursElapsed) // 7 hours of trading
-      : cantidadOperada * 100 * (7 / tradingHoursElapsed); // Rough estimate
+      ? volumenNominal * (8 / tradingHoursElapsed) // 8 hours of trading (10-18h AR)
+      : cantidadOperada * 100 * (8 / tradingHoursElapsed); // Rough estimate
 
     // Filtro de Verdad: volume < 10% of avg daily = Baja Liquidez
     const volumeRatio = estimatedAvgDaily > 0 ? volumenNominal / estimatedAvgDaily : 0;
@@ -829,7 +829,7 @@ async function writeHistoricalData(
           ticker: inst.ticker,
           price: inst.last_price,
           tem: inst.tem,
-          tir: inst.tna,
+          tir: inst.tir,
           spread: inst.spread_neto,
           volume: inst.volume,
           source: inst.iol_status === 'online' ? 'level2' : 'level1',
@@ -1040,7 +1040,7 @@ async function writeToNeon(
       change: inst.change_pct,
       tna: inst.tna * 100,
       tem: inst.tem * 100,
-      tir: inst.tem * 100,
+      tir: inst.tir * 100,
       gananciaDirecta: inst.ganancia_directa * 100,
       vsPlazoFijo: inst.spread_neto > 0 ? 'ATRACTIVO' : 'NO CONVIENE',
       // IOL Level 2 fields

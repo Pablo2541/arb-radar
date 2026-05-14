@@ -568,7 +568,7 @@ function HomeContent() {
     const now = new Date();
     const hour = now.getHours();
     const day = now.getDay();
-    return day >= 1 && day <= 5 && hour >= 10 && hour < 17;
+    return day >= 1 && day <= 5 && hour >= 10 && hour < 18;
   }, [currentTime]);
 
   // ── V4.0: FILE indicator color + label (replaces DB sync dot) ──
@@ -774,7 +774,7 @@ function HomeContent() {
               <div className={`w-2 h-2 rounded-full ${marketOpen ? 'bg-[#2eebc8]' : 'bg-app-text4'} ${marketOpen ? 'iol-dot-online' : ''}`} />
               <span className="hidden sm:inline">{marketOpen ? 'MERCADO ABIERTO' : 'MERCADO CERRADO'}</span>
               <span className="sm:hidden">{marketOpen ? 'OPEN' : 'CLOSED'}</span>
-              <span className="text-[7px] opacity-60 font-normal">10–17h</span>
+              <span className="text-[7px] opacity-60 font-normal">10–18h</span>
             </div>
           </div>
 
