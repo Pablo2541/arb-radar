@@ -1,8 +1,8 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// ═══════════════════════════════════════════════════════════════════
+// ARB//RADAR V4.0 BLINDADO — Prisma Schema
+// Complete schema for state persistence, IOL volume snapshots,
+// and price history (Historico tab)
+// ═══════════════════════════════════════════════════════════════════
 
 generator client {
   provider = "prisma-client-js"
@@ -13,20 +13,77 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ═══════════════════════════════════════════════════════════════════
+// V3.0 — AppState: Single-row persistence for Zustand store
+// Stores the entire app state as JSON strings in one row (id='main').
+// This is the DB persistence layer for the Zustand store.
+// ═══════════════════════════════════════════════════════════════════
+model AppState {
+  id              String    @id          // Always 'main'
+  instruments     String    @default("[]")  // JSON array of instruments
+  config          String    @default("{}")  // JSON object of config
+  position        String?                  // JSON object or null
+  transactions    String    @default("[]")  // JSON array
+  lastUpdate      String?                  // ISO timestamp
+  rawInput        String?                  // Raw pasted input
+  mepRate         Float?                   // MEP dollar rate
+  cclRate         Float?                   // CCL dollar rate
+  liveActive      Boolean   @default(false)
+  iolLevel2Online Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 }
 
-model Post {
+// ═══════════════════════════════════════════════════════════════════
+// V3.3 — IOL Volume Snapshots (replaces JSON file storage)
+// Persists montoOperado, bid, ask per ticker per date.
+// ═══════════════════════════════════════════════════════════════════
+model IolVolumeSnapshot {
   id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+  date      String   // YYYY-MM-DD (Argentina trading date)
+  ticker    String   // e.g. "T15J7", "S12E5"
+  volumen   Float    @default(0) // montoOperado en ARS
+  bid       Float    @default(0) // best IOL bid price
+  ask       Float    @default(0) // best IOL ask price
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+
+  // Unique constraint: one snapshot per ticker per date
+  @@unique([date, ticker])
+  // Index for querying by date range
+  @@index([date])
+  @@index([ticker])
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Price History Models (for /api/price-history)
+// ═══════════════════════════════════════════════════════════════════
+
+model PriceSnapshot {
+  id        String   @id @default(cuid())
+  ticker    String   // e.g. "S30A6", "T15J7"
+  price     Float    // price per $1 VN
+  tem       Float    // monthly rate
+  tir       Float    // annual rate
+  source    String   @default("live") // "live" | "manual"
+  timestamp DateTime @default(now())
+
+  @@index([ticker])
+  @@index([timestamp])
+  @@index([ticker, timestamp])
+}
+
+model DailyOHLC {
+  id    String @id @default(cuid())
+  date  String // YYYY-MM-DD
+  ticker String // e.g. "S30A6", "T15J7"
+  open  Float  @default(0)
+  high  Float  @default(0)
+  low   Float  @default(0)
+  close Float  @default(0)
+  tem   Float  @default(0)
+  volume Float @default(0) // data912 volume
+
+  @@unique([date, ticker])
+  @@index([date])
+  @@index([ticker])
 }
