@@ -123,3 +123,25 @@ Stage Summary:
 - S/R confirmation: Works via localStorage (calculateSR from PriceHistoryFile), not affected by SQLite migration
 - ZIP ready at: /home/z/my-project/ARB-RADAR-V4.0.1-COMPLETE.zip
 - GitHub repo updated: https://github.com/Pablo2541/arb-radar (main branch)
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: V4.0.2 — RAVA scraper + RAVA as PRIMARY for Riesgo País + lightweight ZIP
+
+Work Log:
+- Tested RAVA Riesgo País page with z-ai page_reader — found 3 extraction strategies
+- Implemented RAVA scraper in /api/country-risk/route.ts (parseRavaHTML + parseRavaExtra)
+- Replaced BondTerminal in /api/market-truth/route.ts with fetchRavaRP()
+- Reordered sources: RAVA is now PRIMARY (SOURCE 1), ArgentinaDatos demoted to SOURCE 2/3
+- RAVA extracts value via: 1) JSON-LD "price":NNN, 2) izqCotiza <p>NNN,00</p>, 3) fallback regex
+- Also extracts OHLC (Anterior, Apertura, Máximo, Mínimo) and variation from centroCotiza
+- Generated clean ZIP (421KB) — no .next, no .db, no node_modules
+- Pushed to GitHub main branch (2 commits)
+
+Stage Summary:
+- RAVA confirmed: RP=522, source=rava (JSON-LD extraction)
+- BondTerminal completely removed from both routes
+- RAVA is priority in consensus engine (sourcePriority = ['rava', 'argentinadatos_ultimo', 'argentinadatos_array'])
+- ZIP at /home/z/my-project/ARB-RADAR-V4.0.2-LIGHT.zip (421KB)
+- GitHub: https://github.com/Pablo2541/arb-radar (main)
