@@ -25,7 +25,8 @@ const SOURCE_GAP_MS = 300;
 // RP Sources
 const ARG_DATOS_ULTIMO_URL = 'https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo';
 const ARG_DATOS_URL = 'https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais';
-const BONDTERMINAL_URL = 'https://bondterminal.com/riesgo-pais';
+// V4.0.2: BondTerminal removed — replaced with RAVA Bursátil
+const RAVA_RIESGO_PAIS_URL = 'https://www.rava.com/perfil/RIESGO%20PAIS';
 
 // MEP Sources
 const DATA912_BONDS_URL = 'https://data912.com/live/arg_bonds';
@@ -76,25 +77,40 @@ async function fetchArgDatosArrayRP(): Promise<SourceResult<number>> {
   }
 }
 
-async function fetchBondTerminalRP(): Promise<SourceResult<number>> {
+/** V4.0.2 — Fetch Riesgo País from RAVA Bursátil (replaces BondTerminal)
+ *  Scrapes the real value from https://www.rava.com/perfil/RIESGO%20PAIS
+ *  Uses JSON-LD structured data as primary extraction method.
+ */
+async function fetchRavaRP(): Promise<SourceResult<number>> {
   const start = Date.now();
   try {
-    const res = await fetch(BONDTERMINAL_URL, {
-      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+    const res = await fetch(RAVA_RIESGO_PAIS_URL, {
+      signal: AbortSignal.timeout(5_000), // 5s for HTML page
       headers: { 'Accept': 'text/html', 'User-Agent': 'Mozilla/5.0 (compatible; ARB-RADAR/4.0)' },
     });
     const latency_ms = Date.now() - start;
-    if (!res.ok) return { value: null, source: 'bondterminal', latency_ms, ok: false, timestamp: new Date().toISOString() };
+    if (!res.ok) return { value: null, source: 'rava', latency_ms, ok: false, timestamp: new Date().toISOString() };
     const html = await res.text();
-    const match = html.match(/(\d{3,4})\s*pb/);
-    if (match) {
-      const value = parseInt(match[1], 10);
-      if (value > 0 && value < 10000 && isFinite(value))
-        return { value, source: 'bondterminal', latency_ms, ok: true, timestamp: new Date().toISOString() };
+
+    // Strategy 1: JSON-LD FinancialProduct — "price":NNN
+    const ldMatch = html.match(/"price":\s*(\d{2,4})/);
+    if (ldMatch) {
+      const value = parseInt(ldMatch[1], 10);
+      if (value > 50 && value < 10000 && isFinite(value))
+        return { value, source: 'rava', latency_ms, ok: true, timestamp: new Date().toISOString() };
     }
-    return { value: null, source: 'bondterminal', latency_ms, ok: false, timestamp: new Date().toISOString() };
+
+    // Strategy 2: izqCotiza main price display — <div id="izqCotiza"><p>NNN,00</p>
+    const izqMatch = html.match(/id="izqCotiza"[^>]*>\s*<p>([\d,\.]+)<\/p>/);
+    if (izqMatch) {
+      const value = parseFloat(izqMatch[1].replace(',', '.'));
+      if (value > 50 && isFinite(value))
+        return { value: Math.round(value), source: 'rava', latency_ms, ok: true, timestamp: new Date().toISOString() };
+    }
+
+    return { value: null, source: 'rava', latency_ms, ok: false, timestamp: new Date().toISOString() };
   } catch (err) {
-    return { value: null, source: 'bondterminal', latency_ms: Date.now() - start, ok: false, timestamp: new Date().toISOString(), detail: err instanceof Error ? err.message : 'timeout' };
+    return { value: null, source: 'rava', latency_ms: Date.now() - start, ok: false, timestamp: new Date().toISOString(), detail: err instanceof Error ? err.message : 'timeout' };
   }
 }
 
@@ -194,7 +210,7 @@ function computeRPConsensus(sources: SourceResult<number>[]): RPConsensus {
   const avgVal = values.reduce((a, b) => a + b, 0) / values.length;
   const spreadPct = ((maxVal - minVal) / avgVal) * 100;
 
-  const sourcePriority = ['bondterminal', 'argentinadatos_ultimo', 'argentinadatos_array'];
+  const sourcePriority = ['rava', 'argentinadatos_ultimo', 'argentinadatos_array'];
   let bestSource = validSources[0];
   for (const p of sourcePriority) { const f = validSources.find(s => s.source === p); if (f) { bestSource = f; break; } }
 
@@ -257,13 +273,13 @@ async function refreshCache(): Promise<void> {
     await sleep(SOURCE_GAP_MS);
     const argDatosArrayRP = await fetchArgDatosArrayRP();
     await sleep(SOURCE_GAP_MS);
-    const bondTerminalRP = await fetchBondTerminalRP();
+    const ravaRP = await fetchRavaRP(); // V4.0.2: RAVA replaces BondTerminal
     await sleep(SOURCE_GAP_MS);
     const directMEP = await fetchDirectMEP();
     await sleep(SOURCE_GAP_MS);
     const dolarAPIMEP = await fetchDolarAPIMEP();
 
-    const rpSources = [argDatosUltimoRP, argDatosArrayRP, bondTerminalRP];
+    const rpSources = [argDatosUltimoRP, argDatosArrayRP, ravaRP];
     const rpConsensus = computeRPConsensus(rpSources);
 
     if (rpConsensus.confidence === 'CRITICA') {
@@ -287,7 +303,7 @@ async function refreshCache(): Promise<void> {
       mep: mepConsensus,
       timestamp: new Date().toISOString(),
       next_refresh: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
-      engine_version: 'V4.0-BLINDADO',
+      engine_version: 'V4.0.2-RAVA',
       stale: false,
     };
     cachedAt = Date.now();
@@ -329,7 +345,7 @@ export async function GET() {
     mep: { value: 0, confidence: 'CRITICA', confidence_pct: 0, sources_used: 0, sources_total: 3, agreement: false, best_source: 'none', all_sources: [], spread_between_sources: 0 },
     timestamp: new Date(now).toISOString(),
     next_refresh: new Date(now + CACHE_TTL_MS).toISOString(),
-    engine_version: 'V4.0-BLINDADO',
+    engine_version: 'V4.0.2-RAVA',
     stale: false,
   });
 }

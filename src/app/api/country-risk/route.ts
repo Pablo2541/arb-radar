@@ -1,13 +1,19 @@
 // ════════════════════════════════════════════════════════════════════════
-// V4.0 BLINDADO — Country Risk Auto-Fetch API
+// V4.0.2 BLINDADO — Country Risk Auto-Fetch API
 //
 // ARCHITECTURE: 
 //   1. ArgentinaDatos as PRIMARY (JSON API, fast, reliable)
-//   2. BondTerminal as SECONDARY (HTML scraping, can be slow)
-//   3. Neon DB as TERTIARY fallback (persisted historical value)
+//   2. RAVA as SECONDARY (HTML scraping from rava.com — real value)
+//   3. SQLite DB as TERTIARY fallback (persisted historical value)
 //   4. Static fallback as last resort
 //
-// STABILITY: Each source has a SHORT timeout (3s) to prevent
+// V4.0.2: BondTerminal removed — replaced with RAVA Bursátil scraper.
+//   RAVA provides the real Riesgo País value via:
+//   - JSON-LD structured data ("price": NNN)
+//   - Main price display (<div id="izqCotiza">)
+//   Both are scraped from https://www.rava.com/perfil/RIESGO%20PAIS
+//
+// STABILITY: Each source has a SHORT timeout (5s) to prevent
 // server crashes from hanging external HTTP requests.
 // Sources are fetched ONE AT A TIME with gaps between them.
 // ════════════════════════════════════════════════════════════════════════
@@ -18,10 +24,11 @@ import { safeDbOp } from '@/lib/db';
 // Sources
 const ARG_DATOS_ULTIMO_URL = 'https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo';
 const ARG_DATOS_URL = 'https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais';
-const BONDTERMINAL_URL = 'https://bondterminal.com/riesgo-pais';
+const RAVA_RIESGO_PAIS_URL = 'https://www.rava.com/perfil/RIESGO%20PAIS';
 
 const CACHE_TTL_MS = 60 * 1000; // 1 minute refresh
-const SOURCE_TIMEOUT_MS = 3_000; // 3s max per source — NEVER block longer
+const SOURCE_TIMEOUT_MS = 3_000; // 3s max for ArgentinaDatos
+const RAVA_TIMEOUT_MS = 5_000;   // 5s for RAVA (HTML page, slower)
 const SOURCE_GAP_MS = 300; // 300ms gap between sources
 
 // In-memory cache
@@ -43,14 +50,97 @@ function parseArgDatosData(data: unknown): number | null {
   return null;
 }
 
-/** Parse Riesgo País from BondTerminal HTML (scraping) */
-function parseBondTerminalHTML(html: string): number | null {
-  const match = html.match(/(\d{3,4})\s*pb/);
-  if (match) {
-    const value = parseInt(match[1], 10);
-    if (value > 0 && value < 10000 && isFinite(value)) return value;
+/**
+ * V4.0.2 — Parse Riesgo País from RAVA HTML.
+ * 
+ * Strategy (ordered by reliability):
+ *   1. JSON-LD structured data: "price":NNN in FinancialProduct schema
+ *   2. Main price display: <div id="izqCotiza"><p>NNN,00</p>
+ *   3. Fallback: first 3-4 digit number followed by ",00" pattern
+ */
+function parseRavaHTML(html: string): number | null {
+  // ── Strategy 1: JSON-LD FinancialProduct ──
+  // RAVA embeds: {"@type":"FinancialProduct","offers":{"price":522}}
+  const ldMatch = html.match(/"price":\s*(\d{2,4})/);
+  if (ldMatch) {
+    const value = parseInt(ldMatch[1], 10);
+    if (value > 50 && value < 10000 && isFinite(value)) return value;
   }
+
+  // ── Strategy 2: izqCotiza main price display ──
+  // <div id="izqCotiza"><p>522,00</p>
+  const izqMatch = html.match(/id="izqCotiza"[^>]*>\s*<p>([\d,\.]+)<\/p>/);
+  if (izqMatch) {
+    const parsed = parseFloat(izqMatch[1].replace(',', '.'));
+    if (parsed > 50 && isFinite(parsed)) return Math.round(parsed);
+  }
+
+  // ── Strategy 3: Fallback — look for NNN,00 pattern near "riesgo" ──
+  const riesgoContext = html.substring(
+    Math.max(0, html.toLowerCase().indexOf('riesgo pais') - 500),
+    html.toLowerCase().indexOf('riesgo pais') + 2000
+  );
+  const fallbackMatch = riesgoContext.match(/(\d{3,4}),00/);
+  if (fallbackMatch) {
+    const value = parseInt(fallbackMatch[1], 10);
+    if (value > 50 && value < 10000 && isFinite(value)) return value;
+  }
+
   return null;
+}
+
+/**
+ * V4.0.2 — Extract additional data from RAVA HTML.
+ * Returns OHLC (Apertura, Máximo, Mínimo, Anterior) and variation.
+ */
+export function parseRavaExtra(html: string): {
+  anterior: number | null;
+  apertura: number | null;
+  maximo: number | null;
+  minimo: number | null;
+  variacion: number | null;
+} {
+  const result = {
+    anterior: null as number | null,
+    apertura: null as number | null,
+    maximo: null as number | null,
+    minimo: null as number | null,
+    variacion: null as number | null,
+  };
+
+  // Extract from centroCotiza: <span>Anterior:</span><span class="bolder">523,00</span>
+  const anteriorMatch = html.match(/Anterior:\s*<\/span>\s*<span[^>]*>([\d,\.]+)<\/span>/);
+  if (anteriorMatch) {
+    const v = parseFloat(anteriorMatch[1].replace(',', '.'));
+    if (isFinite(v)) result.anterior = v;
+  }
+
+  const aperturaMatch = html.match(/Apertura:\s*<\/span>\s*<span[^>]*>([\d,\.]+)<\/span>/);
+  if (aperturaMatch) {
+    const v = parseFloat(aperturaMatch[1].replace(',', '.'));
+    if (isFinite(v)) result.apertura = v;
+  }
+
+  const maximoMatch = html.match(/M[aá]ximo:\s*<\/span>\s*<span[^>]*>([\d,\.]+)<\/span>/);
+  if (maximoMatch) {
+    const v = parseFloat(maximoMatch[1].replace(',', '.'));
+    if (isFinite(v)) result.maximo = v;
+  }
+
+  const minimoMatch = html.match(/M[ií]nimo:\s*<\/span>\s*<span[^>]*>([\d,\.]+)<\/span>/);
+  if (minimoMatch) {
+    const v = parseFloat(minimoMatch[1].replace(',', '.'));
+    if (isFinite(v)) result.minimo = v;
+  }
+
+  // Variation: <p class="negativo">-0,20</p> or <p class="positivo">+1,50</p>
+  const variacionMatch = html.match(/class="(negativo|positivo)"[^>]*>\s*([+-]?[\d,\.]+)\s*<\/p>/);
+  if (variacionMatch) {
+    const v = parseFloat(variacionMatch[2].replace(',', '.'));
+    if (isFinite(v)) result.variacion = variacionMatch[1] === 'negativo' ? -Math.abs(v) : Math.abs(v);
+  }
+
+  return result;
 }
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
@@ -94,10 +184,10 @@ async function fetchCountryRisk(): Promise<{ value: number | null; source: strin
 
   await sleep(SOURCE_GAP_MS);
 
-  // ── SOURCE 3: BondTerminal (HTML scraping — last resort, can be slow) ──
+  // ── SOURCE 3: RAVA Bursátil (HTML scraping — V4.0.2: replaces BondTerminal) ──
   try {
-    const res = await fetch(BONDTERMINAL_URL, {
-      signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+    const res = await fetch(RAVA_RIESGO_PAIS_URL, {
+      signal: AbortSignal.timeout(RAVA_TIMEOUT_MS),
       headers: {
         'Accept': 'text/html',
         'User-Agent': 'Mozilla/5.0 (compatible; ARB-RADAR/4.0)',
@@ -105,13 +195,13 @@ async function fetchCountryRisk(): Promise<{ value: number | null; source: strin
     });
     if (res.ok) {
       const html = await res.text();
-      const value = parseBondTerminalHTML(html);
+      const value = parseRavaHTML(html);
       if (value !== null && value > 0) {
-        return { value, source: 'bondterminal' };
+        return { value, source: 'rava' };
       }
     }
   } catch {
-    // BondTerminal failed
+    // RAVA failed
   }
 
   return { value: null, source: 'failed' };
