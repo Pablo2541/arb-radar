@@ -495,6 +495,31 @@ export async function initializeStore(): Promise<void> {
     portfolioSource = 'localStorage';
   }
 
+  // ── Step 2.5: Try loading instruments from DB (AppState) ──
+  // V4.0.5: When the Cerebro Táctico script writes instruments to AppState,
+  // the web should pick them up. This is the bridge between script and UI.
+  let dbInstruments: Instrument[] | null = null;
+  let dbIolLevel2Online = false;
+
+  try {
+    const stateRes = await fetch('/api/state');
+    if (stateRes.ok) {
+      const stateData = await stateRes.json();
+      if (stateData.exists && stateData.data?.instruments) {
+        try {
+          const parsed = JSON.parse(stateData.data.instruments);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            dbInstruments = parsed;
+            dbIolLevel2Online = stateData.data.iolLevel2Online === true;
+            console.log(`[initializeStore] DB AppState: ${parsed.length} instruments loaded (IOL L2: ${dbIolLevel2Online})`);
+          }
+        } catch { /* parse error */ }
+      }
+    }
+  } catch {
+    // DB state not available — will use localStorage/defaults
+  }
+
   // ── Step 3: Merge data — portfolio.json wins for position/config ──
   let finalConfig = lsConfig;
   let finalPosition: Position | null = lsPosition;
@@ -526,12 +551,20 @@ export async function initializeStore(): Promise<void> {
   }
 
   // ── Step 4: Apply ──
-  const validInstruments = fixInstruments(
-    lsInstruments.length > 0 ? lsInstruments : SAMPLE_INSTRUMENTS
-  );
+  // V4.0.5: Priority for instruments: DB AppState > localStorage > defaults
+  // DB AppState has the freshest data from the Cerebro Táctico script,
+  // including IOL Level 2 volume, bid/ask, and Filtro de Verdad verdicts.
+  let instrumentsToApply: Instrument[];
+  if (dbInstruments && dbInstruments.length > 0) {
+    instrumentsToApply = fixInstruments(dbInstruments);
+  } else if (lsInstruments.length > 0) {
+    instrumentsToApply = fixInstruments(lsInstruments);
+  } else {
+    instrumentsToApply = fixInstruments(SAMPLE_INSTRUMENTS);
+  }
 
   useRadarStore.setState({
-    instruments: validInstruments,
+    instruments: instrumentsToApply,
     config: finalConfig,
     position: finalPosition,
     transactions: finalTransactions,
@@ -543,6 +576,8 @@ export async function initializeStore(): Promise<void> {
     priceHistory: lsPriceHistory,
     portfolioSource,
     mounted: true,
+    iolLevel2Online: dbIolLevel2Online,
+    iolCredentialsExist: dbIolLevel2Online, // If L2 is online, credentials exist
   });
 
   // Apply theme
@@ -556,5 +591,49 @@ export async function initializeStore(): Promise<void> {
     }
   }
 
-  console.log(`[initializeStore] Source: ${portfolioSource} | Position: ${finalPosition?.ticker || 'CASH'} | Capital: $${finalConfig.capitalDisponible?.toLocaleString('es-AR')}`);
+  console.log(`[initializeStore] Source: ${portfolioSource} | Position: ${finalPosition?.ticker || 'CASH'} | Capital: $${finalConfig.capitalDisponible?.toLocaleString('es-AR')} | Instruments: ${instrumentsToApply.length} (${dbInstruments ? 'DB' : 'LS'})`);
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// V4.0.5 — Periodic DB Sync: Pull fresh instruments from AppState
+// Called every 30s to pick up daemon updates without full page reload.
+// ════════════════════════════════════════════════════════════════════════
+
+let _dbSyncInterval: ReturnType<typeof setInterval> | null = null;
+
+export function startDbSync(): void {
+  if (_dbSyncInterval) return; // Already running
+
+  _dbSyncInterval = setInterval(async () => {
+    try {
+      const res = await fetch('/api/state');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!data.exists || !data.data?.instruments) return;
+
+      const parsed = JSON.parse(data.data.instruments);
+      if (!Array.isArray(parsed) || parsed.length === 0) return;
+
+      const store = useRadarStore.getState();
+      // Only update if the DB has newer data than what we have
+      const dbLastUpdate = data.data.lastUpdate;
+      if (dbLastUpdate && dbLastUpdate !== store.lastUpdate) {
+        const fixedInstruments = fixInstruments(parsed);
+        store.setInstruments(fixedInstruments);
+        if (data.data.iolLevel2Online !== undefined) {
+          store.setIolLevel2Online(data.data.iolLevel2Online);
+        }
+        console.log(`[dbSync] Updated ${fixedInstruments.length} instruments from DB`);
+      }
+    } catch {
+      // Silent — will retry next interval
+    }
+  }, 30_000); // Every 30 seconds
+}
+
+export function stopDbSync(): void {
+  if (_dbSyncInterval) {
+    clearInterval(_dbSyncInterval);
+    _dbSyncInterval = null;
+  }
 }

@@ -8,6 +8,7 @@
 // ════════════════════════════════════════════════════════════════════════
 
 import { PrismaClient } from '@prisma/client'
+import * as path from 'path'
 
 // ── Configuration ──────────────────────────────────────────────────
 const DB_ENABLED = process.env.ENABLE_DB === 'true'
@@ -25,6 +26,15 @@ function resolveDatabaseUrl(): string | null {
   
   // Accept SQLite file: URLs and relative paths
   if (url && (url.startsWith('file:') || url.startsWith('sqlite:'))) {
+    // V4.0.5: Resolve relative paths to absolute (same as the script does)
+    // Without this, the web server may resolve ./db/custom.db differently
+    // than the update-prices script which uses path.resolve().
+    if (url.startsWith('file:')) {
+      const rawPath = url.replace('file:', '')
+      if (rawPath && !path.isAbsolute(rawPath)) {
+        url = 'file:' + path.resolve(process.cwd(), rawPath)
+      }
+    }
     return url
   }
   
@@ -49,6 +59,13 @@ function resolveDatabaseUrl(): string | null {
             val = val.slice(1, -1)
           }
           if (val && (val.startsWith('file:') || val.startsWith('sqlite:'))) {
+            // V4.0.5: Resolve relative paths to absolute
+            if (val.startsWith('file:')) {
+              const rawPath = val.replace('file:', '')
+              if (rawPath && !path.isAbsolute(rawPath)) {
+                val = 'file:' + path.resolve(process.cwd(), rawPath)
+              }
+            }
             return val
           }
         }

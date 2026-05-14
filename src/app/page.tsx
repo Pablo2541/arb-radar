@@ -6,7 +6,7 @@ import {
   SimulationRecord, ExternalHistoryRecord, MomentumData,
   LiveInstrument,
 } from '@/lib/types';
-import { useRadarStore, initializeStore } from '@/lib/store';
+import { useRadarStore, initializeStore, startDbSync, stopDbSync } from '@/lib/store';
 import type { AppTheme, TabId, ActivityItem } from '@/lib/store';
 import { filterForCharts } from '@/lib/outlierFilter';
 import { startApiSequence, stopApiSequence, type ApiCallback } from '@/lib/api-orchestrator';
@@ -416,6 +416,9 @@ function HomeContent() {
       const validInstruments = useRadarStore.getState().instruments;
       sessionHistory.addSnapshot(validInstruments);
 
+      // V4.0.5: Start DB sync to pick up daemon updates every 30s
+      startDbSync();
+
       // V4.0 OPTIMIZED: Start API orchestrator after just 2s
       // The sandbox can handle sequential API calls — no need for 30s delay.
       // First data arrives in ~3s (letras), full data in ~12s.
@@ -433,6 +436,7 @@ function HomeContent() {
         stopApiSequence();
         apiOrchestratorStartedRef.current = false;
       }
+      stopDbSync(); // V4.0.5: Clean up DB sync interval
     };
   }, []);
 
