@@ -25,6 +25,7 @@ import { PrismaClient } from '@prisma/client';
 // ── Load .env (V3.4.1: Windows-safe — handles quoted values with & symbols) ──
 import * as fs from 'fs';
 import * as path from 'path';
+import { execSync } from 'child_process';
 
 function loadEnv() {
   const envPath = path.resolve(process.cwd(), '.env');
@@ -918,6 +919,54 @@ async function writeHistoricalData(
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// V4.0.4 — AUTO-MIGRATION: Ensure DB schema exists before writing
+// If tables don't exist (fresh DB), automatically runs prisma db push.
+// This prevents "table does not exist" crashes on first run.
+// ════════════════════════════════════════════════════════════════════════
+
+let dbSchemaVerified = false;
+
+async function ensureDbSchema(prisma: PrismaClient): Promise<boolean> {
+  if (dbSchemaVerified) return true;
+
+  try {
+    // Quick check: does the AppState table exist?
+    await prisma.appState.count({ take: 1 });
+    dbSchemaVerified = true;
+    return true;
+  } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    if (errMsg.includes('does not exist') || errMsg.includes('no such table')) {
+      log('WARN', 'Tablas no encontradas en DB. Ejecutando auto-migración (prisma db push)...');
+      try {
+        // Run prisma db push to create all tables from schema
+        const schemaPath = path.resolve(process.cwd(), 'prisma', 'schema.prisma');
+        if (!fs.existsSync(schemaPath)) {
+          log('ERROR', `Schema no encontrado: ${schemaPath}. No se puede auto-migrar.`);
+          return false;
+        }
+        execSync('npx prisma db push --accept-data-loss --skip-generate', {
+          cwd: process.cwd(),
+          stdio: 'pipe',
+          timeout: 30000,
+          env: { ...process.env },
+        });
+        log('OK', 'Auto-migración completada. Tablas creadas.');
+        dbSchemaVerified = true;
+        return true;
+      } catch (migrateErr) {
+        log('ERROR', `Auto-migración fallida: ${migrateErr instanceof Error ? migrateErr.message : String(migrateErr)}`);
+        log('INFO', 'Ejecutá manualmente: npx prisma db push');
+        return false;
+      }
+    }
+    // Some other DB error — don't auto-migrate
+    log('ERROR', `DB check failed: ${errMsg}`);
+    return false;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // DATABASE — Read/Write to Neon via Prisma
 // ════════════════════════════════════════════════════════════════════════
 
@@ -938,6 +987,13 @@ async function writeToNeon(
   });
 
   try {
+    // V4.0.4: Auto-migrate if tables don't exist
+    const schemaOk = await ensureDbSchema(prisma);
+    if (!schemaOk) {
+      log('ERROR', 'DB schema no disponible. Saltando escritura.');
+      return false;
+    }
+
     // Read existing state to preserve config, position, transactions
     const existing = await prisma.appState.findUnique({ where: { id: 'main' } });
 
