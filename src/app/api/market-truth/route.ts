@@ -269,17 +269,19 @@ async function refreshCache(): Promise<void> {
   isRefreshing = true;
 
   try {
+    // V4.0.2: RAVA first — it has the real-time value (522 today)
+    // ArgentinaDatos can be stale; RAVA is the truth
+    const ravaRP = await fetchRavaRP();
+    await sleep(SOURCE_GAP_MS);
     const argDatosUltimoRP = await fetchArgDatosUltimoRP();
     await sleep(SOURCE_GAP_MS);
     const argDatosArrayRP = await fetchArgDatosArrayRP();
-    await sleep(SOURCE_GAP_MS);
-    const ravaRP = await fetchRavaRP(); // V4.0.2: RAVA replaces BondTerminal
     await sleep(SOURCE_GAP_MS);
     const directMEP = await fetchDirectMEP();
     await sleep(SOURCE_GAP_MS);
     const dolarAPIMEP = await fetchDolarAPIMEP();
 
-    const rpSources = [argDatosUltimoRP, argDatosArrayRP, ravaRP];
+    const rpSources = [ravaRP, argDatosUltimoRP, argDatosArrayRP];
     const rpConsensus = computeRPConsensus(rpSources);
 
     if (rpConsensus.confidence === 'CRITICA') {

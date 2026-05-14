@@ -1,9 +1,9 @@
 // ════════════════════════════════════════════════════════════════════════
 // V4.0.2 BLINDADO — Country Risk Auto-Fetch API
 //
-// ARCHITECTURE: 
-//   1. ArgentinaDatos as PRIMARY (JSON API, fast, reliable)
-//   2. RAVA as SECONDARY (HTML scraping from rava.com — real value)
+// ARCHITECTURE (V4.0.2 — RAVA is PRIMARY):
+//   1. RAVA Bursátil as PRIMARY (real-time value from rava.com — the truth)
+//   2. ArgentinaDatos as SECONDARY (JSON API — can be stale/delayed)
 //   3. SQLite DB as TERTIARY fallback (persisted historical value)
 //   4. Static fallback as last resort
 //
@@ -146,7 +146,31 @@ export function parseRavaExtra(html: string): {
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 async function fetchCountryRisk(): Promise<{ value: number | null; source: string }> {
-  // ── SOURCE 1: ArgentinaDatos /ultimo (JSON API — fast & reliable) ──
+  // ── SOURCE 1: RAVA Bursátil (PRIMARY — real-time value, the truth) ──
+  // RAVA shows the actual Riesgo País value as it trades right now.
+  // ArgentinaDatos can be hours/days stale. RAVA is always current.
+  try {
+    const res = await fetch(RAVA_RIESGO_PAIS_URL, {
+      signal: AbortSignal.timeout(RAVA_TIMEOUT_MS),
+      headers: {
+        'Accept': 'text/html',
+        'User-Agent': 'Mozilla/5.0 (compatible; ARB-RADAR/4.0)',
+      },
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const value = parseRavaHTML(html);
+      if (value !== null && value > 0) {
+        return { value, source: 'rava' };
+      }
+    }
+  } catch {
+    // RAVA failed — fall through to ArgentinaDatos
+  }
+
+  await sleep(SOURCE_GAP_MS);
+
+  // ── SOURCE 2: ArgentinaDatos /ultimo (SECONDARY — can be stale) ──
   try {
     const res = await fetch(ARG_DATOS_ULTIMO_URL, {
       signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
@@ -165,7 +189,7 @@ async function fetchCountryRisk(): Promise<{ value: number | null; source: strin
 
   await sleep(SOURCE_GAP_MS);
 
-  // ── SOURCE 2: ArgentinaDatos full array ──
+  // ── SOURCE 3: ArgentinaDatos full array (last API resort) ──
   try {
     const res = await fetch(ARG_DATOS_URL, {
       signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
@@ -180,28 +204,6 @@ async function fetchCountryRisk(): Promise<{ value: number | null; source: strin
     }
   } catch {
     // Full array failed
-  }
-
-  await sleep(SOURCE_GAP_MS);
-
-  // ── SOURCE 3: RAVA Bursátil (HTML scraping — V4.0.2: replaces BondTerminal) ──
-  try {
-    const res = await fetch(RAVA_RIESGO_PAIS_URL, {
-      signal: AbortSignal.timeout(RAVA_TIMEOUT_MS),
-      headers: {
-        'Accept': 'text/html',
-        'User-Agent': 'Mozilla/5.0 (compatible; ARB-RADAR/4.0)',
-      },
-    });
-    if (res.ok) {
-      const html = await res.text();
-      const value = parseRavaHTML(html);
-      if (value !== null && value > 0) {
-        return { value, source: 'rava' };
-      }
-    }
-  } catch {
-    // RAVA failed
   }
 
   return { value: null, source: 'failed' };
