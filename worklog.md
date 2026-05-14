@@ -99,3 +99,27 @@ Stage Summary:
 - Absorption Alerts and Market Pressure active
 - 50s delay eliminated, instant radar
 - S/R and Cockpit Score logic fully preserved
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: V4.0.1 BLINDADO — Full instrument list + SQLite schema fix + S/R verification
+
+Work Log:
+- Analyzed complete project structure and identified 3 critical issues
+- Fixed Prisma schema: added missing fields to DailyOHLC (temOpen, temClose, temHigh, temLow, iolVolume, spreadAvg), PriceSnapshot (spread, iolVolume, iolBid, iolAsk), and added CountryRisk model
+- Removed 5-instrument IOL enrichment cap in /api/letras/route.ts — now processes ALL instruments with 500ms staggered delays
+- Fixed /api/price-history/route.ts with safe numOrZero() accessor for missing fields + replaced problematic groupBy with distinct findMany for SQLite compatibility
+- Verified S/R system: calculateSR() reads from localStorage (PriceHistoryFile), independent of SQLite — NO changes needed
+- Ran db:push successfully, schema synced
+- Lint passes clean
+- Generated ARB-RADAR-V4.0.1-COMPLETE.zip (7.0MB) with all folders (src, prisma, public, db, components/ui, etc.)
+- Force-pushed to GitHub main branch
+
+Stage Summary:
+- Key fix: Removed instruments.slice(0, 5) → full list processing with 500ms delays
+- Key fix: Prisma schema now matches all API route field references (country-risk, market-truth, price-history)
+- Key fix: price-history tickers endpoint uses SQLite-compatible query pattern
+- S/R confirmation: Works via localStorage (calculateSR from PriceHistoryFile), not affected by SQLite migration
+- ZIP ready at: /home/z/my-project/ARB-RADAR-V4.0.1-COMPLETE.zip
+- GitHub repo updated: https://github.com/Pablo2541/arb-radar (main branch)
