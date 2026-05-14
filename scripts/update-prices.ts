@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-// CEREBRO TÁCTICO — ARB//RADAR V4.0.2
+// CEREBRO TÁCTICO — ARB//RADAR V4.0.6
 // Motor de actualización de precios con validación IOL Nivel 2
 // + Acumulación Histórica (PriceSnapshot + DailyOHLC)
 //
@@ -201,11 +201,21 @@ function isRelevantBondTicker(symbol: string): boolean {
 
 function isMarketHours(): boolean {
   const now = new Date();
-  // Argentina timezone offset check (UTC-3)
-  const arTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
-  const hour = arTime.getHours();
-  const day = arTime.getDay();
-  return day >= 1 && day <= 5 && hour >= 10 && hour < 18;
+  // V4.0.6: Use Intl.DateTimeFormat parts — reliable across all Node.js versions
+  // Previous approach (new Date(localeString)) was unreliable and caused the
+  // "Mercado cerrado" bug where the daemon stopped 1 hour early.
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    hour: 'numeric',
+    hour12: false,
+    weekday: 'short',
+  });
+  const parts = formatter.formatToParts(now);
+  const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+  const weekday = parts.find(p => p.type === 'weekday')?.value ?? '';
+  const isWeekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday);
+  // Argentine market: Mon-Fri, 10:00 to 18:00 (hour 10-17 inclusive)
+  return isWeekday && hour >= 10 && hour < 18;
 }
 
 /** Fetch with timeout and error handling */
@@ -459,11 +469,13 @@ async function getIOLCotizacion(ticker: string): Promise<IOLLevel2Data | null> {
     const volumenNominal = data.volumen || 0; // Notional ARS volume
 
     // Estimate average daily volume
-    // We use a simple heuristic: if current volume is X, avg daily ≈ X * 3
-    // (assuming we're ~1/3 through the trading day on average)
-    // This is a rough estimate; a proper implementation would query historical data
-    const hourAR = new Date().toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' });
-    const currentHour = new Date(hourAR).getHours();
+    // V4.0.6: Use Intl.DateTimeFormat for reliable timezone conversion
+    const hourARFormatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      hour: 'numeric',
+      hour12: false,
+    });
+    const currentHour = parseInt(hourARFormatter.formatToParts(new Date()).find(p => p.type === 'hour')?.value ?? '12', 10);
     const tradingHoursElapsed = Math.max(1, currentHour - 10); // Market opens at 10
     const estimatedAvgDaily = volumenNominal > 0
       ? volumenNominal * (8 / tradingHoursElapsed) // 8 hours of trading (10-18h AR)

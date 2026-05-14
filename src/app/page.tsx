@@ -565,10 +565,20 @@ function HomeContent() {
 
   // ── Market status ──
   const marketOpen = useMemo(() => {
+    // V4.0.6: Use Intl.DateTimeFormat for reliable Argentina timezone conversion
+    // Previous approach (new Date().getHours()) used local server time, not Argentina time
     const now = new Date();
-    const hour = now.getHours();
-    const day = now.getDay();
-    return day >= 1 && day <= 5 && hour >= 10 && hour < 18;
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      hour: 'numeric',
+      hour12: false,
+      weekday: 'short',
+    });
+    const parts = formatter.formatToParts(now);
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+    const weekday = parts.find(p => p.type === 'weekday')?.value ?? '';
+    const isWeekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday);
+    return isWeekday && hour >= 10 && hour < 18;
   }, [currentTime]);
 
   // ── V4.0: FILE indicator color + label (replaces DB sync dot) ──
@@ -614,7 +624,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V4.0 BLINDADO...
+            Cargando V4.0.6 BLINDADO...
           </p>
         </div>
       </div>
@@ -696,7 +706,7 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V4.0 — BLINDADO</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V4.0.6 — BLINDADO</span>
             {/* V4.0: FILE indicator — replaces DB sync dot */}
             <div className="flex items-center gap-1 hidden sm:flex" title={fileIndicator.title}>
               <div
