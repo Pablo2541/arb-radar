@@ -1,7 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════
 // ARB//RADAR V4.0 BLINDADO — Prisma Schema
 // Complete schema for state persistence, IOL volume snapshots,
-// and price history (Historico tab)
+// price history (Historico tab), country risk, and S/R calculations.
+//
+// V4.0.1: Expanded DailyOHLC + PriceSnapshot + CountryRisk
+// All fields needed by /api/price-history, /api/country-risk,
+// and /api/market-truth are now present.
 // ═══════════════════════════════════════════════════════════════════
 
 generator client {
@@ -56,16 +60,23 @@ model IolVolumeSnapshot {
 
 // ═══════════════════════════════════════════════════════════════════
 // Price History Models (for /api/price-history)
+// V4.0.1: Expanded with TEM OHLC, IOL volume, and spread fields
 // ═══════════════════════════════════════════════════════════════════
 
 model PriceSnapshot {
   id        String   @id @default(cuid())
   ticker    String   // e.g. "S30A6", "T15J7"
   price     Float    // price per $1 VN
-  tem       Float    // monthly rate
-  tir       Float    // annual rate
+  tem       Float    @default(0) // monthly rate
+  tir       Float    @default(0) // annual rate
   source    String   @default("live") // "live" | "manual"
   timestamp DateTime @default(now())
+  // V4.0.1: Additional fields for enriched snapshots
+  spread    Float    @default(0) // bid-ask spread
+  volume    Float    @default(0) // data912 volume
+  iolVolume Float    @default(0) // IOL cantidadOperada
+  iolBid    Float    @default(0) // IOL best bid
+  iolAsk    Float    @default(0) // IOL best ask
 
   @@index([ticker])
   @@index([timestamp])
@@ -73,17 +84,36 @@ model PriceSnapshot {
 }
 
 model DailyOHLC {
-  id    String @id @default(cuid())
-  date  String // YYYY-MM-DD
-  ticker String // e.g. "S30A6", "T15J7"
-  open  Float  @default(0)
-  high  Float  @default(0)
-  low   Float  @default(0)
-  close Float  @default(0)
-  tem   Float  @default(0)
-  volume Float @default(0) // data912 volume
+  id         String @id @default(cuid())
+  date       String // YYYY-MM-DD
+  ticker     String // e.g. "S30A6", "T15J7"
+  open       Float  @default(0)
+  high       Float  @default(0)
+  low        Float  @default(0)
+  close      Float  @default(0)
+  tem        Float  @default(0)   // average TEM for the day
+  volume     Float  @default(0)   // data912 volume
+  // V4.0.1: TEM OHLC for HistoricoTab TEM charts
+  temOpen    Float  @default(0)   // TEM at market open
+  temClose   Float  @default(0)   // TEM at market close
+  temHigh    Float  @default(0)   // max TEM intraday
+  temLow     Float  @default(0)   // min TEM intraday
+  // V4.0.1: IOL enrichment fields
+  iolVolume  Float  @default(0)   // IOL cantidadOperada (volume from IOL)
+  spreadAvg  Float  @default(0)   // average bid-ask spread
 
   @@unique([date, ticker])
   @@index([date])
   @@index([ticker])
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// V4.0.1 — Country Risk: Persisted value for fallback
+// Used by /api/country-risk and /api/market-truth
+// ═══════════════════════════════════════════════════════════════════
+model CountryRisk {
+  id        String   @id          // Always 'main'
+  value     Int      @default(0)  // Riesgo País in basis points
+  source    String   @default("unknown") // 'argentinadatos' | 'bondterminal' | etc.
+  updatedAt DateTime @updatedAt
 }

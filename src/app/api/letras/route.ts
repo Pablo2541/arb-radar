@@ -281,6 +281,9 @@ async function refreshCache(): Promise<void> {
     instruments.sort((a, b) => a.days_to_expiry - b.days_to_expiry);
 
     // ── IOL Level 2 Enrichment ──
+    // V4.0.1: Process ALL instruments with staggered 500ms delays.
+    // The sandbox limit of 5 instruments has been removed for local deployment.
+    // IOL rate limits are respected via the 500ms gap between requests.
     let iolEnrichedCount = 0;
     const hasIOLCreds = iolCredentialsExist();
     if (hasIOLCreds && instruments.length > 0) {
@@ -289,10 +292,10 @@ async function refreshCache(): Promise<void> {
         console.warn('[letras] IOL auth failed — skipping Level 2 enrichment');
       } else {
         const IOL_BATCH_DELAY_MS = 500;
-        // V4.0 OPTIMIZED: Only enrich top 5 instruments to prevent sandbox crashes
-        // Detailed Level 2 data is available via /api/iol-level2 on demand
-        const topInstruments = instruments.slice(0, 5);
-        for (const inst of topInstruments) {
+        // V4.0.1: Enrich ALL instruments (removed 5-instrument sandbox cap)
+        // Staggered 500ms delay prevents IOL rate limit issues
+        for (let i = 0; i < instruments.length; i++) {
+          const inst = instruments[i];
           try {
             const l2 = await getIOLCotizacion(inst.ticker);
             if (l2) {
@@ -308,7 +311,10 @@ async function refreshCache(): Promise<void> {
           } catch {
             // Per-ticker failure — don't cascade
           }
-          await sleep(IOL_BATCH_DELAY_MS);
+          // Staggered delay between IOL requests (500ms gap)
+          if (i < instruments.length - 1) {
+            await sleep(IOL_BATCH_DELAY_MS);
+          }
         }
       }
     }
