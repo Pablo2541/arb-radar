@@ -276,7 +276,7 @@ async function main() {
 
       try {
         await prisma.dailyOHLC.upsert({
-          where: { ticker_date: { ticker, date } },
+          where: { date_ticker: { ticker, date } },
           update: {
             open: priceNormalized,
             high: priceNormalized,

@@ -155,7 +155,7 @@ async function processV34Format(prisma: PrismaClient, data: HistoricoV34Format):
 
       try {
         await prisma.dailyOHLC.upsert({
-          where: { ticker_date: { ticker, date } },
+          where: { date_ticker: { ticker, date } },
           update: { open, high, low, close, temOpen, temClose, temHigh, temLow, spreadAvg },
           create: { ticker, date, open, high, low, close, temOpen, temClose, temHigh, temLow, volume: 0, spreadAvg },
         });
@@ -193,7 +193,7 @@ async function processV32Format(prisma: PrismaClient, data: HistoricoV32Format):
 
       try {
         await prisma.dailyOHLC.upsert({
-          where: { ticker_date: { ticker, date: rec.fecha } },
+          where: { date_ticker: { ticker, date: rec.fecha } },
           update: {
             open: rec.open, high: rec.high, low: rec.low, close: rec.close,
             temOpen: tem, temClose: tem, temHigh: tem * 1.02, temLow: tem * 0.98,

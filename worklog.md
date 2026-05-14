@@ -145,3 +145,24 @@ Stage Summary:
 - RAVA is priority in consensus engine (sourcePriority = ['rava', 'argentinadatos_ultimo', 'argentinadatos_array'])
 - ZIP at /home/z/my-project/ARB-RADAR-V4.0.2-LIGHT.zip (421KB)
 - GitHub: https://github.com/Pablo2541/arb-radar (main)
+---
+Task ID: 1
+Agent: main
+Task: Fix three integration failures in ARB//RADAR V4.0.2
+
+Work Log:
+- Diagnosed TS2322 crash: Prisma schema has Float @default(0) (non-nullable) but update-prices.ts passed `?? null` for iolVolume, iolBid, iolAsk fields
+- Fixed: Changed `?? null` to `?? 0` in PriceSnapshot.create, DailyOHLC.create, and DailyOHLC.update calls
+- Fixed: `tna: inst.tna` → `tir: inst.tna` in PriceSnapshot.create (schema field is `tir`, not `tna`)
+- Fixed: `ticker_date` → `date_ticker` compound unique name in DailyOHLC.findUnique (Prisma generates name from field order in @@unique)
+- Fixed same ticker_date→date_ticker in inject-historical.ts, migrate-historico.ts, build-historical-series.js
+- Replaced BondTerminal with RAVA Bursátil scraper for Riesgo País (same logic as /api/country-risk route)
+- Fixed DATABASE_URL resolution: relative `file:./db/custom.db` now resolves to absolute path in loadEnv()
+- Added Bluelytics as secondary dollar rate source with cross-validation for freshness detection
+- Added `prices:update` and `prices:daemon` scripts to package.json
+
+Stage Summary:
+- Script `npm run prices:update` now runs successfully: 15 instruments, 15 snapshots, 15 OHLC, RAVA 522pb, DB OK
+- No more TS2322 errors - all Prisma types align with schema
+- Dollar API route enhanced with Bluelytics cross-validation (override if DolarAPI stale by >10min and diff >$3)
+- All scripts use correct Prisma compound unique name `date_ticker`

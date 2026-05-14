@@ -1,19 +1,21 @@
 // ════════════════════════════════════════════════════════════════════════
-// CEREBRO TÁCTICO — ARB//RADAR V3.2.4-PRO
+// CEREBRO TÁCTICO — ARB//RADAR V4.0.2
 // Motor de actualización de precios con validación IOL Nivel 2
 // + Acumulación Histórica (PriceSnapshot + DailyOHLC)
 //
 // ARQUITECTURA:
 //   Nivel 1 (Precios):  data912.com + ArgentinaDatos (estable, broker-focused)
 //   Nivel 2 (Volumen):  InvertirOnline API (validación de liquidez real)
-//   Destino:            Neon PostgreSQL (refleja en Vercel + terminal local)
+//   Riesgo País:        RAVA Bursátil (primario) → ArgentinaDatos (fallback)
+//   Destino:            SQLite (Prisma, file:./db/custom.db)
 //
 // MODO DE USO:
+//   npm run prices:update                      → una sola ejecución
 //   npx tsx scripts/update-prices.ts           → una sola ejecución
 //   npx tsx scripts/update-prices.ts --daemon   → loop cada 60s en horario mercado
 //
 // VARIABLES DE ENTORNO (.env):
-//   DATABASE_URL        → Neon PostgreSQL (pooled URL para conexiones desde PC)
+//   DATABASE_URL        → SQLite (file:./db/custom.db)
 //   IOL_USERNAME        → Email de InvertirOnline
 //   IOL_PASSWORD        → Password de InvertirOnline
 // ════════════════════════════════════════════════════════════════════════
@@ -28,6 +30,7 @@ function loadEnv() {
   const envPath = path.resolve(process.cwd(), '.env');
   if (fs.existsSync(envPath)) {
     const content = fs.readFileSync(envPath, 'utf-8');
+    const projectRoot = path.resolve(process.cwd());
     for (const line of content.split('\n')) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) continue;
@@ -39,8 +42,14 @@ function loadEnv() {
       if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
         val = val.slice(1, -1);
       }
-      // V3.4.3: DATABASE_URL from .env takes priority over system env
+      // V4.0.2: Resolve relative SQLite paths to absolute
       if (key === 'DATABASE_URL' && val) {
+        if (val.startsWith('file:')) {
+          const rawPath = val.replace('file:', '');
+          if (!path.isAbsolute(rawPath)) {
+            val = 'file:' + path.resolve(projectRoot, rawPath);
+          }
+        }
         process.env[key] = val;
       } else if (!process.env[key]) {
         process.env[key] = val;
@@ -60,8 +69,8 @@ const ARGDATOS_LETRAS_URL = 'https://api.argentinadatos.com/v1/finanzas/letras';
 const ARGDATOS_PF_URL = 'https://api.argentinadatos.com/v1/finanzas/tasas/plazoFijo';
 const IOL_TOKEN_URL = 'https://api.invertironline.com/token';
 const IOL_COTIZACION_URL = 'https://api.invertironline.com/api/v2/Titulos';
-// V3.2.4-FIX: BondTerminal as primary source (real-time), ArgentinaDatos as fallback
-const BONDTERMINAL_RIESGO_PAIS_URL = 'https://bondterminal.com/riesgo-pais'; // Primary: real-time value
+// V4.0.2: RAVA as primary source (real-time Riesgo País), ArgentinaDatos as fallback
+const RAVA_RIESGO_PAIS_URL = 'https://www.rava.com/perfil/RIESGO%20PAIS'; // Primary: real-time value
 const ARGDATOS_RIESGO_PAIS_ULTIMO_URL = 'https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais/ultimo'; // Secondary: may be stale
 const ARGDATOS_RIESGO_PAIS_URL = 'https://api.argentinadatos.com/v1/finanzas/indices/riesgo-pais'; // Tertiary fallback
 
@@ -216,18 +225,38 @@ async function safeFetch<T>(url: string, timeoutMs = 8000, headers?: Record<stri
   }
 }
 
-// ── Riesgo País Fetcher (V3.2.4-PRO) ──────────────────────────────────
+// ── Riesgo País Fetcher (V4.0.2 — RAVA as primary) ───────────────────────
 
-// V3.2.4-FIX: BondTerminal as primary (real-time), ArgentinaDatos as fallback
-// BondTerminal scrapes the latest JP Morgan EMBI+ value directly
+// V4.0.2: RAVA Bursátil as primary (real-time), ArgentinaDatos as fallback
+// RAVA shows the actual Riesgo País value as it trades right now.
 
-/** Parse Riesgo País from BondTerminal HTML */
-function parseBondTerminalHTML(html: string): number | null {
-  const match = html.match(/(\d{3,4})\s*pb/);
-  if (match) {
-    const value = parseInt(match[1], 10);
-    return value > 0 && value < 10000 && isFinite(value) ? value : null;
+/** Parse Riesgo País from RAVA HTML */
+function parseRavaHTML(html: string): number | null {
+  // Strategy 1: JSON-LD FinancialProduct schema
+  const ldMatch = html.match(/"price":\s*(\d{2,4})/);
+  if (ldMatch) {
+    const value = parseInt(ldMatch[1], 10);
+    if (value > 50 && value < 10000 && isFinite(value)) return value;
   }
+
+  // Strategy 2: izqCotiza main price display
+  const izqMatch = html.match(/id="izqCotiza"[^>]*>\s*<p>([\d,\.]+)<\/p>/);
+  if (izqMatch) {
+    const parsed = parseFloat(izqMatch[1].replace(',', '.'));
+    if (parsed > 50 && isFinite(parsed)) return Math.round(parsed);
+  }
+
+  // Strategy 3: Fallback — look for NNN,00 pattern near "riesgo"
+  const riesgoIdx = html.toLowerCase().indexOf('riesgo pais');
+  if (riesgoIdx >= 0) {
+    const riesgoContext = html.substring(Math.max(0, riesgoIdx - 500), riesgoIdx + 2000);
+    const fallbackMatch = riesgoContext.match(/(\d{3,4}),00/);
+    if (fallbackMatch) {
+      const value = parseInt(fallbackMatch[1], 10);
+      if (value > 50 && value < 10000 && isFinite(value)) return value;
+    }
+  }
+
   return null;
 }
 
@@ -249,15 +278,22 @@ function parseRiesgoPaisData(data: unknown): number | null {
 }
 
 async function fetchRiesgoPais(): Promise<{ value: number | null; source: string }> {
-  // ── SOURCE 1: BondTerminal (real-time, most reliable) ──
+  // ── SOURCE 1: RAVA Bursátil (PRIMARY — real-time, the truth) ──
   try {
-    const { ok, data } = await safeFetch<string>(BONDTERMINAL_RIESGO_PAIS_URL, 8000);
-    if (ok && data && typeof data === 'string') {
-      const value = parseBondTerminalHTML(data);
-      if (value !== null) return { value, source: 'bondterminal' };
+    const res = await fetch(RAVA_RIESGO_PAIS_URL, {
+      signal: AbortSignal.timeout(5000),
+      headers: {
+        'Accept': 'text/html',
+        'User-Agent': 'Mozilla/5.0 (compatible; ARB-RADAR/4.0)',
+      },
+    });
+    if (res.ok) {
+      const html = await res.text();
+      const value = parseRavaHTML(html);
+      if (value !== null && value > 0) return { value, source: 'rava' };
     }
   } catch {
-    // BondTerminal failed
+    // RAVA failed
   }
 
   // ── SOURCE 2: ArgentinaDatos /ultimo (may be stale by days) ──
@@ -792,13 +828,13 @@ async function writeHistoricalData(
           ticker: inst.ticker,
           price: inst.last_price,
           tem: inst.tem,
-          tna: inst.tna,
+          tir: inst.tna,
           spread: inst.spread_neto,
           volume: inst.volume,
           source: inst.iol_status === 'online' ? 'level2' : 'level1',
-          iolVolume: inst.iol_volume ?? null,
-          iolBid: inst.iol_bid ?? null,
-          iolAsk: inst.iol_ask ?? null,
+          iolVolume: inst.iol_volume ?? 0,
+          iolBid: inst.iol_bid ?? 0,
+          iolAsk: inst.iol_ask ?? 0,
           timestamp: now,
         },
       });
@@ -810,7 +846,7 @@ async function writeHistoricalData(
     // ── 2. Upsert DailyOHLC ──
     try {
       const existingOHLC = await prisma.dailyOHLC.findUnique({
-        where: { ticker_date: { ticker: inst.ticker, date: today } },
+        where: { date_ticker: { ticker: inst.ticker, date: today } },
       });
 
       if (existingOHLC) {
@@ -834,7 +870,7 @@ async function writeHistoricalData(
             temLow: newTemLow,
             temClose: inst.tem,
             volume: totalVolume,
-            iolVolume: iolTotalVolume > 0 ? iolTotalVolume : null,
+            iolVolume: iolTotalVolume > 0 ? iolTotalVolume : 0,
             spreadAvg: newSpreadAvg,
           },
         });
@@ -854,7 +890,7 @@ async function writeHistoricalData(
             temHigh: inst.tem,
             temLow: inst.tem,
             volume: inst.volume,
-            iolVolume: inst.iol_volume ?? null,
+            iolVolume: inst.iol_volume ?? 0,
             spreadAvg: inst.spread_neto,
           },
         });
