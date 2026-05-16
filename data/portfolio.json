@@ -13,13 +13,13 @@
     "El Radar lee este archivo al arrancar y actualiza precios automáticamente",
     "RIESGO PAIS y DOLAR MEP vienen de las APIs, NO de este archivo"
   ],
-  "capitalDisponible": 467587.55,
+  "capitalDisponible": 0,
   "position": {
     "ticker": "T30J7",
-    "entryPrice": 1.1200,
+    "entryPrice": 1.1830,
     "vn": 417310,
     "entryDate": "05/05/2025",
-    "precioConComision": 1.1234
+    "precioConComision": 1.184775
   },
   "transactions": [],
   "config": {
