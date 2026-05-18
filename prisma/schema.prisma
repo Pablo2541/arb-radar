@@ -1,142 +1,92 @@
-// ════════════════════════════════════════════════════════════════════════
-// V3.4.3-PRO — ARB//RADAR Prisma Schema
-//
-// PostgreSQL-compatible schema for Neon DB persistence.
-// Standard Prisma 6.x configuration — reads DATABASE_URL from .env
-//
-// V3.4.2: Simplified — no prisma.config.ts, no bash scripts.
-//   Just set DATABASE_URL in .env and run: npm run db:push
-//
-// FALLBACK: If DATABASE_URL is not configured, the app
-// automatically falls back to localStorage — zero config needed.
-// ════════════════════════════════════════════════════════════════════════
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./db/custom.db"
 }
 
-/// Main application state snapshot — persisted every 60s when LIVE is active
 model AppState {
-  id        String   @id @default("main")
-  instruments  String   // JSON — Instrument[]
-  config       String   // JSON — Config
-  position     String?  // JSON — Position | null
-  transactions String   // JSON — Transaction[]
-  lastUpdate   String?  // ISO timestamp of last data load
-  rawInput     String?  // Last raw text input
-  mepRate      Float?   // Last known MEP rate
-  cclRate      Float?   // Last known CCL rate
-  liveActive   Boolean  @default(false) // Whether LIVE was active at last persist
-  iolLevel2Online Boolean @default(false) // V3.1: Whether IOL Level 2 data is available
-  externalHistory String @default("[]") // JSON — ExternalHistoryRecord[]
-  simulations     String @default("[]") // JSON — SimulationRecord[]
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-}
-
-/// External history records (imported from XLSX/CSV)
-model ExternalHistory {
-  id        String   @id @default(cuid())
-  fecha     String   // DD/MM/YYYY
-  ticker    String
-  operacion String
-  tem       Float    @default(0)
-  precioConComision Float @default(0)
-  duration  Float    @default(0)
-  capitalNeto Float   @default(0)
-  notas     String   @default("")
-  gananciaAcumulada Float @default(0)
-  createdAt DateTime @default(now())
-
-  @@index([ticker])
-}
-
-/// Simulation records (rotation simulations)
-model Simulation {
-  id        String   @id @default(cuid())
-  timestamp String
-  fromTicker String
-  toTicker   String
-  sellPrice  Float
-  buyPrice   Float
-  sellPriceManual Boolean @default(false)
-  buyPriceManual  Boolean @default(false)
-  spreadNeto  Float
-  spreadBruto Float
-  evaluacion  String
-  paybackDays Float
-  nuevosNominales Float
-  capitalNetoSalida Float
-  capitalSobrante Float
-  createdAt DateTime @default(now())
-}
-
-/// V3.2: Price snapshots — every price observation from the Hybrid Data Motor
-model PriceSnapshot {
-  id        String   @id @default(cuid())
-  ticker    String
-  price     Float    // price per $1 VN
-  tem       Float    // TEM at snapshot time (decimal)
-  tna       Float    // TNA at snapshot time (decimal)
-  spread    Float    // spread vs caución (decimal)
-  volume    Float    @default(0) // notional ARS volume
-  source    String   @default("level1") // "level1" or "level2"
-  iolVolume Float?   // IOL cantidadOperada (Level 2 only)
-  iolBid    Float?   // IOL best bid (Level 2 only)
-  iolAsk    Float?   // IOL best ask (Level 2 only)
-  iolBidDepth      Float?   // V3.2.4-PRO: Total quantity across all compra puntas
-  iolAskDepth      Float?   // V3.2.4-PRO: Total quantity across all venta puntas
-  iolMarketPressure Float?  // V3.2.4-PRO: bid_depth / ask_depth ratio (>1 = buying pressure)
-  timestamp DateTime @default(now())
-
-  @@index([ticker])
-  @@index([timestamp])
-}
-
-/// V3.2: Daily OHLC — aggregated candle per ticker per day
-model DailyOHLC {
-  id        String   @id @default(cuid())
-  ticker    String
-  date      String   // YYYY-MM-DD
-  open      Float    // first price of day
-  high      Float    // max price of day
-  low       Float    // min price of day
-  close     Float    // last price of day
-  temOpen   Float    @default(0) // TEM at open
-  temClose  Float    @default(0) // TEM at close
-  temHigh   Float    @default(0) // max TEM of day
-  temLow    Float    @default(0) // min TEM of day
-  volume    Float    @default(0) // total notional ARS volume
-  iolVolume Float?   // IOL total volume for day
-  spreadAvg Float    @default(0) // average spread vs caución
-  iolBidDepthAvg       Float    @default(0) // V3.2.4-PRO: Average bid depth for the day
-  iolAskDepthAvg       Float    @default(0) // V3.2.4-PRO: Average ask depth for the day
-  iolMarketPressureAvg Float    @default(0) // V3.2.4-PRO: Average market pressure for the day
-  createdAt DateTime @default(now())
-
-  @@unique([ticker, date])
-  @@index([ticker])
-  @@index([date])
-}
-
-/// V3.2.4-PRO: Country Risk (Riesgo País) — auto-fetched every 15 min
-model CountryRisk {
-  id        String   @id @default("main")
-  value     Int      // Current Riesgo País in basis points
-  source    String   @default("argentinadatos") // API source
+  id        Int      @id @default(1)
+  instruments Json?
+  config    Json?
+  position  Json?
+  mepRate   Float?
+  cclRate   Float?
   updatedAt DateTime @updatedAt
 }
 
-/// Keep User model for potential auth
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
+model IolVolumeSnapshot {
+  id        Int      @id @default(1)
+  date      DateTime
+  ticker    String
+  volumen   Int
+  bid       Float?
+  ask       Float?
   createdAt DateTime @default(now())
+
+  @@unique([date, ticker])
+  @@index([date])
+  @@index([ticker])
+}
+
+model PriceSnapshot {
+  id        Int      @id @default(1)
+  ticker    String
+  price     Float
+  tem       Float?
+  tir       Float?
+  timestamp DateTime
+  spread    Float?
+  volume    Int?
+  iolBid    Float?
+  iolAsk    Float?
+
+  @@index([ticker])
+  @@index([timestamp])
+  @@index([ticker, timestamp])
+}
+
+model DailyOHLC {
+  id           Int      @id @default(1)
+  date         DateTime
+  ticker       String
+  open         Float
+  high         Float
+  low          Float
+  close        Float
+  volume       Int      @default(0)
+  iolVolume    Int      @default(0)
+  temOpen      Float?
+  temHigh      Float?
+  temLow       Float?
+  temClose     Float?
+  spreadAvg    Float?
+  vpV          Float?
+  daysToExpiry Int?
+
+  @@unique([date, ticker])
+  @@index([date])
+  @@index([ticker])
+}
+
+// Tabla nueva para el Motor de Señales
+model PriceLevel {
+  id            Int      @id @default(1)
+  ticker        String
+  support       Float
+  resistance    Float
+  averageVolume Float
+  calculatedAt  DateTime @default(now())
+
+  @@index([ticker])
+  @@index([calculatedAt])
+}
+
+model CountryRisk {
+  id        Int      @id @default(1)
+  value     Float
+  source    String?
   updatedAt DateTime @updatedAt
 }
