@@ -798,10 +798,10 @@ export default function CockpitTab({
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-lg font-light text-app-text mb-1">
-              🎯 Cockpit Táctico — V5.2 SCANNER
+              🎯 Cockpit Táctico — QUANT X
             </h2>
             <p className="text-sm text-app-text3">
-              Price Action Scanner · S/R + Volumen + Presión → Gatillador Cuantitativo · Horizonte: {horizonLabel}
+              Quantitative Scanner · S/R + Volume + Pressure → Trigger Engine · Horizonte: {horizonLabel}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1083,7 +1083,7 @@ export default function CockpitTab({
           {/* Scrollable container with sticky header */}
           <div className="cockpit-scroll-container">
             {/* Desktop table header — sticky */}
-            <div className="hidden md:grid cockpit-sticky-header table-header-enhanced px-4 py-3.5 grid-cols-[36px_1fr_88px_64px_60px_80px_72px_72px_80px_60px_1fr] gap-2 items-center text-[9px] text-app-text4 uppercase tracking-wider font-medium">
+            <div className="hidden md:grid cockpit-sticky-header cockpit-header-premium px-4 py-3.5 grid-cols-[36px_1fr_88px_64px_60px_80px_72px_72px_80px_56px_1fr] gap-2 items-center text-[9px] text-app-text4 uppercase tracking-wider font-medium">
               <span>#</span>
               <span>Instrumento</span>
               <span className="text-right">Precio</span>
@@ -1093,7 +1093,7 @@ export default function CockpitTab({
               <span className="text-right">Dist %</span>
               <span className="text-right">Inyección</span>
               <span className="text-right">Spread</span>
-              <span className="text-right">Score</span>
+              <span className="text-center">Score</span>
               <span className="text-right">ACCIÓN</span>
             </div>
 
@@ -1146,9 +1146,13 @@ export default function CockpitTab({
                     key={`${score.ticker}-${score.type}`}
                     id={`cockpit-row-${score.ticker}`}
                     className={`
-                      md:table-row-highlight md:table-row-alt md:px-3 md:py-2 animate-row-in ${getStaggerClass(idx)} ${isGatillar ? 'gatillar-row' : ''} ${triggeredAlerts.has(score.ticker) ? 'price-alert-flash' : ''} cockpit-row-hover
+                      md:table-row-highlight md:table-row-alt animate-row-in ${getStaggerClass(idx)} ${isGatillar ? 'gatillar-row' : ''} ${triggeredAlerts.has(score.ticker) ? 'price-alert-flash' : ''} cockpit-row-premium
                     `}
-                    style={idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 88px' } : undefined}
+                    style={{
+                      ...(idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 96px' } : {}),
+                      '--accent-color': asc.color,
+                      borderLeftColor: asc.color,
+                    } as React.CSSProperties}
                   >
                     {/* ═══════════════════════════════════════════════════ */}
                     {/* MOBILE CARD LAYOUT (< md)                           */}
@@ -1321,11 +1325,11 @@ export default function CockpitTab({
                     </div>
 
                     {/* ═══════════════════════════════════════════════════ */}
-                    {/* DESKTOP GRID LAYOUT (>= md)                         */}
+                    {/* DESKTOP GRID LAYOUT (>= md) — QUANT X CARD         */}
                     {/* ═══════════════════════════════════════════════════ */}
-                    <div className="hidden md:block">
+                    <div className="hidden md:block cockpit-row-card">
                       {/* Main row: All 11 columns */}
-                      <div className="grid grid-cols-[36px_1fr_88px_64px_60px_80px_72px_72px_80px_60px_1fr] gap-2 items-center py-4">
+                      <div className="grid grid-cols-[36px_1fr_88px_64px_60px_80px_72px_72px_80px_56px_1fr] gap-2 items-center py-3.5">
                         {/* Rank */}
                         <div className={`rank-badge ${getRankClass(rank)} text-[10px]`} style={{ width: 30, height: 30, fontSize: 10 }}>
                           {rank}
@@ -1370,7 +1374,7 @@ export default function CockpitTab({
                         </div>
 
                         {/* Price */}
-                        <div className="text-right font-mono text-base font-bold text-app-text">
+                        <div className="text-right font-mono text-base font-bold text-app-text neon-price">
                           {price > 0 ? fmtNum(price, 4) : '—'}
                         </div>
 
@@ -1397,14 +1401,14 @@ export default function CockpitTab({
                         </div>
 
                         {/* V5.0: DISTANCIA A S/R (%) */}
-                        <div className={`text-right font-mono text-base font-bold relative rounded-md px-1.5 py-1 -mr-1.5 ${
+                        <div className={`text-right font-mono text-base font-bold relative rounded-md px-2 py-1 ${
                           isVeryNearSR ? 'bg-[#f87171]/15 border border-[#f87171]/30' :
                           isNearSR ? 'bg-[#fbbf24]/10 border border-[#fbbf24]/25' :
                           ''
                         }`}>
                           <span
                             className={`${
-                              isVeryNearSR ? 'text-[#f87171] animate-pulse' :
+                              isVeryNearSR ? 'text-[#f87171]' :
                               isNearSR ? 'text-[#fbbf24]' :
                               score.distanceToSR < 1.0 ? 'text-app-accent-text font-bold' :
                               'text-app-text3'
@@ -1412,14 +1416,17 @@ export default function CockpitTab({
                           >
                             {score.distanceToSR < 99 ? `${score.distanceToSR.toFixed(2)}%` : '—'}
                           </span>
-                          {isNearSR && score.distanceToSR < 99 && (
-                            <span
-                              className="absolute -left-1 top-1/2 -translate-y-1/2 w-1.5 h-4 rounded-full"
-                              style={{
-                                backgroundColor: isVeryNearSR ? '#f87171' : '#fbbf24',
-                                boxShadow: isVeryNearSR ? '0 0 8px rgba(248,113,113,0.7)' : '0 0 6px rgba(251,191,36,0.5)',
-                              }}
-                            />
+                          {score.distanceToSR < 99 && (
+                            <div className="w-full h-[3px] rounded-full bg-app-subtle/40 mt-1 overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-700"
+                                style={{
+                                  width: `${Math.max(0, Math.min(100, (1 - score.distanceToSR / 5) * 100))}%`,
+                                  backgroundColor: isVeryNearSR ? '#f87171' : isNearSR ? '#fbbf24' : score.distanceToSR < 1.0 ? '#2eebc8' : '#6b7280',
+                                  boxShadow: isVeryNearSR ? '0 0 6px rgba(248,113,113,0.5)' : isNearSR ? '0 0 4px rgba(251,191,36,0.3)' : 'none',
+                                }}
+                              />
+                            </div>
                           )}
                         </div>
 
@@ -1440,20 +1447,23 @@ export default function CockpitTab({
                           {fmtPct(score.spreadNeto, 2)}
                         </div>
 
-                        {/* CockpitScore — V5.1: larger font */}
-                        <div className="text-right">
-                          <span
-                            className="font-mono font-bold text-xl"
-                            style={{ color: vc.color }}
-                          >
-                            {score.cockpitScore.toFixed(1)}
-                          </span>
+                        {/* CockpitScore — QUANT X: hero gauge */}
+                        <div className="flex justify-center items-center">
+                          <div className="relative">
+                            <ScoreRing score={score.cockpitScore} color={vc.color} size={40} />
+                            <span
+                              className="absolute inset-0 flex items-center justify-center font-mono font-black text-sm"
+                              style={{ color: vc.color }}
+                            >
+                              {score.cockpitScore.toFixed(1)}
+                            </span>
+                          </div>
                         </div>
 
                         {/* V5.0: SCORE — EL GATILLADOR */}
                         <div className="flex justify-end items-center gap-1.5">
                           <span
-                            className={`action-score-badge px-2.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse action-score-gatillar' : ''} ${isAtractivoAction ? 'action-score-atractivo' : ''}`}
+                            className={`action-score-badge px-3 py-2 rounded-xl text-[11px] font-bold whitespace-nowrap ${isGatillar ? 'action-score-gatillar shimmer-badge' : ''} ${isAtractivoAction ? 'action-score-atractivo' : ''}`}
                             style={{
                               color: asc.color,
                               background: asc.bg,
@@ -1466,13 +1476,13 @@ export default function CockpitTab({
                           </span>
                           {/* V5.2: Score ring next to badge */}
                           {score.actionScore.label !== 'SIN SEÑAL' && (
-                            <ScoreRing score={score.actionScore.score} color={asc.color} size={28} />
+                            <ScoreRing score={score.actionScore.score} color={asc.color} size={32} />
                           )}
                         </div>
                       </div>
 
                       {/* Context row with separator */}
-                      <div className="mt-2 pt-2 cockpit-context-separator grid grid-cols-[36px_1fr] gap-2 items-start">
+                      <div className="mt-1.5 pt-1.5 cockpit-context-separator grid grid-cols-[36px_1fr] gap-2 items-start">
                         <div /> {/* spacer for rank column */}
 
                         <div className="flex items-center gap-2 flex-wrap">

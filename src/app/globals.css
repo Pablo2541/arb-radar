@@ -1638,3 +1638,119 @@ kbd {
 :root[data-theme="light"] .action-score-atractivo {
   animation: atractivoBreathingGlowLight 2.5s ease-in-out infinite !important;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   V5.3 QUANT X — PREMIUM TERMINAL AESTHETICS
+   ══════════════════════════════════════════════════════════════ */
+
+/* Premium row with left accent rail */
+.cockpit-row-premium {
+  border-left: 3px solid var(--accent-color, #6b7280);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.cockpit-row-premium:hover {
+  background: linear-gradient(90deg, rgba(46, 235, 200, 0.04), transparent 70%);
+  border-left-width: 4px;
+}
+
+/* Inner card for desktop rows */
+.cockpit-row-card {
+  padding: 0.5rem 0.75rem;
+  position: relative;
+}
+
+/* Premium header with cinematic gradient */
+.cockpit-header-premium {
+  background: linear-gradient(180deg, rgba(46, 235, 200, 0.06), rgba(21, 29, 46, 0.98));
+  border-bottom: 1px solid rgba(46, 235, 200, 0.15);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+:root[data-theme="light"] .cockpit-header-premium {
+  background: linear-gradient(180deg, rgba(5, 150, 105, 0.04), rgba(255, 255, 255, 0.98));
+  border-bottom: 1px solid rgba(5, 150, 105, 0.12);
+}
+
+/* Shimmer animation for GATILLAR YA badges — reuses existing @keyframes shimmer */
+
+.shimmer-badge {
+  background-size: 200% 100% !important;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 100%
+  ) !important;
+  animation: shimmer 2.5s ease-in-out infinite !important;
+}
+
+/* Neon price glow */
+.neon-price {
+  text-shadow: 0 0 8px rgba(46, 235, 200, 0.12);
+}
+
+:root[data-theme="light"] .neon-price {
+  text-shadow: none;
+}
+
+/* GATILLAR row enhanced gradient */
+.cockpit-row-premium.gatillar-row {
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.06), transparent 60%);
+}
+
+.cockpit-row-premium.gatillar-row:hover {
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.1), transparent 60%);
+  box-shadow: 0 0 24px rgba(248, 113, 113, 0.06);
+}
+
+:root[data-theme="light"] .cockpit-row-premium.gatillar-row {
+  background: linear-gradient(90deg, rgba(220, 38, 38, 0.04), transparent 60%);
+}
+
+:root[data-theme="light"] .cockpit-row-premium.gatillar-row:hover {
+  background: linear-gradient(90deg, rgba(220, 38, 38, 0.07), transparent 60%);
+  box-shadow: 0 0 16px rgba(220, 38, 38, 0.04);
+}
+
+/* Premium row hover lift for desktop */
+@media (min-width: 768px) {
+  .cockpit-row-premium {
+    padding-left: 0.125rem;
+    padding-right: 0.375rem;
+    margin: 1px 0;
+    border-radius: 0 0.5rem 0.5rem 0;
+  }
+
+  .cockpit-row-premium:hover {
+    transform: translateX(2px);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .cockpit-row-premium.gatillar-row:hover {
+    transform: translateX(3px);
+    box-shadow: 0 2px 16px rgba(248, 113, 113, 0.12);
+  }
+}
+
+/* Score ring glow on hover */
+.cockpit-row-premium:hover .score-ring circle {
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+/* Enhanced action score badge with glow on hover */
+.cockpit-row-premium:hover .action-score-badge {
+  filter: brightness(1.15);
+}
+
+/* Proximity bar animation */
+@keyframes proximityPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.cockpit-row-premium:hover .proximity-bar-fill {
+  animation: proximityPulse 1s ease-in-out infinite;
+}
