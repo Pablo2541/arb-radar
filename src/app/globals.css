@@ -782,13 +782,13 @@ a,
    V1.6 — RANK BADGE STYLES
    ══════════════════════════════════════════════════════════════ */
 .rank-badge {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -871,8 +871,8 @@ a,
    V1.6 — ENHANCED TABLE HEADER
    ══════════════════════════════════════════════════════════════ */
 .table-header-enhanced {
-  background: linear-gradient(180deg, rgba(46, 235, 200, 0.04), transparent);
-  border-bottom: 1px solid rgba(46, 235, 200, 0.1);
+  background: linear-gradient(180deg, rgba(46, 235, 200, 0.06), transparent);
+  border-bottom: 1px solid rgba(46, 235, 200, 0.15);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -1364,7 +1364,7 @@ kbd {
 
 /* Scrollable cockpit container with custom scrollbar */
 .cockpit-scroll-container {
-  max-height: 70vh;
+  max-height: 78vh;
   overflow-y: auto;
   position: relative;
 }
@@ -1430,17 +1430,25 @@ kbd {
   background-color: rgba(46, 235, 200, 0.04);
 }
 
+/* V5.3: Enhanced row breathing space for desktop */
+@media (min-width: 768px) {
+  .cockpit-row-hover {
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
+  }
+}
+
 /* Context row separator — thin gradient line between main and context */
 .cockpit-context-separator {
-  border-top: 1px solid rgba(46, 235, 200, 0.06);
-  background: rgba(148, 163, 184, 0.015);
+  border-top: 1px solid rgba(46, 235, 200, 0.1);
+  background: rgba(148, 163, 184, 0.02);
 }
 
 /* Ticker status dot indicator */
 .ticker-dot {
   display: inline-block;
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
@@ -1464,7 +1472,7 @@ kbd {
   background: rgba(21, 29, 46, 0.4);
   border: 1px solid rgba(148, 163, 184, 0.06);
   border-radius: 0.75rem;
-  padding: 0.75rem;
+  padding: 1rem;
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
@@ -1534,7 +1542,7 @@ kbd {
 
 .cockpit-heatmap-block {
   width: 32px;
-  height: 8px;
+  height: 10px;
   border-radius: 2px;
   flex-shrink: 0;
   cursor: pointer;

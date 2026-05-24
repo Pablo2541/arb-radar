@@ -1083,7 +1083,7 @@ export default function CockpitTab({
           {/* Scrollable container with sticky header */}
           <div className="cockpit-scroll-container">
             {/* Desktop table header — sticky */}
-            <div className="hidden md:grid cockpit-sticky-header table-header-enhanced px-3 py-2.5 grid-cols-[28px_1fr_64px_52px_52px_64px_52px_52px_64px_52px_1fr] gap-1.5 items-center text-[8px] text-app-text4 uppercase tracking-wider font-medium">
+            <div className="hidden md:grid cockpit-sticky-header table-header-enhanced px-4 py-3.5 grid-cols-[36px_1fr_88px_64px_60px_80px_72px_72px_80px_60px_1fr] gap-2 items-center text-[9px] text-app-text4 uppercase tracking-wider font-medium">
               <span>#</span>
               <span>Instrumento</span>
               <span className="text-right">Precio</span>
@@ -1104,7 +1104,7 @@ export default function CockpitTab({
             </div>
 
             {/* Rows container — mobile cards, desktop table rows */}
-            <div className="md:divide-y md:divide-app-border/30 space-y-2 md:space-y-0 px-2 md:px-0 pb-4 md:pb-0">
+            <div className="md:divide-y md:divide-app-border/30 space-y-2 md:space-y-0 px-2 md:px-1 pb-4 md:pb-0">
               {displayedScores.map((score, idx) => {
                 const vc = VERDICT_CONFIG[score.verdict];
                 const rank = idx + 1;
@@ -1148,7 +1148,7 @@ export default function CockpitTab({
                     className={`
                       md:table-row-highlight md:table-row-alt md:px-3 md:py-2 animate-row-in ${getStaggerClass(idx)} ${isGatillar ? 'gatillar-row' : ''} ${triggeredAlerts.has(score.ticker) ? 'price-alert-flash' : ''} cockpit-row-hover
                     `}
-                    style={idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 56px' } : undefined}
+                    style={idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 88px' } : undefined}
                   >
                     {/* ═══════════════════════════════════════════════════ */}
                     {/* MOBILE CARD LAYOUT (< md)                           */}
@@ -1161,7 +1161,7 @@ export default function CockpitTab({
                         </div>
                         <div className="flex items-center gap-1.5 min-w-0 flex-1">
                           <span className={dotClass} />
-                          <span className="font-mono font-bold text-[11px] text-app-text truncate">
+                          <span className="font-mono font-bold text-sm text-app-text truncate">
                             {score.ticker}
                           </span>
                           <span className={`shrink-0 px-1 py-0.5 rounded text-[7px] font-bold ${
@@ -1215,10 +1215,10 @@ export default function CockpitTab({
                       </div>
 
                       {/* Middle row: Price + TEM + VOL */}
-                      <div className="flex items-center gap-3 text-[10px] mb-1.5">
+                      <div className="flex items-center gap-3 text-xs mb-1.5">
                         <div>
                           <span className="text-app-text4">Precio </span>
-                          <span className="font-mono text-app-text2">{price > 0 ? fmtNum(price, 4) : '—'}</span>
+                          <span className="font-mono text-app-text2">{price > 0 ? fmtNum(price, 2) : '—'}</span>
                         </div>
                         <div>
                           <span className="text-app-text4">TEM </span>
@@ -1236,7 +1236,7 @@ export default function CockpitTab({
                           <span className="text-app-text4">S/R </span>
                           {score.nearestSR ? (
                             <span className={`font-mono ${score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
-                              {score.nearestSR.type}:{score.nearestSR.level.toFixed(3)}
+                              {score.nearestSR.type}:{score.nearestSR.level.toFixed(2)}
                             </span>
                           ) : (
                             <span className="font-mono text-app-text4">—</span>
@@ -1262,7 +1262,7 @@ export default function CockpitTab({
                         <div>
                           <span className="text-app-text4">Sp </span>
                           <span className={`font-mono font-semibold ${score.spreadNeto >= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
-                            {fmtPct(score.spreadNeto, 3)}
+                            {fmtPct(score.spreadNeto, 2)}
                           </span>
                         </div>
                       </div>
@@ -1270,13 +1270,13 @@ export default function CockpitTab({
                       {/* Context row: micro-score bars + reason */}
                       <div className="mt-2 pt-1.5 cockpit-context-separator">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[8px] text-app-text4">
+                          <span className="text-[10px] text-app-text4">
                             ΔTIR{' '}
                             <span className={`font-mono ${score.deltaTIR !== null ? (score.deltaTIR > 0 ? 'text-[#2eebc8]' : score.deltaTIR < -0.02 ? 'text-[#f87171]' : 'text-app-text3') : 'text-app-text4'}`}>
-                              {score.deltaTIR !== null ? fmtPct(score.deltaTIR, 3) : '—'}
+                              {score.deltaTIR !== null ? fmtPct(score.deltaTIR, 2) : '—'}
                             </span>
                           </span>
-                          <span className="text-[8px] text-app-text4">
+                          <span className="text-[10px] text-app-text4">
                             Presión{' '}
                             <span className={`font-mono ${
                               score.presionPuntas !== null
@@ -1288,7 +1288,7 @@ export default function CockpitTab({
                               {score.presionPuntas !== null ? score.presionPuntas.toFixed(2) : '—'}
                             </span>
                           </span>
-                          <span className="text-[8px] text-app-text4">
+                          <span className="text-[10px] text-app-text4">
                             Upside{' '}
                             <span className={`font-mono ${score.upsideCapital > 1 ? 'text-[#2eebc8]' : score.upsideCapital > 0.3 ? 'text-[#fbbf24]' : 'text-app-text3'}`}>
                               +{fmtNum(score.upsideCapital, 2)}%
@@ -1312,7 +1312,7 @@ export default function CockpitTab({
                             </div>
                           </div>
                           {score.actionScore.label !== 'SIN SEÑAL' && score.actionScore.reason && (
-                            <span className="text-[7px] truncate max-w-[160px]" style={{ color: asc.color + 'bb' }} title={score.actionScore.reason}>
+                            <span className="text-[9px] truncate max-w-[160px]" style={{ color: asc.color + 'bb' }} title={score.actionScore.reason}>
                               {score.actionScore.reason}
                             </span>
                           )}
@@ -1325,16 +1325,16 @@ export default function CockpitTab({
                     {/* ═══════════════════════════════════════════════════ */}
                     <div className="hidden md:block">
                       {/* Main row: All 11 columns */}
-                      <div className="grid grid-cols-[28px_1fr_64px_52px_52px_64px_52px_52px_64px_52px_1fr] gap-1.5 items-center">
+                      <div className="grid grid-cols-[36px_1fr_88px_64px_60px_80px_72px_72px_80px_60px_1fr] gap-2 items-center py-4">
                         {/* Rank */}
-                        <div className={`rank-badge ${getRankClass(rank)} text-[9px]`} style={{ width: 24, height: 24, fontSize: 9 }}>
+                        <div className={`rank-badge ${getRankClass(rank)} text-[10px]`} style={{ width: 30, height: 30, fontSize: 10 }}>
                           {rank}
                         </div>
 
                         {/* Ticker + Type + Status dot + V5.2: Star + Bell */}
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className={dotClass} />
-                          <span className="font-mono font-bold text-[11px] text-app-text truncate">
+                          <span className="font-mono font-bold text-sm text-app-text truncate">
                             {score.ticker}
                           </span>
                           <span className={`shrink-0 px-1 py-0.5 rounded text-[7px] font-bold ${
@@ -1370,26 +1370,26 @@ export default function CockpitTab({
                         </div>
 
                         {/* Price */}
-                        <div className="text-right font-mono text-[11px] text-app-text2">
-                          {price > 0 ? fmtNum(price, 4) : '—'}
+                        <div className="text-right font-mono text-base font-bold text-app-text">
+                          {price > 0 ? fmtNum(price, 2) : '—'}
                         </div>
 
                         {/* TEM */}
-                        <div className="text-right font-mono text-[11px] text-app-text2">
+                        <div className="text-right font-mono text-sm font-semibold text-app-text2">
                           {fmtNum(tem, 2)}%
                         </div>
 
                         {/* VOL */}
-                        <div className="text-right font-mono text-[11px] text-app-text2">
+                        <div className="text-right font-mono text-sm font-semibold text-app-text2">
                           {volDisplay}
                         </div>
 
                         {/* V5.0: S/R MAS CERCANO */}
-                        <div className="text-right font-mono text-[11px]">
+                        <div className="text-right font-mono text-sm">
                           {score.nearestSR ? (
                             <span className={score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}>
-                              <span className="text-[8px] font-bold opacity-70">{score.nearestSR.type}: </span>
-                              {score.nearestSR.level.toFixed(4)}
+                              <span className="text-[10px] font-bold opacity-70">{score.nearestSR.type}: </span>
+                              {score.nearestSR.level.toFixed(2)}
                             </span>
                           ) : (
                             <span className="text-app-text4">—</span>
@@ -1397,12 +1397,16 @@ export default function CockpitTab({
                         </div>
 
                         {/* V5.0: DISTANCIA A S/R (%) */}
-                        <div className="text-right font-mono text-[11px] relative">
+                        <div className={`text-right font-mono text-base font-bold relative rounded-md px-1.5 py-1 -mr-1.5 ${
+                          isVeryNearSR ? 'bg-[#f87171]/15 border border-[#f87171]/30' :
+                          isNearSR ? 'bg-[#fbbf24]/10 border border-[#fbbf24]/25' :
+                          ''
+                        }`}>
                           <span
-                            className={`font-bold ${
+                            className={`${
                               isVeryNearSR ? 'text-[#f87171] animate-pulse' :
-                              isNearSR ? 'text-[#fbbf24] font-bold' :
-                              score.distanceToSR < 1.0 ? 'text-app-accent-text' :
+                              isNearSR ? 'text-[#fbbf24]' :
+                              score.distanceToSR < 1.0 ? 'text-app-accent-text font-bold' :
                               'text-app-text3'
                             }`}
                           >
@@ -1410,10 +1414,10 @@ export default function CockpitTab({
                           </span>
                           {isNearSR && score.distanceToSR < 99 && (
                             <span
-                              className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-3 rounded-full"
+                              className="absolute -left-1 top-1/2 -translate-y-1/2 w-1.5 h-4 rounded-full"
                               style={{
                                 backgroundColor: isVeryNearSR ? '#f87171' : '#fbbf24',
-                                boxShadow: isVeryNearSR ? '0 0 6px rgba(248,113,113,0.6)' : '0 0 4px rgba(251,191,36,0.4)',
+                                boxShadow: isVeryNearSR ? '0 0 8px rgba(248,113,113,0.7)' : '0 0 6px rgba(251,191,36,0.5)',
                               }}
                             />
                           )}
@@ -1422,24 +1426,24 @@ export default function CockpitTab({
                         {/* V5.0: INYECCION DE VOLUMEN */}
                         <div className="text-right">
                           <span
-                            className={`inline-block px-1.5 py-0.5 rounded-md text-[9px] font-bold ${vic.pulse ? 'animate-pulse' : ''}`}
-                            style={{ color: vic.color, background: vic.bg }}
+                            className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-bold ${vic.pulse ? 'animate-pulse' : ''}`}
+                            style={{ color: vic.color, background: vic.bg, boxShadow: vic.pulse ? `0 0 8px ${vic.color}40` : 'none' }}
                           >
                             {score.volumeInjection.label}
                           </span>
                         </div>
 
                         {/* Spread Neto */}
-                        <div className={`text-right font-mono text-[11px] font-semibold ${
+                        <div className={`text-right font-mono text-sm font-semibold ${
                           score.spreadNeto >= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'
                         }`}>
-                          {fmtPct(score.spreadNeto, 3)}
+                          {fmtPct(score.spreadNeto, 2)}
                         </div>
 
                         {/* CockpitScore — V5.1: larger font */}
                         <div className="text-right">
                           <span
-                            className="font-mono font-bold text-base"
+                            className="font-mono font-bold text-xl"
                             style={{ color: vc.color }}
                           >
                             {score.cockpitScore.toFixed(1)}
@@ -1447,9 +1451,9 @@ export default function CockpitTab({
                         </div>
 
                         {/* V5.0: SCORE — EL GATILLADOR */}
-                        <div className="flex justify-end items-center gap-1">
+                        <div className="flex justify-end items-center gap-1.5">
                           <span
-                            className={`action-score-badge px-2 py-1 rounded-lg text-[9px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse action-score-gatillar' : ''} ${isAtractivoAction ? 'action-score-atractivo' : ''}`}
+                            className={`action-score-badge px-2.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse action-score-gatillar' : ''} ${isAtractivoAction ? 'action-score-atractivo' : ''}`}
                             style={{
                               color: asc.color,
                               background: asc.bg,
@@ -1462,26 +1466,26 @@ export default function CockpitTab({
                           </span>
                           {/* V5.2: Score ring next to badge */}
                           {score.actionScore.label !== 'SIN SEÑAL' && (
-                            <ScoreRing score={score.actionScore.score} color={asc.color} size={22} />
+                            <ScoreRing score={score.actionScore.score} color={asc.color} size={28} />
                           )}
                         </div>
                       </div>
 
                       {/* Context row with separator */}
-                      <div className="mt-1.5 pt-1.5 cockpit-context-separator grid grid-cols-[28px_1fr] gap-1.5 items-start">
+                      <div className="mt-2 pt-2 cockpit-context-separator grid grid-cols-[36px_1fr] gap-2 items-start">
                         <div /> {/* spacer for rank column */}
 
                         <div className="flex items-center gap-2 flex-wrap">
                           {/* ΔTIR */}
-                          <span className="text-[8px] text-app-text4">
+                          <span className="text-[10px] text-app-text4">
                             ΔTIR{' '}
                             <span className={`font-mono ${score.deltaTIR !== null ? (score.deltaTIR > 0 ? 'text-[#2eebc8]' : score.deltaTIR < -0.02 ? 'text-[#f87171]' : 'text-app-text3') : 'text-app-text4'}`}>
-                              {score.deltaTIR !== null ? fmtPct(score.deltaTIR, 3) : '—'}
+                              {score.deltaTIR !== null ? fmtPct(score.deltaTIR, 2) : '—'}
                             </span>
                           </span>
 
                           {/* Presion Punta */}
-                          <span className="text-[8px] text-app-text4">
+                          <span className="text-[10px] text-app-text4">
                             Presión{' '}
                             <span className={`font-mono ${
                               score.presionPuntas !== null
@@ -1495,7 +1499,7 @@ export default function CockpitTab({
                           </span>
 
                           {/* Upside */}
-                          <span className="text-[8px] text-app-text4">
+                          <span className="text-[10px] text-app-text4">
                             Upside{' '}
                             <span className={`font-mono ${score.upsideCapital > 1 ? 'text-[#2eebc8]' : score.upsideCapital > 0.3 ? 'text-[#fbbf24]' : 'text-app-text3'}`}>
                               +{fmtNum(score.upsideCapital, 2)}%
@@ -1522,14 +1526,14 @@ export default function CockpitTab({
 
                           {/* Action Score reason */}
                           {score.actionScore.label !== 'SIN SEÑAL' && score.actionScore.reason && (
-                            <span className="text-[7px] truncate max-w-[200px] hidden sm:inline-block" style={{ color: asc.color + 'bb' }} title={score.actionScore.reason}>
+                            <span className="text-[9px] truncate max-w-[200px] hidden sm:inline-block" style={{ color: asc.color + 'bb' }} title={score.actionScore.reason}>
                               {score.actionScore.reason}
                             </span>
                           )}
 
                           {/* Verdict reason */}
                           {score.verdictReason && score.actionScore.label === 'SIN SEÑAL' && (
-                            <span className="text-[7px] text-app-text4 truncate max-w-[180px] hidden sm:inline-block" title={score.verdictReason}>
+                            <span className="text-[9px] text-app-text4 truncate max-w-[180px] hidden sm:inline-block" title={score.verdictReason}>
                               {score.verdictReason}
                             </span>
                           )}
