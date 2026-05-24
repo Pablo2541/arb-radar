@@ -1218,7 +1218,7 @@ export default function CockpitTab({
                       <div className="flex items-center gap-3 text-xs mb-1.5">
                         <div>
                           <span className="text-app-text4">Precio </span>
-                          <span className="font-mono text-app-text2">{price > 0 ? fmtNum(price, 2) : '—'}</span>
+                          <span className="font-mono text-app-text2">{price > 0 ? fmtNum(price, 4) : '—'}</span>
                         </div>
                         <div>
                           <span className="text-app-text4">TEM </span>
@@ -1236,7 +1236,7 @@ export default function CockpitTab({
                           <span className="text-app-text4">S/R </span>
                           {score.nearestSR ? (
                             <span className={`font-mono ${score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
-                              {score.nearestSR.type}:{score.nearestSR.level.toFixed(2)}
+                              {score.nearestSR.type}:{score.nearestSR.level.toFixed(4)}
                             </span>
                           ) : (
                             <span className="font-mono text-app-text4">—</span>
@@ -1371,7 +1371,7 @@ export default function CockpitTab({
 
                         {/* Price */}
                         <div className="text-right font-mono text-base font-bold text-app-text">
-                          {price > 0 ? fmtNum(price, 2) : '—'}
+                          {price > 0 ? fmtNum(price, 4) : '—'}
                         </div>
 
                         {/* TEM */}
@@ -1389,7 +1389,7 @@ export default function CockpitTab({
                           {score.nearestSR ? (
                             <span className={score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}>
                               <span className="text-[10px] font-bold opacity-70">{score.nearestSR.type}: </span>
-                              {score.nearestSR.level.toFixed(2)}
+                              {score.nearestSR.level.toFixed(4)}
                             </span>
                           ) : (
                             <span className="text-app-text4">—</span>
