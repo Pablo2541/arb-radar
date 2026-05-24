@@ -1,0 +1,75 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+local-*
+.claude
+.z-ai-config
+*.log
+dev.log
+dev.out.log
+test
+prompt
+server.log
+
+# Skills directory (agent tooling, not project source)
+/skills/
+
+# Database files — NEVER track SQLite databases (binary, environment-specific)
+*.db
+*.db-journal
+db/
+prisma/db/
+
+# Upload folder — temporary files, never commit
+upload/
+
+# Bun — this project uses npm/Node.js, NOT Bun
+bun.lock
+bun.lockb
+
+# npm lockfile — generated locally by npm install, each machine regenerates it
+package-lock.json
+
+# Archive/ZIP files — old version backups, never commit
+*.zip
+
+# Worklog — agent scratchpad, not project source
+worklog.md
