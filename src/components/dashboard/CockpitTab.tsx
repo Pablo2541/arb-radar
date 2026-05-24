@@ -1,21 +1,23 @@
 'use client';
 
 // ════════════════════════════════════════════════════════════════════════
-// V5.0 SCANNER — CockpitTab: PRICE ACTION SCANNER
+// V5.1 SCANNER — CockpitTab: PRICE ACTION SCANNER
 //
 // Unified cockpit with 4 new Price Action columns:
-//   1. S/R Más Cercano — nearest support/resistance level
+//   1. S/R Mas Cercano — nearest support/resistance level
 //   2. Distancia a S/R (%) — % distance with <0.5% visual alert
-//   3. Inyección de Volumen — volume acceleration (X2, X3, X5, EXPLOSIVO)
-//   4. SCORE — El Gatillador (GATILLAR YA / ATRACTIVO / NEUTRAL / SIN SEÑAL)
+//   3. Inyeccion de Volumen — volume acceleration (X2, X3, X5, EXPLOSIVO)
+//   4. SCORE — El Gatillador (GATILLAR YA / ATRACTIVO / NEUTRAL / SIN SENAL)
 //
-// BLINDAJE: La comisión del 0.15% NO se toca. price × 1.0015 = IMMUTABLE.
+// V5.1: Mobile responsive card layout + visual enhancements
+//
+// BLINDAJE: La comision del 0.15% NO se toca. price x 1.0015 = IMMUTABLE.
 // ════════════════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Instrument, Config, Position, CockpitScore, LiveInstrument } from '@/lib/types';
-import type { MarketTruthResponse } from '@/lib/market-truth-types';
 import { useRadarStore } from '@/lib/store';
+import { Search, Bell, BellOff, Download } from 'lucide-react';
 
 // ─── Props ────────────────────────────────────────────────────────────
 interface CockpitTabProps {
@@ -249,6 +251,45 @@ export default function CockpitTab({
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasDataRef = useRef(false);
 
+  // ─── V5.1: Search/Filter state ──────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // ─── V5.1: Sound Alert state ────────────────────────────────────
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try { return localStorage.getItem('arbradar_cockpit_sound') === 'true'; } catch { return false; }
+  });
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const prevGatillarRef = useRef<Set<string>>(new Set());
+
+  const toggleSound = useCallback(() => {
+    setSoundEnabled(prev => {
+      const next = !prev;
+      try { localStorage.setItem('arbradar_cockpit_sound', String(next)); } catch { /* silent */ }
+      return next;
+    });
+  }, []);
+
+  // Play beep when new GATILLAR YA appears
+  const playAlertBeep = useCallback(() => {
+    try {
+      if (!audioCtxRef.current) {
+        audioCtxRef.current = new AudioContext();
+      }
+      const ctx = audioCtxRef.current;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      gain.gain.setValueAtTime(0.15, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.2);
+    } catch { /* silent */ }
+  }, []);
+
   // ─── Fetch Cockpit Scores ─────────────────────────────────────────
   const fetchScores = useCallback(async () => {
     const hasData = hasDataRef.current;
@@ -306,6 +347,61 @@ export default function CockpitTab({
       return b.cockpitScore - a.cockpitScore;
     });
   }, [filteredScores]);
+
+  // ─── V5.1: Search filter on sorted scores ─────────────────────────
+  const displayedScores = useMemo(() => {
+    if (!searchQuery.trim()) return sortedScores;
+    const q = searchQuery.trim().toLowerCase();
+    return sortedScores.filter(s => s.ticker.toLowerCase().includes(q));
+  }, [sortedScores, searchQuery]);
+
+  // ─── V5.1: Sound alert for new GATILLAR YA ────────────────────────
+  useEffect(() => {
+    if (!soundEnabled || sortedScores.length === 0) return;
+    const currentGatillar = new Set(
+      sortedScores.filter(s => s.actionScore.label === 'GATILLAR YA').map(s => s.ticker)
+    );
+    // Only beep on NEW transitions (not initial load)
+    if (prevGatillarRef.current.size > 0) {
+      for (const ticker of currentGatillar) {
+        if (!prevGatillarRef.current.has(ticker)) {
+          playAlertBeep();
+          break; // One beep per cycle, even if multiple new
+        }
+      }
+    }
+    prevGatillarRef.current = currentGatillar;
+  }, [sortedScores, soundEnabled, playAlertBeep]);
+
+  // ─── V5.1: CSV Export ─────────────────────────────────────────────
+  const handleExportCSV = useCallback(() => {
+    const rows = displayedScores;
+    if (rows.length === 0) return;
+    const header = 'Ticker,Type,Price,TEM,Volume,SR_Cercano,SR_Type,Distancia%,Inyeccion,Spread,CockpitScore,ActionScore,ActionLabel';
+    const lines = rows.map(s => {
+      const liveData = liveDataMap.get(s.ticker);
+      const instData = instrumentMap.get(s.ticker);
+      const price = liveData?.last_price ?? instData?.price ?? 0;
+      const tem = instData?.tem ?? 0;
+      const vol = s.iolVolume || s.volume || instData?.iolVolume || liveData?.iol_volume || instData?.data912Volume || liveData?.volume || 0;
+      return [
+        s.ticker, s.type, price.toFixed(4), tem.toFixed(2), vol,
+        s.nearestSR?.level.toFixed(4) ?? '', s.nearestSR?.type ?? '',
+        s.distanceToSR < 99 ? s.distanceToSR.toFixed(2) : '',
+        s.volumeInjection.label, s.spreadNeto.toFixed(3),
+        s.cockpitScore.toFixed(1), s.actionScore.score, s.actionScore.label
+      ].join(',');
+    });
+    const csv = [header, ...lines].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `arb-radar-cockpit-${date}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [displayedScores, liveDataMap, instrumentMap]);
 
   // ─── Sync filtered scores to store ────────────────────────────────
   useEffect(() => {
@@ -380,13 +476,26 @@ export default function CockpitTab({
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-lg font-light text-app-text mb-1">
-              🎯 Cockpit Táctico — V5.0 SCANNER
+              🎯 Cockpit Táctico — V5.1 SCANNER
             </h2>
             <p className="text-sm text-app-text3">
               Price Action Scanner · S/R + Volumen + Presión → Gatillador Cuantitativo · Horizonte: {horizonLabel}
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* V5.1: Sound alert toggle */}
+            <button
+              onClick={toggleSound}
+              className={`flex items-center gap-1 px-2 py-1 rounded-lg border transition-all duration-150 ${
+                soundEnabled
+                  ? 'bg-[#f87171]/10 border-[#f87171]/30 text-[#f87171]'
+                  : 'bg-app-subtle/40 border-app-border/40 text-app-text4 hover:text-app-text3'
+              }`}
+              title={soundEnabled ? 'Desactivar alerta sonora GATILLAR YA' : 'Activar alerta sonora GATILLAR YA'}
+            >
+              {soundEnabled ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
+              <span className="text-[9px] font-medium hidden sm:inline">{soundEnabled ? 'ON' : 'OFF'}</span>
+            </button>
             {isLive && (
               <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-app-accent-dim text-[10px] text-[#2eebc8]">
                 <span className="live-dot" />
@@ -517,8 +626,8 @@ export default function CockpitTab({
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* HORIZON FILTER                                                */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="flex items-center gap-2 animate-fadeInUp">
-        <span className="text-app-text4 text-[10px] uppercase tracking-wider">Horizonte</span>
+      <div className="flex items-center gap-2 animate-fadeInUp overflow-x-auto scrollbar-hide flex-wrap">
+        <span className="text-app-text4 text-[10px] uppercase tracking-wider shrink-0">Horizonte</span>
         <div className="flex items-center gap-1">
           {HORIZON_OPTIONS.map(opt => (
             <button
@@ -535,20 +644,42 @@ export default function CockpitTab({
             </button>
           ))}
         </div>
-        <span className="text-app-text4 text-[9px] font-mono">
-          {localSummary.within_horizon} instr.
+        <span className="text-app-text4 text-[9px] font-mono shrink-0">
+          {displayedScores.length} instr.
         </span>
+        <div className="w-px h-4 bg-app-border/40 shrink-0" />
+        {/* V5.1: Search input */}
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-app-text4" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Ticker..."
+            className="h-7 w-28 sm:w-36 pl-7 pr-2 rounded-lg bg-app-subtle/40 border border-app-border/40 text-[10px] font-mono text-app-text placeholder:text-app-text4 focus:outline-none focus:ring-1 focus:ring-[#2eebc8]/40 focus:border-[#2eebc8]/30 transition-all"
+          />
+        </div>
+        {/* V5.1: CSV Export button */}
+        <button
+          onClick={handleExportCSV}
+          disabled={displayedScores.length === 0}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg bg-app-subtle/40 border border-app-border/40 text-[10px] font-medium text-app-text3 hover:text-app-text2 hover:bg-app-hover transition-all disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+          title="Exportar datos a CSV"
+        >
+          <Download className="w-3 h-3" />
+          <span className="hidden sm:inline">CSV</span>
+        </button>
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* EL GRITO — Capa 1 Alert Card                                  */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      {elGritoScores.length > 0 && <ElGritoCard scores={sortedScores} />}
+      {elGritoScores.length > 0 && <ElGritoCard scores={displayedScores} />}
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* TABLA FUSIONADA — V5.0 with 4 new Price Action columns        */}
+      {/* TABLA FUSIONADA — V5.1 with mobile responsive                 */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      {sortedScores.length === 0 ? (
+      {displayedScores.length === 0 ? (
         <div className="glass-card p-8 text-center animate-fadeInUp">
           <div className="text-app-text4 text-sm">
             {cockpitScoresLoading ? (
@@ -556,253 +687,421 @@ export default function CockpitTab({
                 <span className="animate-spin inline-block w-4 h-4 border-2 border-[#2eebc8] border-t-transparent rounded-full" />
                 Cargando señales de cockpit...
               </span>
+            ) : searchQuery.trim() ? (
+              <span>No se encontraron instrumentos que coincidan con "{searchQuery.trim()}"</span>
             ) : (
               'No hay datos de cockpit disponibles. Verifique la conexión al motor.'
             )}
           </div>
         </div>
       ) : (
-        <div className="glass-card animate-fadeInUp">
-          {/* V5.0: Table Header — 12 columns */}
-          <div className="table-header-enhanced px-3 py-2.5 grid grid-cols-[28px_1fr_64px_52px_52px_64px_52px_52px_64px_52px_1fr] gap-1.5 items-center text-[8px] text-app-text4 uppercase tracking-wider font-medium">
-            <span>#</span>
-            <span>Instrumento</span>
-            <span className="text-right">Precio</span>
-            <span className="text-right">TEM</span>
-            <span className="text-right">VOL</span>
-            <span className="text-right">S/R Cercano</span>
-            <span className="text-right">Dist %</span>
-            <span className="text-right">Inyección</span>
-            <span className="text-right">Spread</span>
-            <span className="text-right">Score</span>
-            <span className="text-right">ACCIÓN</span>
-          </div>
+        <div className={`glass-card animate-fadeInUp ${displayedScores.length > 10 ? 'cockpit-fade-bottom' : ''}`}>
+          {/* Scrollable container with sticky header */}
+          <div className="cockpit-scroll-container">
+            {/* Desktop table header — sticky */}
+            <div className="hidden md:grid cockpit-sticky-header table-header-enhanced px-3 py-2.5 grid-cols-[28px_1fr_64px_52px_52px_64px_52px_52px_64px_52px_1fr] gap-1.5 items-center text-[8px] text-app-text4 uppercase tracking-wider font-medium">
+              <span>#</span>
+              <span>Instrumento</span>
+              <span className="text-right">Precio</span>
+              <span className="text-right">TEM</span>
+              <span className="text-right">VOL</span>
+              <span className="text-right">S/R Cercano</span>
+              <span className="text-right">Dist %</span>
+              <span className="text-right">Inyección</span>
+              <span className="text-right">Spread</span>
+              <span className="text-right">Score</span>
+              <span className="text-right">ACCIÓN</span>
+            </div>
 
-          {/* Rows */}
-          <div className="divide-y divide-app-border/30">
-            {sortedScores.map((score, idx) => {
-              const vc = VERDICT_CONFIG[score.verdict];
-              const rank = idx + 1;
-              const liveData = liveDataMap.get(score.ticker);
-              const instData = instrumentMap.get(score.ticker);
-              const price = liveData?.last_price ?? instData?.price ?? 0;
-              const tem = instData?.tem ?? 0;
+            {/* Mobile header row */}
+            <div className="md:hidden cockpit-sticky-header table-header-enhanced px-3 py-2 text-[8px] text-app-text4 uppercase tracking-wider font-medium flex items-center justify-between">
+              <span>Instrumentos</span>
+              <span>Señales</span>
+            </div>
 
-              // V5.0: Action Score styling
-              const asc = ACTION_SCORE_CONFIG[score.actionScore.label] ?? ACTION_SCORE_CONFIG['SIN SEÑAL'];
-              const isGatillar = score.actionScore.label === 'GATILLAR YA';
+            {/* Rows container — mobile cards, desktop table rows */}
+            <div className="md:divide-y md:divide-app-border/30 space-y-2 md:space-y-0 px-2 md:px-0 pb-4 md:pb-0">
+              {displayedScores.map((score, idx) => {
+                const vc = VERDICT_CONFIG[score.verdict];
+                const rank = idx + 1;
+                const liveData = liveDataMap.get(score.ticker);
+                const instData = instrumentMap.get(score.ticker);
+                const price = liveData?.last_price ?? instData?.price ?? 0;
+                const tem = instData?.tem ?? 0;
 
-              // V5.0: Volume Injection styling
-              const vic = VOL_INJECTION_CONFIG[score.volumeInjection.label] ?? VOL_INJECTION_CONFIG['NORMAL'];
+                // V5.0: Action Score styling
+                const asc = ACTION_SCORE_CONFIG[score.actionScore.label] ?? ACTION_SCORE_CONFIG['SIN SEÑAL'];
+                const isGatillar = score.actionScore.label === 'GATILLAR YA';
+                const isAtractivoAction = score.actionScore.label === 'ATRACTIVO';
 
-              // V5.0: Distance to S/R alert
-              const isNearSR = score.distanceToSR < 0.5;
-              const isVeryNearSR = score.distanceToSR < 0.3;
+                // V5.0: Volume Injection styling
+                const vic = VOL_INJECTION_CONFIG[score.volumeInjection.label] ?? VOL_INJECTION_CONFIG['NORMAL'];
 
-              return (
-                <div
-                  key={`${score.ticker}-${score.type}`}
-                  className={`table-row-highlight table-row-alt px-3 py-1.5 animate-row-in ${getStaggerClass(idx)} ${isGatillar ? 'gatillar-row' : ''}`}
-                  style={idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 56px' } : undefined}
-                >
-                  {/* ── SINGLE ROW: All 12 columns ── */}
-                  <div className="grid grid-cols-[28px_1fr_64px_52px_52px_64px_52px_52px_64px_52px_1fr] gap-1.5 items-center">
-                    {/* Rank */}
-                    <div className={`rank-badge ${getRankClass(rank)} text-[9px]`} style={{ width: 24, height: 24, fontSize: 9 }}>
-                      {rank}
-                    </div>
+                // V5.0: Distance to S/R alert
+                const isNearSR = score.distanceToSR < 0.5;
+                const isVeryNearSR = score.distanceToSR < 0.3;
 
-                    {/* Ticker + Type */}
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="font-mono font-bold text-[11px] text-app-text truncate">
-                        {score.ticker}
-                      </span>
-                      <span className={`shrink-0 px-1 py-0.5 rounded text-[7px] font-bold ${
-                        score.type === 'LECAP'
-                          ? 'bg-app-accent-dim text-[#2eebc8]'
-                          : 'bg-[#f472b6]/10 text-[#f472b6]'
-                      }`}>
-                        {score.type}
-                      </span>
-                      <span className="text-[8px] text-app-text4 font-mono">{score.days}d</span>
-                    </div>
+                // Ticker status dot
+                const dotClass = isGatillar ? 'ticker-dot ticker-dot-gatillar' : isAtractivoAction ? 'ticker-dot ticker-dot-atractivo' : 'ticker-dot ticker-dot-neutral';
 
-                    {/* Price */}
-                    <div className="text-right font-mono text-[11px] text-app-text2">
-                      {price > 0 ? fmtNum(price, 4) : '—'}
-                    </div>
+                // VOL display (shared between mobile and desktop)
+                const volDisplay = (() => {
+                  const vol = score.iolVolume || score.volume || instData?.iolVolume || liveData?.iol_volume || instData?.data912Volume || liveData?.volume;
+                  if (vol && vol > 0) {
+                    return vol >= 1_000_000
+                      ? `${(vol / 1_000_000).toFixed(1)}M`
+                      : vol >= 1_000
+                        ? `${(vol / 1_000).toFixed(0)}K`
+                        : vol.toString();
+                  }
+                  return '—';
+                })();
 
-                    {/* TEM */}
-                    <div className="text-right font-mono text-[11px] text-app-text2">
-                      {fmtNum(tem, 2)}%
-                    </div>
-
-                    {/* VOL */}
-                    <div className="text-right font-mono text-[11px] text-app-text2">
-                      {(() => {
-                        const vol = score.iolVolume || score.volume || instData?.iolVolume || liveData?.iol_volume || instData?.data912Volume || liveData?.volume;
-                        if (vol && vol > 0) {
-                          return vol >= 1_000_000
-                            ? `${(vol / 1_000_000).toFixed(1)}M`
-                            : vol >= 1_000
-                              ? `${(vol / 1_000).toFixed(0)}K`
-                              : vol.toString();
-                        }
-                        return '—';
-                      })()}
-                    </div>
-
-                    {/* ═══ V5.0: S/R MÁS CERCANO ═══ */}
-                    <div className="text-right font-mono text-[11px]">
-                      {score.nearestSR ? (
-                        <span className={score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}>
-                          <span className="text-[8px] font-bold opacity-70">{score.nearestSR.type}: </span>
-                          {score.nearestSR.level.toFixed(4)}
-                        </span>
-                      ) : (
-                        <span className="text-app-text4">—</span>
-                      )}
-                    </div>
-
-                    {/* ═══ V5.0: DISTANCIA A S/R (%) ═══ */}
-                    <div className="text-right font-mono text-[11px] relative">
-                      <span
-                        className={`font-bold ${
-                          isVeryNearSR ? 'text-[#f87171] animate-pulse' :
-                          isNearSR ? 'text-[#fbbf24] font-bold' :
-                          score.distanceToSR < 1.0 ? 'text-app-accent-text' :
-                          'text-app-text3'
-                        }`}
-                      >
-                        {score.distanceToSR < 99 ? `${score.distanceToSR.toFixed(2)}%` : '—'}
-                      </span>
-                      {/* Visual alert indicator for < 0.5% */}
-                      {isNearSR && score.distanceToSR < 99 && (
-                        <span
-                          className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-3 rounded-full"
-                          style={{
-                            backgroundColor: isVeryNearSR ? '#f87171' : '#fbbf24',
-                            boxShadow: isVeryNearSR ? '0 0 6px rgba(248,113,113,0.6)' : '0 0 4px rgba(251,191,36,0.4)',
-                          }}
-                        />
-                      )}
-                    </div>
-
-                    {/* ═══ V5.0: INYECCIÓN DE VOLUMEN ═══ */}
-                    <div className="text-right">
-                      <span
-                        className={`inline-block px-1.5 py-0.5 rounded-md text-[9px] font-bold ${vic.pulse ? 'animate-pulse' : ''}`}
-                        style={{ color: vic.color, background: vic.bg }}
-                      >
-                        {score.volumeInjection.label}
-                      </span>
-                    </div>
-
-                    {/* Spread Neto */}
-                    <div className={`text-right font-mono text-[11px] font-semibold ${
-                      score.spreadNeto >= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'
-                    }`}>
-                      {fmtPct(score.spreadNeto, 3)}
-                    </div>
-
-                    {/* CockpitScore */}
-                    <div className="text-right">
-                      <span
-                        className="font-mono font-bold text-sm"
-                        style={{ color: vc.color }}
-                      >
-                        {score.cockpitScore.toFixed(1)}
-                      </span>
-                    </div>
-
-                    {/* ═══ V5.0: SCORE — EL GATILLADOR ═══ */}
-                    <div className="flex justify-end">
-                      <span
-                        className={`px-2 py-1 rounded-lg text-[9px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse' : ''}`}
-                        style={{
-                          color: asc.color,
-                          background: asc.bg,
-                          boxShadow: isGatillar ? asc.glow : 'none',
-                          border: isGatillar ? `1px solid ${asc.color}40` : '1px solid transparent',
-                        }}
-                      >
-                        {isGatillar ? '🔥 ' : score.actionScore.label === 'ATRACTIVO' ? '✓ ' : ''}
-                        {score.actionScore.label}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* ── CONTEXT ROW: Micro scores + Action reason ── */}
-                  <div className="mt-1 grid grid-cols-[28px_1fr] gap-1.5 items-start">
-                    <div /> {/* spacer for rank column */}
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {/* ΔTIR */}
-                      <span className="text-[8px] text-app-text4">
-                        ΔTIR{' '}
-                        <span className={`font-mono ${score.deltaTIR !== null ? (score.deltaTIR > 0 ? 'text-[#2eebc8]' : score.deltaTIR < -0.02 ? 'text-[#f87171]' : 'text-app-text3') : 'text-app-text4'}`}>
-                          {score.deltaTIR !== null ? fmtPct(score.deltaTIR, 3) : '—'}
-                        </span>
-                      </span>
-
-                      {/* Presión Punta */}
-                      <span className="text-[8px] text-app-text4">
-                        Presión{' '}
-                        <span className={`font-mono ${
-                          score.presionPuntas !== null
-                            ? score.presionPuntas > 1.3 ? 'text-[#2eebc8]'
-                              : score.presionPuntas < 0.7 ? 'text-[#f87171]'
-                              : 'text-app-text3'
-                            : 'text-app-text4'
-                        }`}>
-                          {score.presionPuntas !== null ? score.presionPuntas.toFixed(2) : '—'}
-                        </span>
-                      </span>
-
-                      {/* Upside */}
-                      <span className="text-[8px] text-app-text4">
-                        Upside{' '}
-                        <span className={`font-mono ${score.upsideCapital > 1 ? 'text-[#2eebc8]' : score.upsideCapital > 0.3 ? 'text-[#fbbf24]' : 'text-app-text3'}`}>
-                          +{fmtNum(score.upsideCapital, 2)}%
-                        </span>
-                      </span>
-
-                      {/* Micro-score bars */}
-                      <div className="flex items-center gap-1.5 ml-1">
-                        <div className="flex flex-col gap-[2px]">
-                          <MicroScoreBar value={score.spreadNetoScore} color={MICRO_BAR_COLORS.spreadNeto} />
-                          <MicroScoreBar value={score.deltaTIRScore} color={MICRO_BAR_COLORS.deltaTIR} />
-                          <MicroScoreBar value={score.presionPuntasScore} color={MICRO_BAR_COLORS.presion} />
-                          <MicroScoreBar value={score.upsideCapitalScore} color={MICRO_BAR_COLORS.upside} />
-                          <MicroScoreBar value={score.velocidadScore} color={MICRO_BAR_COLORS.velocidad} />
+                return (
+                  <div
+                    key={`${score.ticker}-${score.type}`}
+                    className={`
+                      md:table-row-highlight md:table-row-alt md:px-3 md:py-2 animate-row-in ${getStaggerClass(idx)} ${isGatillar ? 'gatillar-row' : ''} cockpit-row-hover
+                    `}
+                    style={idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 56px' } : undefined}
+                  >
+                    {/* ═══════════════════════════════════════════════════ */}
+                    {/* MOBILE CARD LAYOUT (< md)                           */}
+                    {/* ═══════════════════════════════════════════════════ */}
+                    <div className={`md:hidden cockpit-mobile-card ${isGatillar ? 'gatillar-row' : ''}`}>
+                      {/* Top row: Rank + Ticker + Type + Action Score badge */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className={`rank-badge ${getRankClass(rank)} text-[9px]`} style={{ width: 22, height: 22, fontSize: 9 }}>
+                          {rank}
                         </div>
-                        <div className="flex flex-col gap-[2px] text-[6px] text-app-text4 leading-none">
-                          <span>Sp</span>
-                          <span>ΔT</span>
-                          <span>Pr</span>
-                          <span>Up</span>
-                          <span>Ve</span>
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <span className={dotClass} />
+                          <span className="font-mono font-bold text-[11px] text-app-text truncate">
+                            {score.ticker}
+                          </span>
+                          <span className={`shrink-0 px-1 py-0.5 rounded text-[7px] font-bold ${
+                            score.type === 'LECAP'
+                              ? 'bg-app-accent-dim text-[#2eebc8]'
+                              : 'bg-[#f472b6]/10 text-[#f472b6]'
+                          }`}>
+                            {score.type}
+                          </span>
+                          <span className="text-[8px] text-app-text4 font-mono">{score.days}d</span>
+                        </div>
+                        <span
+                          className={`px-1.5 py-0.5 rounded-lg text-[8px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse' : ''}`}
+                          style={{
+                            color: asc.color,
+                            background: asc.bg,
+                            boxShadow: isGatillar ? asc.glow : 'none',
+                            border: isGatillar ? `1px solid ${asc.color}40` : '1px solid transparent',
+                          }}
+                        >
+                          {isGatillar ? '🔥 ' : isAtractivoAction ? '✓ ' : ''}
+                          {score.actionScore.label}
+                        </span>
+                      </div>
+
+                      {/* Middle row: Price + TEM + VOL */}
+                      <div className="flex items-center gap-3 text-[10px] mb-1.5">
+                        <div>
+                          <span className="text-app-text4">Precio </span>
+                          <span className="font-mono text-app-text2">{price > 0 ? fmtNum(price, 4) : '—'}</span>
+                        </div>
+                        <div>
+                          <span className="text-app-text4">TEM </span>
+                          <span className="font-mono text-app-text2">{fmtNum(tem, 2)}%</span>
+                        </div>
+                        <div>
+                          <span className="text-app-text4">VOL </span>
+                          <span className="font-mono text-app-text2">{volDisplay}</span>
                         </div>
                       </div>
 
-                      {/* V5.0: Action Score reason (truncated) */}
-                      {score.actionScore.label !== 'SIN SEÑAL' && score.actionScore.reason && (
-                        <span className="text-[7px] truncate max-w-[200px] hidden sm:inline-block" style={{ color: asc.color + 'bb' }} title={score.actionScore.reason}>
-                          {score.actionScore.reason}
+                      {/* Bottom row: S/R + Distancia + Inyeccion + Spread */}
+                      <div className="flex items-center gap-2 text-[10px] flex-wrap">
+                        <div>
+                          <span className="text-app-text4">S/R </span>
+                          {score.nearestSR ? (
+                            <span className={`font-mono ${score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
+                              {score.nearestSR.type}:{score.nearestSR.level.toFixed(3)}
+                            </span>
+                          ) : (
+                            <span className="font-mono text-app-text4">—</span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-app-text4">Dist </span>
+                          <span className={`font-mono font-bold ${
+                            isVeryNearSR ? 'text-[#f87171] animate-pulse' :
+                            isNearSR ? 'text-[#fbbf24]' :
+                            score.distanceToSR < 1.0 ? 'text-app-accent-text' :
+                            'text-app-text3'
+                          }`}>
+                            {score.distanceToSR < 99 ? `${score.distanceToSR.toFixed(2)}%` : '—'}
+                          </span>
+                        </div>
+                        <span
+                          className={`inline-block px-1.5 py-0.5 rounded-md text-[8px] font-bold ${vic.pulse ? 'animate-pulse' : ''}`}
+                          style={{ color: vic.color, background: vic.bg }}
+                        >
+                          {score.volumeInjection.label}
                         </span>
-                      )}
+                        <div>
+                          <span className="text-app-text4">Sp </span>
+                          <span className={`font-mono font-semibold ${score.spreadNeto >= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
+                            {fmtPct(score.spreadNeto, 3)}
+                          </span>
+                        </div>
+                      </div>
 
-                      {/* Verdict reason (truncated) — only if different from action reason */}
-                      {score.verdictReason && score.actionScore.label === 'SIN SEÑAL' && (
-                        <span className="text-[7px] text-app-text4 truncate max-w-[180px] hidden sm:inline-block" title={score.verdictReason}>
-                          {score.verdictReason}
-                        </span>
-                      )}
+                      {/* Context row: micro-score bars + reason */}
+                      <div className="mt-2 pt-1.5 cockpit-context-separator">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[8px] text-app-text4">
+                            ΔTIR{' '}
+                            <span className={`font-mono ${score.deltaTIR !== null ? (score.deltaTIR > 0 ? 'text-[#2eebc8]' : score.deltaTIR < -0.02 ? 'text-[#f87171]' : 'text-app-text3') : 'text-app-text4'}`}>
+                              {score.deltaTIR !== null ? fmtPct(score.deltaTIR, 3) : '—'}
+                            </span>
+                          </span>
+                          <span className="text-[8px] text-app-text4">
+                            Presión{' '}
+                            <span className={`font-mono ${
+                              score.presionPuntas !== null
+                                ? score.presionPuntas > 1.3 ? 'text-[#2eebc8]'
+                                  : score.presionPuntas < 0.7 ? 'text-[#f87171]'
+                                  : 'text-app-text3'
+                                : 'text-app-text4'
+                            }`}>
+                              {score.presionPuntas !== null ? score.presionPuntas.toFixed(2) : '—'}
+                            </span>
+                          </span>
+                          <span className="text-[8px] text-app-text4">
+                            Upside{' '}
+                            <span className={`font-mono ${score.upsideCapital > 1 ? 'text-[#2eebc8]' : score.upsideCapital > 0.3 ? 'text-[#fbbf24]' : 'text-app-text3'}`}>
+                              +{fmtNum(score.upsideCapital, 2)}%
+                            </span>
+                          </span>
+                          {/* Micro-score bars */}
+                          <div className="flex items-center gap-1.5 ml-1">
+                            <div className="flex flex-col gap-[2px]">
+                              <MicroScoreBar value={score.spreadNetoScore} color={MICRO_BAR_COLORS.spreadNeto} />
+                              <MicroScoreBar value={score.deltaTIRScore} color={MICRO_BAR_COLORS.deltaTIR} />
+                              <MicroScoreBar value={score.presionPuntasScore} color={MICRO_BAR_COLORS.presion} />
+                              <MicroScoreBar value={score.upsideCapitalScore} color={MICRO_BAR_COLORS.upside} />
+                              <MicroScoreBar value={score.velocidadScore} color={MICRO_BAR_COLORS.velocidad} />
+                            </div>
+                            <div className="flex flex-col gap-[2px] text-[6px] text-app-text4 leading-none">
+                              <span>Sp</span>
+                              <span>ΔT</span>
+                              <span>Pr</span>
+                              <span>Up</span>
+                              <span>Ve</span>
+                            </div>
+                          </div>
+                          {score.actionScore.label !== 'SIN SEÑAL' && score.actionScore.reason && (
+                            <span className="text-[7px] truncate max-w-[160px]" style={{ color: asc.color + 'bb' }} title={score.actionScore.reason}>
+                              {score.actionScore.reason}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ═══════════════════════════════════════════════════ */}
+                    {/* DESKTOP GRID LAYOUT (>= md)                         */}
+                    {/* ═══════════════════════════════════════════════════ */}
+                    <div className="hidden md:block">
+                      {/* Main row: All 11 columns */}
+                      <div className="grid grid-cols-[28px_1fr_64px_52px_52px_64px_52px_52px_64px_52px_1fr] gap-1.5 items-center">
+                        {/* Rank */}
+                        <div className={`rank-badge ${getRankClass(rank)} text-[9px]`} style={{ width: 24, height: 24, fontSize: 9 }}>
+                          {rank}
+                        </div>
+
+                        {/* Ticker + Type + Status dot */}
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className={dotClass} />
+                          <span className="font-mono font-bold text-[11px] text-app-text truncate">
+                            {score.ticker}
+                          </span>
+                          <span className={`shrink-0 px-1 py-0.5 rounded text-[7px] font-bold ${
+                            score.type === 'LECAP'
+                              ? 'bg-app-accent-dim text-[#2eebc8]'
+                              : 'bg-[#f472b6]/10 text-[#f472b6]'
+                          }`}>
+                            {score.type}
+                          </span>
+                          <span className="text-[8px] text-app-text4 font-mono">{score.days}d</span>
+                        </div>
+
+                        {/* Price */}
+                        <div className="text-right font-mono text-[11px] text-app-text2">
+                          {price > 0 ? fmtNum(price, 4) : '—'}
+                        </div>
+
+                        {/* TEM */}
+                        <div className="text-right font-mono text-[11px] text-app-text2">
+                          {fmtNum(tem, 2)}%
+                        </div>
+
+                        {/* VOL */}
+                        <div className="text-right font-mono text-[11px] text-app-text2">
+                          {volDisplay}
+                        </div>
+
+                        {/* V5.0: S/R MAS CERCANO */}
+                        <div className="text-right font-mono text-[11px]">
+                          {score.nearestSR ? (
+                            <span className={score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}>
+                              <span className="text-[8px] font-bold opacity-70">{score.nearestSR.type}: </span>
+                              {score.nearestSR.level.toFixed(4)}
+                            </span>
+                          ) : (
+                            <span className="text-app-text4">—</span>
+                          )}
+                        </div>
+
+                        {/* V5.0: DISTANCIA A S/R (%) */}
+                        <div className="text-right font-mono text-[11px] relative">
+                          <span
+                            className={`font-bold ${
+                              isVeryNearSR ? 'text-[#f87171] animate-pulse' :
+                              isNearSR ? 'text-[#fbbf24] font-bold' :
+                              score.distanceToSR < 1.0 ? 'text-app-accent-text' :
+                              'text-app-text3'
+                            }`}
+                          >
+                            {score.distanceToSR < 99 ? `${score.distanceToSR.toFixed(2)}%` : '—'}
+                          </span>
+                          {isNearSR && score.distanceToSR < 99 && (
+                            <span
+                              className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-3 rounded-full"
+                              style={{
+                                backgroundColor: isVeryNearSR ? '#f87171' : '#fbbf24',
+                                boxShadow: isVeryNearSR ? '0 0 6px rgba(248,113,113,0.6)' : '0 0 4px rgba(251,191,36,0.4)',
+                              }}
+                            />
+                          )}
+                        </div>
+
+                        {/* V5.0: INYECCION DE VOLUMEN */}
+                        <div className="text-right">
+                          <span
+                            className={`inline-block px-1.5 py-0.5 rounded-md text-[9px] font-bold ${vic.pulse ? 'animate-pulse' : ''}`}
+                            style={{ color: vic.color, background: vic.bg }}
+                          >
+                            {score.volumeInjection.label}
+                          </span>
+                        </div>
+
+                        {/* Spread Neto */}
+                        <div className={`text-right font-mono text-[11px] font-semibold ${
+                          score.spreadNeto >= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'
+                        }`}>
+                          {fmtPct(score.spreadNeto, 3)}
+                        </div>
+
+                        {/* CockpitScore — V5.1: larger font */}
+                        <div className="text-right">
+                          <span
+                            className="font-mono font-bold text-base"
+                            style={{ color: vc.color }}
+                          >
+                            {score.cockpitScore.toFixed(1)}
+                          </span>
+                        </div>
+
+                        {/* V5.0: SCORE — EL GATILLADOR */}
+                        <div className="flex justify-end">
+                          <span
+                            className={`px-2 py-1 rounded-lg text-[9px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse' : ''}`}
+                            style={{
+                              color: asc.color,
+                              background: asc.bg,
+                              boxShadow: isGatillar ? asc.glow : 'none',
+                              border: isGatillar ? `1px solid ${asc.color}40` : '1px solid transparent',
+                            }}
+                          >
+                            {isGatillar ? '🔥 ' : isAtractivoAction ? '✓ ' : ''}
+                            {score.actionScore.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Context row with separator */}
+                      <div className="mt-1.5 pt-1.5 cockpit-context-separator grid grid-cols-[28px_1fr] gap-1.5 items-start">
+                        <div /> {/* spacer for rank column */}
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* ΔTIR */}
+                          <span className="text-[8px] text-app-text4">
+                            ΔTIR{' '}
+                            <span className={`font-mono ${score.deltaTIR !== null ? (score.deltaTIR > 0 ? 'text-[#2eebc8]' : score.deltaTIR < -0.02 ? 'text-[#f87171]' : 'text-app-text3') : 'text-app-text4'}`}>
+                              {score.deltaTIR !== null ? fmtPct(score.deltaTIR, 3) : '—'}
+                            </span>
+                          </span>
+
+                          {/* Presion Punta */}
+                          <span className="text-[8px] text-app-text4">
+                            Presión{' '}
+                            <span className={`font-mono ${
+                              score.presionPuntas !== null
+                                ? score.presionPuntas > 1.3 ? 'text-[#2eebc8]'
+                                  : score.presionPuntas < 0.7 ? 'text-[#f87171]'
+                                  : 'text-app-text3'
+                                : 'text-app-text4'
+                            }`}>
+                              {score.presionPuntas !== null ? score.presionPuntas.toFixed(2) : '—'}
+                            </span>
+                          </span>
+
+                          {/* Upside */}
+                          <span className="text-[8px] text-app-text4">
+                            Upside{' '}
+                            <span className={`font-mono ${score.upsideCapital > 1 ? 'text-[#2eebc8]' : score.upsideCapital > 0.3 ? 'text-[#fbbf24]' : 'text-app-text3'}`}>
+                              +{fmtNum(score.upsideCapital, 2)}%
+                            </span>
+                          </span>
+
+                          {/* Micro-score bars */}
+                          <div className="flex items-center gap-1.5 ml-1">
+                            <div className="flex flex-col gap-[2px]">
+                              <MicroScoreBar value={score.spreadNetoScore} color={MICRO_BAR_COLORS.spreadNeto} />
+                              <MicroScoreBar value={score.deltaTIRScore} color={MICRO_BAR_COLORS.deltaTIR} />
+                              <MicroScoreBar value={score.presionPuntasScore} color={MICRO_BAR_COLORS.presion} />
+                              <MicroScoreBar value={score.upsideCapitalScore} color={MICRO_BAR_COLORS.upside} />
+                              <MicroScoreBar value={score.velocidadScore} color={MICRO_BAR_COLORS.velocidad} />
+                            </div>
+                            <div className="flex flex-col gap-[2px] text-[6px] text-app-text4 leading-none">
+                              <span>Sp</span>
+                              <span>ΔT</span>
+                              <span>Pr</span>
+                              <span>Up</span>
+                              <span>Ve</span>
+                            </div>
+                          </div>
+
+                          {/* Action Score reason */}
+                          {score.actionScore.label !== 'SIN SEÑAL' && score.actionScore.reason && (
+                            <span className="text-[7px] truncate max-w-[200px] hidden sm:inline-block" style={{ color: asc.color + 'bb' }} title={score.actionScore.reason}>
+                              {score.actionScore.reason}
+                            </span>
+                          )}
+
+                          {/* Verdict reason */}
+                          {score.verdictReason && score.actionScore.label === 'SIN SEÑAL' && (
+                            <span className="text-[7px] text-app-text4 truncate max-w-[180px] hidden sm:inline-block" title={score.verdictReason}>
+                              {score.verdictReason}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -810,7 +1109,7 @@ export default function CockpitTab({
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* V5.0: WEIGHT LEGEND + ACTION SCORE METHODOLOGY                */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      {sortedScores.length > 0 && (
+      {displayedScores.length > 0 && (
         <div className="space-y-3 animate-fadeInUp">
           {/* Cockpit Score Weights */}
           <div className="flex items-center gap-4 flex-wrap text-[9px] text-app-text4">
@@ -848,7 +1147,7 @@ export default function CockpitTab({
                 <div className="text-app-text3">
                   &lt;0.3% → 38pts · &lt;0.5% → 32pts · &lt;1% → 20pts · &lt;2% → 10pts
                   <br />
-                  <span className="text-[#f87171]">Alerta visual &lt;0.5%: "a tiro de gatillo"</span>
+                  <span className="text-[#f87171]">Alerta visual &lt;0.5%: &quot;a tiro de gatillo&quot;</span>
                 </div>
               </div>
               <div className="bg-app-subtle/30 rounded-lg p-2.5">

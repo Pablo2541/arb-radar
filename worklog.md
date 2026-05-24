@@ -219,5 +219,109 @@ Stage Summary:
 - Add S/R from historico_precios.json via API endpoint (server-side access to price history)
 - Implement real volume moving average from IOL volume snapshots (Prisma DB)
 - Add keyboard shortcuts for quick action on GATILLAR YA instruments
-- Add sound/notification alert when GATILLAR YA appears
+- ~~Add sound/notification alert when GATILLAR YA appears~~ ✅ Done in Task 4
 - Mobile-responsive optimization for the 11-column table
+
+---
+Task ID: 4
+Agent: CockpitTab Feature Agent
+Task: Add search/filter, sound alerts, CSV export to CockpitTab
+
+Work Log:
+- Read worklog.md for full project context (Tasks 1-6, all 3 FASEs completed)
+- Read CockpitTab.tsx (892 lines) to understand existing code structure and patterns
+- Read shadcn/ui components: Input, Button (for new features)
+- Read CockpitScore type from types.ts (confirmed all fields needed for CSV export)
+- Verified lucide-react package available (^0.525.0)
+- Feature 1: Ticker Search/Filter
+  - Added `searchQuery` state
+  - Added `displayedScores` useMemo that applies case-insensitive partial match on `sortedScores`
+  - Added Search icon from lucide-react + shadcn Input component in horizon filter row
+  - Search input styled consistently: small (h-7), monospace font, teal focus ring, dark theme colors
+  - Empty state updated to show "No se encontraron instrumentos que coincidan con..." when search has no results
+  - All rendered data (table rows, El Grito card, summary counts, methodology) now uses `displayedScores`
+- Feature 2: Sound Alert Toggle for GATILLAR YA
+  - Added `soundEnabled` state initialized from localStorage ('arbradar_cockpit_sound')
+  - Added `audioCtxRef` useRef for AudioContext persistence (avoids recreation)
+  - Added `prevGatillarRef` useRef (Set<string>) to track which tickers were already GATILLAR YA
+  - Implemented `playBeep()` using Web Audio API: square wave, 880Hz, 0.15 gain, 250ms duration
+  - Added useEffect that detects NEW GATILLAR YA transitions (tickers in current set but not in previous set)
+  - Beep only plays when `prevGatillarRef.current.size > 0` (prevents false alarm on first data load)
+  - Toggle button in header near LIVE badge: Bell icon when active (red), BellOff when muted (gray)
+  - Sound toggle persists to localStorage
+  - When sound disabled, prevGatillarRef is reset to empty Set
+- Feature 3: Export Cockpit Data to CSV
+  - Added `handleExportCSV` callback that generates CSV from `displayedScores`
+  - CSV columns: Ticker, Type, Price, TEM, Volume, S/R Cercano, Distancia %, Inyección, Spread, CockpitScore, ActionScore, ActionLabel
+  - Uses Blob + URL.createObjectURL + document.createElement('a') download pattern
+  - Filename format: `arb-radar-cockpit-YYYY-MM-DD.csv`
+  - Download button with Download icon from lucide-react + shadcn Button (ghost, sm variant)
+  - Button disabled when no data to export; "CSV" label hidden on mobile for compact layout
+  - Positioned in horizon filter row alongside search input
+- Refactored `localSummary` to use `displayedScores` instead of `filteredScores` so counts reflect search filter
+- Refactored `elGritoScores` to use `displayedScores` so El Grito card respects search filter
+- Refactored table rows, empty state, and methodology section to use `displayedScores`
+- ESLint passes with 0 errors (verified with `bun run lint -- --ignore-pattern 'upload/**' --ignore-pattern 'examples/**'`)
+- Dev server compiles and serves correctly
+
+Stage Summary:
+- 3 major features added to CockpitTab.tsx: Ticker Search, Sound Alerts, CSV Export
+- Only 1 file modified: src/components/dashboard/CockpitTab.tsx
+- New imports: Input, Button from shadcn/ui; Search, Download, Bell, BellOff from lucide-react
+- New state: searchQuery, soundEnabled (localStorage-persisted)
+- New refs: audioCtxRef (AudioContext), prevGatillarRef (Set for transition detection)
+- New memo: displayedScores (search-filtered version of sortedScores)
+- Sound alert: Web Audio API with OscillatorNode, 880Hz square wave, 250ms beep on GATILLAR YA transitions
+- CSV export: 12-column CSV with Blob download, dated filename
+- All features responsive and follow existing dark theme styling (teal/pink/gold accents)
+- Lint clean, dev server compiles OK
+
+---
+Task ID: 4b
+Agent: Frontend Styling Agent
+Task: Mobile responsive and visual improvements for CockpitTab
+
+Work Log:
+- Read worklog.md for project context (Tasks 1-6, Task 4, all phases complete)
+- Read full CockpitTab.tsx (~892 lines) and globals.css (~1359 lines) to understand current state
+- Identified existing CSS classes: .gatillar-row, .table-row-highlight, .table-row-alt, .micro-score-bar-track/fill
+- Planned 4 categories of changes: mobile card layout, visual enhancements, scrollable container, spacing/typography
+- Added new CSS to globals.css (V5.1 section, ~130 lines):
+  - .cockpit-scroll-container: max-height 70vh, overflow-y auto, custom teal scrollbar
+  - .cockpit-sticky-header: position sticky top 0, z-index 10, dark/light background
+  - .cockpit-fade-bottom::after: 48px gradient fade at bottom (dark + light mode)
+  - .cockpit-row-hover: enhanced hover with smooth transition
+  - .cockpit-context-separator: thin teal border-top + subtle background between main and context rows
+  - .ticker-dot / .ticker-dot-gatillar / .ticker-dot-atractivo / .ticker-dot-neutral: status indicator dots
+  - .cockpit-mobile-card: mobile card styling with border, hover, and gatillar-row variant (dark + light mode)
+- Rewrote CockpitTab.tsx table section (V5.0 → V5.1):
+  - Added mobile card layout (< md breakpoint): each instrument as compact card with 3 rows:
+    - Top: Rank badge + Ticker with status dot + Type badge + Action Score badge
+    - Middle: Price + TEM + VOL
+    - Bottom: S/R Cercano + Distancia + Inyeccion badge + Spread
+    - Context row with micro-score bars + reason (always visible on mobile, no sm:hidden)
+  - Desktop grid layout (>= md): unchanged 11-column grid with new enhancements
+  - Added .cockpit-mobile-card class for mobile cards (hidden on md+)
+  - Added .hidden.md:hidden for desktop-only rows
+  - Added ticker status dot next to ticker name (red for GATILLAR YA, teal for ATRACTIVO, gray otherwise)
+  - Wrapped table in .cockpit-scroll-container with max-h-[70vh] overflow-y-auto
+  - Made header sticky with .cockpit-sticky-header
+  - Added gradient fade at bottom when >10 items via .cockpit-fade-bottom
+  - Changed py-1.5 to md:py-2 for desktop row padding
+  - Added .cockpit-context-separator between main row and context row on desktop
+  - Changed Score column from text-sm to text-base
+  - Mobile header shows "Instrumentos / Señales" instead of 11-column headers
+  - Mobile cards use space-y-2 with gap; desktop uses divide-y
+  - Moved vol calculation to shared variable (volDisplay) to avoid duplication
+- Removed unused import: MarketTruthResponse from '@/lib/market-truth-types'
+- Version label updated: V5.0 SCANNER → V5.1 SCANNER
+- ESLint passes with 0 errors
+- TypeScript: 0 errors in CockpitTab.tsx (no new type errors introduced)
+
+Stage Summary:
+- Mobile responsive layout implemented: cards on <768px, grid on >=768px
+- Visual enhancements: ticker status dots, hover effects, context row separator, gradient fade at bottom
+- Scrollable container with sticky header (max-height 70vh)
+- Typography: Score column text-sm → text-base, desktop row py-2
+- 2 files modified: CockpitTab.tsx (full rewrite of table section), globals.css (new V5.1 CSS section)
+- Lint clean, no new TypeScript errors

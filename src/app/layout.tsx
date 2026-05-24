@@ -13,24 +13,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ARB//RADAR V3.4.5 — PRO TERMINAL",
-  description: "Cockpit Táctico · Market Truth Engine · cockpitScore — Dashboard de arbitraje de LECAPs y BONCAPs con datos en tiempo real. V3.4.5-PRO TERMINAL",
+  title: "ARB//RADAR V5.0 — SCANNER",
+  description: "Price Action Scanner · El Gatillador Cuantitativo · S/R + Volumen + Presión — Dashboard de scalping de LECAPs y BONCAPs con datos en tiempo real. V5.0-SCANNER",
   keywords: ["arbitraje", "LECAP", "BONCAP", "Argentina", "tasas", "curvas", "dólar MEP", "CCL", "spread caución", "duration modified"],
   authors: [{ name: "ARB Radar" }],
   icons: {
     icon: "/logo.svg",
   },
   openGraph: {
-    title: "ARB//RADAR V3.4.5 — PRO TERMINAL",
-    description: "Cockpit Táctico · Market Truth Engine · cockpitScore — Dashboard de arbitraje argentino — V3.4.5-PRO TERMINAL",
+    title: "ARB//RADAR V5.0 — SCANNER",
+    description: "Price Action Scanner · El Gatillador Cuantitativo — Dashboard de scalping argentino — V5.0-SCANNER",
     url: "https://arbradar.com",
     siteName: "ARB Radar",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "ARB//RADAR V3.4.5 — PRO TERMINAL",
-    description: "Cockpit Táctico · Market Truth Engine · cockpitScore — Dashboard de arbitraje argentino — V3.4.5-PRO TERMINAL",
+    title: "ARB//RADAR V5.0 — SCANNER",
+    description: "Price Action Scanner · El Gatillador Cuantitativo — Dashboard de scalping argentino — V5.0-SCANNER",
   },
 };
 
