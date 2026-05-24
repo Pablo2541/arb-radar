@@ -68,6 +68,7 @@ export async function GET(request: Request) {
           volume: numOrZero(r.volume),
           iolVolume: numOrZero(r.iolVolume),
           spreadAvg: numOrZero(r.spreadAvg),
+          snapshotCount: numOrZero(r.snapshotCount),
         })),
       })
     }
@@ -128,7 +129,7 @@ export async function GET(request: Request) {
 
       // Build unique tickers with latest close price
       const seenTickers = new Set<string>();
-      const tickers = [];
+      const tickers: { ticker: string; latestDate: string; latestClose: number }[] = [];
       for (const row of ohlcTickers) {
         if (!seenTickers.has(row.ticker)) {
           seenTickers.add(row.ticker);

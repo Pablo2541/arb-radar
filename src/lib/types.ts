@@ -256,6 +256,11 @@ export interface CockpitScore {
   presionPuntas: number | null; // Bid/ask pressure ratio (>1 = buying)
   upsideCapital: number;       // % to resistance
   days: number;                // Days to expiry
+
+  // ── Volume data for display ──
+  volume: number;              // data912 notional ARS volume (fallback for VOL column)
+  iolVolume: number;           // IOL cantidadOperada (primary for VOL column)
+
   withinHorizon: boolean;      // Within horizon filter (default 45 days — Scalping Extendido)
 }
 

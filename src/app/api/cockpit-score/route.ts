@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
         tir: (inst.tir as number) * 100,   // convert from decimal to %
         gananciaDirecta: (inst.ganancia_directa as number) * 100,
         vsPlazoFijo: '',
-        iolMarketPressure: inst.iolMarketPressure as number | undefined,
+        iolMarketPressure: inst.iol_market_pressure as number | undefined,
       };
 
       // deltaTIR: from live data, convert from decimal to %
@@ -181,14 +181,18 @@ export async function GET(request: NextRequest) {
       const spreadNetoPct = (inst.spread_neto as number) * 100;
       const upsideCapital = Math.max(0, spreadNetoPct * (instrument.days / 30) * 0.5);
 
-      return calculateCockpitScore(
-        instrument,
-        config,
-        deltaTIR,
-        iolMarketPressure,
-        upsideCapital,
-        instrument.days,
-      );
+      return {
+        ...calculateCockpitScore(
+          instrument,
+          config,
+          deltaTIR,
+          iolMarketPressure,
+          upsideCapital,
+          instrument.days,
+        ),
+        volume: (inst.volume as number) || 0,
+        iolVolume: (inst.iol_volume as number) || 0,
+      };
     });
 
     // Sort by cockpitScore descending

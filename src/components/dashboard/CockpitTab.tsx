@@ -587,7 +587,7 @@ export default function CockpitTab({
                         // IOL cantidadOperada can be 0 (no trades yet), but data912 nota.v
                         // is always populated. Old ?? operator treated 0 as valid, blocking
                         // the data912 fallback. Now: iolVolume=0 → data912Volume takes over.
-                        const vol = instData?.iolVolume || liveData?.iol_volume || instData?.data912Volume || liveData?.volume;
+                        const vol = score.iolVolume || score.volume || instData?.iolVolume || liveData?.iol_volume || instData?.data912Volume || liveData?.volume;
                         if (vol && vol > 0) {
                           return vol >= 1_000_000
                             ? `${(vol / 1_000_000).toFixed(1)}M`

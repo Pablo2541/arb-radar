@@ -868,10 +868,16 @@ async function writeHistoricalData(
         // Each daemon tick overwrites with the latest accumulated value.
         const latestVolume = inst.volume;
         const latestIolVolume = inst.iol_volume ?? 0;
-        const newSnapshotCount = (existingOHLC.snapshotCount || 1) + 1;
+        // V4.0.7-fix: Use nullish coalescing (??) instead of logical OR (||)
+        // || treats 0 as falsy → would incorrectly reset count to 1 if snapshotCount=0
+        // ?? only triggers on null/undefined → safe for legacy records missing the column
+        const prevSnapshotCount = existingOHLC.snapshotCount ?? 1;
+        const newSnapshotCount = prevSnapshotCount + 1;
         // V4.0.7: spreadAvg uses snapshot counter as weight (not inflated volume)
         // Incremental average: newAvg = oldAvg + (newValue - oldAvg) / newCount
-        const newSpreadAvg = existingOHLC.spreadAvg + (inst.spread_neto - existingOHLC.spreadAvg) / newSnapshotCount;
+        // V4.0.7-fix: Guard against null spreadAvg from legacy records
+        const prevSpreadAvg = existingOHLC.spreadAvg ?? 0;
+        const newSpreadAvg = prevSpreadAvg + (inst.spread_neto - prevSpreadAvg) / newSnapshotCount;
 
         await prisma.dailyOHLC.update({
           where: { id: existingOHLC.id },
