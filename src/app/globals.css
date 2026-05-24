@@ -1492,3 +1492,141 @@ kbd {
   border-color: rgba(220, 38, 38, 0.2);
   background: linear-gradient(135deg, rgba(220, 38, 38, 0.04), rgba(255, 255, 255, 0.5));
 }
+
+/* ══════════════════════════════════════════════════════════════
+   V5.2 — PRICE ALERT FLASH ANIMATION
+   When a price alert is triggered, the row flashes gold/amber
+   ══════════════════════════════════════════════════════════════ */
+@keyframes priceAlertFlash {
+  0% { background-color: rgba(251, 191, 36, 0.25); }
+  25% { background-color: rgba(251, 191, 36, 0.08); }
+  50% { background-color: rgba(251, 191, 36, 0.25); }
+  75% { background-color: rgba(251, 191, 36, 0.08); }
+  100% { background-color: rgba(251, 191, 36, 0.15); }
+}
+
+.price-alert-flash {
+  animation: priceAlertFlash 1s ease-in-out 3;
+  border-left: 3px solid rgba(251, 191, 36, 0.6) !important;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.15);
+}
+
+:root[data-theme="light"] .price-alert-flash {
+  animation: priceAlertFlashLight 1s ease-in-out 3;
+  border-left: 3px solid rgba(217, 119, 6, 0.5) !important;
+  box-shadow: 0 0 12px rgba(217, 119, 6, 0.1);
+}
+
+@keyframes priceAlertFlashLight {
+  0% { background-color: rgba(251, 191, 36, 0.15); }
+  25% { background-color: rgba(251, 191, 36, 0.04); }
+  50% { background-color: rgba(251, 191, 36, 0.15); }
+  75% { background-color: rgba(251, 191, 36, 0.04); }
+  100% { background-color: rgba(251, 191, 36, 0.08); }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   V5.2 — COCKPIT HEATMAP MINI-VISUALIZATION
+   ══════════════════════════════════════════════════════════════ */
+.cockpit-heatmap {
+  padding: 0.5rem 0;
+}
+
+.cockpit-heatmap-block {
+  width: 32px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+  border: none;
+  padding: 0;
+  opacity: 0.85;
+}
+
+.cockpit-heatmap-block:hover {
+  transform: scaleY(1.8) scaleX(1.1);
+  box-shadow: 0 0 8px currentColor;
+  opacity: 1;
+  z-index: 2;
+  position: relative;
+}
+
+/* Flash animation when clicking a heatmap block to scroll */
+@keyframes cockpitRowFlash {
+  0% { background-color: rgba(46, 235, 200, 0.2); }
+  100% { background-color: transparent; }
+}
+
+.cockpit-row-flash {
+  animation: cockpitRowFlash 1.5s ease-out;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   V5.2 — ACTION SCORE BADGE ENHANCEMENTS
+   ══════════════════════════════════════════════════════════════ */
+
+/* GATILLAR YA: diagonal stripe pattern + stronger glow */
+.action-score-gatillar {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    rgba(248, 113, 113, 0.12) 4px,
+    rgba(248, 113, 113, 0.12) 8px
+  ) !important;
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.4), 0 0 24px rgba(248, 113, 113, 0.15) !important;
+}
+
+/* ATRACTIVO: breathing glow border animation */
+@keyframes atractivoBreathingGlow {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(46, 235, 200, 0.15), inset 0 0 4px rgba(46, 235, 200, 0.05);
+    border-color: rgba(46, 235, 200, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 10px rgba(46, 235, 200, 0.3), inset 0 0 6px rgba(46, 235, 200, 0.1);
+    border-color: rgba(46, 235, 200, 0.5);
+  }
+}
+
+.action-score-atractivo {
+  border: 1px solid rgba(46, 235, 200, 0.25) !important;
+  animation: atractivoBreathingGlow 2.5s ease-in-out infinite !important;
+}
+
+/* Score ring SVG styling */
+.score-ring circle {
+  transition: stroke-dashoffset 0.6s ease-out;
+}
+
+/* Light mode overrides for V5.2 */
+:root[data-theme="light"] .action-score-gatillar {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    rgba(220, 38, 38, 0.08) 4px,
+    rgba(220, 38, 38, 0.08) 8px
+  ) !important;
+  box-shadow: 0 0 8px rgba(220, 38, 38, 0.2) !important;
+}
+
+:root[data-theme="light"] .action-score-atractivo {
+  border-color: rgba(5, 150, 105, 0.25) !important;
+}
+
+@keyframes atractivoBreathingGlowLight {
+  0%, 100% {
+    box-shadow: 0 0 4px rgba(5, 150, 105, 0.1), inset 0 0 4px rgba(5, 150, 105, 0.03);
+    border-color: rgba(5, 150, 105, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 8px rgba(5, 150, 105, 0.2), inset 0 0 6px rgba(5, 150, 105, 0.06);
+    border-color: rgba(5, 150, 105, 0.4);
+  }
+}
+
+:root[data-theme="light"] .action-score-atractivo {
+  animation: atractivoBreathingGlowLight 2.5s ease-in-out infinite !important;
+}

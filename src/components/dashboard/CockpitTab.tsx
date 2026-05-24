@@ -1,7 +1,7 @@
 'use client';
 
 // ════════════════════════════════════════════════════════════════════════
-// V5.1 SCANNER — CockpitTab: PRICE ACTION SCANNER
+// V5.2 SCANNER — CockpitTab: PRICE ACTION SCANNER
 //
 // Unified cockpit with 4 new Price Action columns:
 //   1. S/R Mas Cercano — nearest support/resistance level
@@ -9,6 +9,7 @@
 //   3. Inyeccion de Volumen — volume acceleration (X2, X3, X5, EXPLOSIVO)
 //   4. SCORE — El Gatillador (GATILLAR YA / ATRACTIVO / NEUTRAL / SIN SENAL)
 //
+// V5.2: Market heatmap + keyboard shortcuts panel + enhanced action score badges
 // V5.1: Mobile responsive card layout + visual enhancements
 //
 // BLINDAJE: La comision del 0.15% NO se toca. price x 1.0015 = IMMUTABLE.
@@ -17,7 +18,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type { Instrument, Config, Position, CockpitScore, LiveInstrument } from '@/lib/types';
 import { useRadarStore } from '@/lib/store';
-import { Search, Bell, BellOff, Download } from 'lucide-react';
+import { Search, Bell, BellOff, Download, Keyboard, Star, BellRing, X } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Input } from '@/components/ui/input';
 
 // ─── Props ────────────────────────────────────────────────────────────
 interface CockpitTabProps {
@@ -26,6 +29,76 @@ interface CockpitTabProps {
   position: Position | null;
   liveDataMap: Map<string, LiveInstrument>;
   isLive: boolean;
+  onAlertsCountChange?: (count: number) => void;
+  onWatchlistCountChange?: (count: number) => void;
+}
+
+// ─── V5.2: Watchlist Hook ─────────────────────────────────────────────
+function useWatchlist() {
+  const [watchlist, setWatchlist] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const saved = localStorage.getItem('arbradar_watchlist');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+
+  const toggleWatchlist = useCallback((ticker: string) => {
+    setWatchlist(prev => {
+      const next = prev.includes(ticker)
+        ? prev.filter(t => t !== ticker)
+        : [...prev, ticker];
+      try { localStorage.setItem('arbradar_watchlist', JSON.stringify(next)); } catch { /* silent */ }
+      return next;
+    });
+  }, []);
+
+  const isWatched = useCallback((ticker: string) => watchlist.includes(ticker), [watchlist]);
+
+  return { watchlist, toggleWatchlist, isWatched };
+}
+
+// ─── V5.2: Price Alerts Hook ──────────────────────────────────────────
+interface PriceAlert {
+  direction: '>' | '<';
+  price: number;
+}
+
+function usePriceAlerts() {
+  const [alerts, setAlerts] = useState<Record<string, PriceAlert>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const saved = localStorage.getItem('arbradar_price_alerts');
+      return saved ? JSON.parse(saved) : {};
+    } catch { return {}; }
+  });
+
+  const setAlert = useCallback((ticker: string, direction: '>' | '<', price: number) => {
+    setAlerts(prev => {
+      const next = { ...prev, [ticker]: { direction, price } };
+      try { localStorage.setItem('arbradar_price_alerts', JSON.stringify(next)); } catch { /* silent */ }
+      return next;
+    });
+  }, []);
+
+  const removeAlert = useCallback((ticker: string) => {
+    setAlerts(prev => {
+      const next = { ...prev };
+      delete next[ticker];
+      try { localStorage.setItem('arbradar_price_alerts', JSON.stringify(next)); } catch { /* silent */ }
+      return next;
+    });
+  }, []);
+
+  const clearAllAlerts = useCallback(() => {
+    setAlerts({});
+    try { localStorage.setItem('arbradar_price_alerts', JSON.stringify({})); } catch { /* silent */ }
+  }, []);
+
+  const getAlert = useCallback((ticker: string) => alerts[ticker] ?? null, [alerts]);
+  const alertCount = Object.keys(alerts).length;
+
+  return { alerts, setAlert, removeAlert, clearAllAlerts, getAlert, alertCount };
 }
 
 // ─── Verdict Config ───────────────────────────────────────────────────
@@ -110,6 +183,198 @@ function MicroScoreBar({ value, max = 10, color }: { value: number; max?: number
         }}
       />
     </div>
+  );
+}
+
+// ─── V5.2: Price Alert Popover Component ──────────────────────────────
+function PriceAlertPopover({
+  ticker,
+  currentPrice,
+  alert,
+  onSetAlert,
+  onRemoveAlert,
+  onClearAll,
+  alertCount,
+}: {
+  ticker: string;
+  currentPrice: number;
+  alert: PriceAlert | null;
+  onSetAlert: (ticker: string, direction: '>' | '<', price: number) => void;
+  onRemoveAlert: (ticker: string) => void;
+  onClearAll: () => void;
+  alertCount: number;
+}) {
+  const [inputPrice, setInputPrice] = useState(() => (alert ? alert.price.toFixed(4) : currentPrice > 0 ? currentPrice.toFixed(4) : ''));
+  const [direction, setDirection] = useState<'>' | '<'>(() => alert?.direction ?? '>');
+
+  const handleSet = () => {
+    const p = parseFloat(inputPrice);
+    if (!isNaN(p) && p > 0) {
+      onSetAlert(ticker, direction, p);
+    }
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          className={`flex items-center justify-center w-5 h-5 rounded transition-all duration-150 shrink-0 ${
+            alert
+              ? 'text-[#fbbf24] bg-[#fbbf24]/10 hover:bg-[#fbbf24]/20'
+              : 'text-app-text4 hover:text-app-text3 hover:bg-app-hover'
+          }`}
+          title={alert ? `Alerta: ${alert.direction} ${alert.price.toFixed(4)}` : 'Configurar alerta de precio'}
+        >
+          {alert ? <BellRing className="w-3 h-3" /> : <Bell className="w-3 h-3" />}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-64 p-3 rounded-xl border border-app-border/60 bg-app-bg/95 backdrop-blur-xl shadow-xl z-50"
+        side="left"
+        align="center"
+      >
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-app-text uppercase tracking-wider">
+              🔔 Alerta de Precio
+            </span>
+            <span className="font-mono text-[10px] font-bold text-app-accent-text">{ticker}</span>
+          </div>
+          <div className="text-[9px] text-app-text4">
+            Alertar cuando precio
+          </div>
+          <div className="flex items-center gap-1.5">
+            <select
+              value={direction}
+              onChange={e => setDirection(e.target.value as '>' | '<')}
+              className="h-7 px-1.5 rounded-lg bg-app-subtle/60 border border-app-border/60 text-[10px] font-mono text-app-text focus:outline-none focus:ring-1 focus:ring-[#2eebc8]/40"
+            >
+              <option value=">">&gt; mayor que</option>
+              <option value="<">&lt; menor que</option>
+            </select>
+            <Input
+              type="number"
+              step="0.0001"
+              value={inputPrice}
+              onChange={e => setInputPrice(e.target.value)}
+              className="h-7 text-[10px] font-mono bg-app-subtle/60 border-app-border/60 focus:border-[#2eebc8]/30 focus:ring-[#2eebc8]/40"
+              placeholder="Precio"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleSet}
+              className="flex-1 h-7 rounded-lg bg-[#2eebc8]/15 border border-[#2eebc8]/30 text-[9px] font-bold text-[#2eebc8] hover:bg-[#2eebc8]/25 transition-all"
+            >
+              {alert ? 'Actualizar' : 'Activar'}
+            </button>
+            {alert && (
+              <button
+                onClick={() => onRemoveAlert(ticker)}
+                className="h-7 px-2 rounded-lg bg-[#f87171]/10 border border-[#f87171]/30 text-[9px] font-bold text-[#f87171] hover:bg-[#f87171]/20 transition-all"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          {alertCount > 0 && (
+            <div className="flex items-center justify-between pt-1.5 border-t border-app-border/30">
+              <span className="text-[8px] text-app-text4">
+                🔔 {alertCount} alerta{alertCount !== 1 ? 's' : ''} activa{alertCount !== 1 ? 's' : ''}
+              </span>
+              <button
+                onClick={onClearAll}
+                className="text-[8px] text-[#f87171] hover:text-[#f87171]/80 font-medium transition-colors"
+              >
+                Limpiar todo
+              </button>
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ─── V5.2: Market Heatmap Mini-Visualization ──────────────────────────
+function MarketHeatmapStrip({ scores, onBlockClick }: { scores: CockpitScore[]; onBlockClick: (ticker: string) => void }) {
+  if (scores.length === 0) return null;
+
+  const getBlockColor = (s: CockpitScore): string => {
+    if (s.actionScore.label === 'GATILLAR YA') return '#2eebc8';
+    if (s.actionScore.label === 'ATRACTIVO') return '#fbbf24';
+    if (s.distanceToSR < 0.5 && s.distanceToSR < 99) return '#f87171';
+    return '#6b7280';
+  };
+
+  return (
+    <div className="cockpit-heatmap animate-fadeInUp">
+      <div className="flex items-center gap-[2px] overflow-x-auto scrollbar-hide py-1">
+        {scores.map(s => (
+          <button
+            key={`${s.ticker}-${s.type}`}
+            className="cockpit-heatmap-block"
+            style={{ backgroundColor: getBlockColor(s) }}
+            title={`${s.ticker} — ${s.actionScore.label}${s.distanceToSR < 0.5 && s.distanceToSR < 99 ? ' · Cerca S/R' : ''}`}
+            onClick={() => onBlockClick(s.ticker)}
+          />
+        ))}
+      </div>
+      <div className="flex items-center gap-3 mt-1 text-[8px] text-app-text4">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: '#2eebc8' }} />
+          🔥 Gatillar
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: '#fbbf24' }} />
+          ✓ Atractivo
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: '#6b7280' }} />
+          ● Neutral
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: '#f87171' }} />
+          Cerca S/R
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ─── V5.2: Score Ring SVG Component ───────────────────────────────────
+function ScoreRing({ score, color, size = 22 }: { score: number; color: string; size?: number }) {
+  const radius = (size - 4) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const filled = Math.min(Math.max(score, 0), 100) / 100;
+  const dashOffset = circumference * (1 - filled);
+
+  return (
+    <svg width={size} height={size} className="score-ring shrink-0" style={{ '--ring-color': color } as React.CSSProperties}>
+      {/* Background track */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="var(--app-subtle)"
+        strokeWidth={2}
+      />
+      {/* Filled arc */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={dashOffset}
+        transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        style={{ transition: 'stroke-dashoffset 0.6s ease-out' }}
+      />
+    </svg>
   );
 }
 
@@ -207,6 +472,8 @@ export default function CockpitTab({
   position,
   liveDataMap,
   isLive,
+  onAlertsCountChange,
+  onWatchlistCountChange,
 }: CockpitTabProps) {
   // ─── Store ────────────────────────────────────────────────────────
   const cockpitScores = useRadarStore(s => s.cockpitScores);
@@ -214,6 +481,22 @@ export default function CockpitTab({
   const cockpitScoresLoading = useRadarStore(s => s.cockpitScoresLoading);
   const setCockpitScoresLoading = useRadarStore(s => s.setCockpitScoresLoading);
   const marketTruth = useRadarStore(s => s.marketTruth);
+
+  // ─── V5.2: Watchlist & Price Alerts ────────────────────────────────
+  const { watchlist, toggleWatchlist, isWatched } = useWatchlist();
+  const { alerts, setAlert, removeAlert, clearAllAlerts, getAlert, alertCount } = usePriceAlerts();
+  const [watchlistFilterActive, setWatchlistFilterActive] = useState(false);
+  const [triggeredAlerts, setTriggeredAlerts] = useState<Set<string>>(new Set());
+
+  // Notify parent of alert count
+  useEffect(() => {
+    onAlertsCountChange?.(alertCount);
+  }, [alertCount, onAlertsCountChange]);
+
+  // Notify parent of watchlist count
+  useEffect(() => {
+    onWatchlistCountChange?.(watchlist.length);
+  }, [watchlist.length, onWatchlistCountChange]);
 
   // ─── Local State ──────────────────────────────────────────────────
   const [horizon, setHorizon] = useState<number>(() => {
@@ -253,6 +536,9 @@ export default function CockpitTab({
 
   // ─── V5.1: Search/Filter state ──────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
+
+  // ─── V5.2: Keyboard Shortcuts panel state ──────────────────────
+  const [shortcutsExpanded, setShortcutsExpanded] = useState(false);
 
   // ─── V5.1: Sound Alert state ────────────────────────────────────
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
@@ -348,14 +634,29 @@ export default function CockpitTab({
     });
   }, [filteredScores]);
 
-  // ─── V5.1: Search filter on sorted scores ─────────────────────────
+  // ─── V5.1: Search filter + V5.2: Watchlist filter on sorted scores ──
   const displayedScores = useMemo(() => {
-    if (!searchQuery.trim()) return sortedScores;
-    const q = searchQuery.trim().toLowerCase();
-    return sortedScores.filter(s => s.ticker.toLowerCase().includes(q));
-  }, [sortedScores, searchQuery]);
+    let result = sortedScores;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      result = result.filter(s => s.ticker.toLowerCase().includes(q));
+    }
+    if (watchlistFilterActive) {
+      result = result.filter(s => isWatched(s.ticker));
+    }
+    return result;
+  }, [sortedScores, searchQuery, watchlistFilterActive, isWatched]);
 
-  // ─── V5.1: Sound alert for new GATILLAR YA ────────────────────────
+  // ─── Instrument lookup Map ─────────────────────────────────────────
+  const instrumentMap = useMemo(() => {
+    const map = new Map<string, Instrument>();
+    for (const inst of instruments) {
+      map.set(inst.ticker, inst);
+    }
+    return map;
+  }, [instruments]);
+
+  // ─── V5.1: Sound alert for new GATILLAR YA + V5.2: Price alert check ──
   useEffect(() => {
     if (!soundEnabled || sortedScores.length === 0) return;
     const currentGatillar = new Set(
@@ -371,7 +672,27 @@ export default function CockpitTab({
       }
     }
     prevGatillarRef.current = currentGatillar;
-  }, [sortedScores, soundEnabled, playAlertBeep]);
+
+    // V5.2: Check price alert thresholds
+    const newTriggered = new Set<string>();
+    for (const score of sortedScores) {
+      const alert = alerts[score.ticker];
+      if (!alert) continue;
+      const liveData = liveDataMap.get(score.ticker);
+      const instData = instrumentMap.get(score.ticker);
+      const price = liveData?.last_price ?? instData?.price ?? 0;
+      if (price <= 0) continue;
+      const crossed = alert.direction === '>' ? price > alert.price : price < alert.price;
+      if (crossed) {
+        newTriggered.add(score.ticker);
+        // New trigger? Flash + beep
+        if (!triggeredAlerts.has(score.ticker)) {
+          playAlertBeep();
+        }
+      }
+    }
+    setTriggeredAlerts(newTriggered);
+  }, [sortedScores, soundEnabled, playAlertBeep, alerts, liveDataMap, instrumentMap, triggeredAlerts]);
 
   // ─── V5.1: CSV Export ─────────────────────────────────────────────
   const handleExportCSV = useCallback(() => {
@@ -402,6 +723,16 @@ export default function CockpitTab({
     a.click();
     URL.revokeObjectURL(url);
   }, [displayedScores, liveDataMap, instrumentMap]);
+
+  // ─── V5.2: Heatmap click → scroll to instrument ──────────────────
+  const handleHeatmapClick = useCallback((ticker: string) => {
+    const el = document.getElementById(`cockpit-row-${ticker}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('cockpit-row-flash');
+      setTimeout(() => el.classList.remove('cockpit-row-flash'), 1500);
+    }
+  }, []);
 
   // ─── Sync filtered scores to store ────────────────────────────────
   useEffect(() => {
@@ -438,15 +769,6 @@ export default function CockpitTab({
     };
   }, [allScores, filteredScores]);
 
-  // ─── Instrument lookup Map ─────────────────────────────────────────
-  const instrumentMap = useMemo(() => {
-    const map = new Map<string, Instrument>();
-    for (const inst of instruments) {
-      map.set(inst.ticker, inst);
-    }
-    return map;
-  }, [instruments]);
-
   // ─── MEP & RP from Market Truth ───────────────────────────────────
   const mepValue = marketTruth?.mep?.value ?? null;
   const mepConfidence = marketTruth?.mep?.confidence ?? null;
@@ -476,13 +798,27 @@ export default function CockpitTab({
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-lg font-light text-app-text mb-1">
-              🎯 Cockpit Táctico — V5.1 SCANNER
+              🎯 Cockpit Táctico — V5.2 SCANNER
             </h2>
             <p className="text-sm text-app-text3">
               Price Action Scanner · S/R + Volumen + Presión → Gatillador Cuantitativo · Horizonte: {horizonLabel}
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* V5.2: Watchlist counter badge */}
+            {watchlist.length > 0 && (
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-[#fbbf24]/10 border border-[#fbbf24]/20 text-[9px] text-[#fbbf24] font-medium">
+                <Star className="w-2.5 h-2.5 fill-[#fbbf24]" />
+                {watchlist.length}
+              </span>
+            )}
+            {/* V5.2: Price alerts counter badge */}
+            {alertCount > 0 && (
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-[#f87171]/10 border border-[#f87171]/20 text-[9px] text-[#f87171] font-medium">
+                <BellRing className="w-2.5 h-2.5" />
+                {alertCount}
+              </span>
+            )}
             {/* V5.1: Sound alert toggle */}
             <button
               onClick={toggleSound}
@@ -519,6 +855,30 @@ export default function CockpitTab({
           <span className="text-[9px] text-[#fb923c]/70">— Las APIs externas no responden, mostrando último valor disponible</span>
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* V5.2: KEYBOARD SHORTCUTS INFO PANEL                           */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <div className="animate-fadeInUp">
+        <button
+          onClick={() => setShortcutsExpanded(prev => !prev)}
+          className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-app-subtle/40 border border-app-border/40 text-[10px] font-medium text-app-text3 hover:text-app-text2 hover:bg-app-hover transition-all"
+        >
+          <Keyboard className="w-3 h-3" />
+          ⌨ Shortcuts
+          <span className="text-[8px] text-app-text4">{shortcutsExpanded ? '▲' : '▼'}</span>
+        </button>
+        {shortcutsExpanded && (
+          <div className="mt-1.5 flex items-center gap-3 flex-wrap px-3 py-2 rounded-lg bg-app-subtle/20 border border-app-border/20 text-[9px] text-app-text3 animate-fadeInUp">
+            <span className="flex items-center gap-1"><kbd>1-5</kbd> Tabs</span>
+            <span className="flex items-center gap-1"><kbd>L</kbd> LIVE</span>
+            <span className="flex items-center gap-1"><kbd>S</kbd> Sonido</span>
+            <span className="flex items-center gap-1"><kbd>C</kbd> CSV</span>
+            <span className="flex items-center gap-1"><kbd>/</kbd> Buscar</span>
+            <span className="flex items-center gap-1"><kbd>Esc</kbd> Limpiar</span>
+          </div>
+        )}
+      </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* SUMMARY BAR — V5.0 Enhanced with Action Score counts          */}
@@ -624,6 +984,11 @@ export default function CockpitTab({
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
+      {/* V5.2: MARKET HEATMAP MINI-VISUALIZATION                       */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <MarketHeatmapStrip scores={displayedScores} onBlockClick={handleHeatmapClick} />
+
+      {/* ═══════════════════════════════════════════════════════════ */}
       {/* HORIZON FILTER                                                */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="flex items-center gap-2 animate-fadeInUp overflow-x-auto scrollbar-hide flex-wrap">
@@ -668,6 +1033,25 @@ export default function CockpitTab({
         >
           <Download className="w-3 h-3" />
           <span className="hidden sm:inline">CSV</span>
+        </button>
+        <div className="w-px h-4 bg-app-border/40 shrink-0" />
+        {/* V5.2: Watchlist filter toggle */}
+        <button
+          onClick={() => setWatchlistFilterActive(prev => !prev)}
+          className={`flex items-center gap-1 px-2 py-1 rounded-lg border transition-all duration-150 shrink-0 ${
+            watchlistFilterActive
+              ? 'bg-[#fbbf24]/10 border-[#fbbf24]/30 text-[#fbbf24]'
+              : 'bg-app-subtle/40 border-app-border/40 text-app-text4 hover:text-app-text3'
+          }`}
+          title={watchlistFilterActive ? 'Mostrar todos los instrumentos' : 'Filtrar solo watchlist'}
+        >
+          <Star className={`w-3 h-3 ${watchlistFilterActive ? 'fill-[#fbbf24]' : ''}`} />
+          <span className="text-[9px] font-medium">Watchlist</span>
+          {watchlist.length > 0 && (
+            <span className={`text-[8px] font-mono font-bold ${watchlistFilterActive ? 'text-[#fbbf24]' : 'text-app-text4'}`}>
+              {watchlist.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -760,8 +1144,9 @@ export default function CockpitTab({
                 return (
                   <div
                     key={`${score.ticker}-${score.type}`}
+                    id={`cockpit-row-${score.ticker}`}
                     className={`
-                      md:table-row-highlight md:table-row-alt md:px-3 md:py-2 animate-row-in ${getStaggerClass(idx)} ${isGatillar ? 'gatillar-row' : ''} cockpit-row-hover
+                      md:table-row-highlight md:table-row-alt md:px-3 md:py-2 animate-row-in ${getStaggerClass(idx)} ${isGatillar ? 'gatillar-row' : ''} ${triggeredAlerts.has(score.ticker) ? 'price-alert-flash' : ''} cockpit-row-hover
                     `}
                     style={idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 56px' } : undefined}
                   >
@@ -789,7 +1174,7 @@ export default function CockpitTab({
                           <span className="text-[8px] text-app-text4 font-mono">{score.days}d</span>
                         </div>
                         <span
-                          className={`px-1.5 py-0.5 rounded-lg text-[8px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse' : ''}`}
+                          className={`action-score-badge px-1.5 py-0.5 rounded-lg text-[8px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse action-score-gatillar' : ''} ${isAtractivoAction ? 'action-score-atractivo' : ''}`}
                           style={{
                             color: asc.color,
                             background: asc.bg,
@@ -800,6 +1185,33 @@ export default function CockpitTab({
                           {isGatillar ? '🔥 ' : isAtractivoAction ? '✓ ' : ''}
                           {score.actionScore.label}
                         </span>
+                        {/* V5.2: Score ring next to badge */}
+                        {score.actionScore.label !== 'SIN SEÑAL' && (
+                          <ScoreRing score={score.actionScore.score} color={asc.color} size={18} />
+                        )}
+                        {/* V5.2: Watchlist star + Price alert bell */}
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button
+                            onClick={() => toggleWatchlist(score.ticker)}
+                            className={`flex items-center justify-center w-5 h-5 rounded transition-all duration-150 ${
+                              isWatched(score.ticker)
+                                ? 'text-[#fbbf24] hover:text-[#fbbf24]/70'
+                                : 'text-app-text4 hover:text-app-text3'
+                            }`}
+                            title={isWatched(score.ticker) ? 'Quitar de watchlist' : 'Agregar a watchlist'}
+                          >
+                            <Star className={`w-3 h-3 ${isWatched(score.ticker) ? 'fill-[#fbbf24]' : ''}`} />
+                          </button>
+                          <PriceAlertPopover
+                            ticker={score.ticker}
+                            currentPrice={price}
+                            alert={getAlert(score.ticker)}
+                            onSetAlert={setAlert}
+                            onRemoveAlert={removeAlert}
+                            onClearAll={clearAllAlerts}
+                            alertCount={alertCount}
+                          />
+                        </div>
                       </div>
 
                       {/* Middle row: Price + TEM + VOL */}
@@ -919,7 +1331,7 @@ export default function CockpitTab({
                           {rank}
                         </div>
 
-                        {/* Ticker + Type + Status dot */}
+                        {/* Ticker + Type + Status dot + V5.2: Star + Bell */}
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className={dotClass} />
                           <span className="font-mono font-bold text-[11px] text-app-text truncate">
@@ -933,6 +1345,28 @@ export default function CockpitTab({
                             {score.type}
                           </span>
                           <span className="text-[8px] text-app-text4 font-mono">{score.days}d</span>
+                          {/* V5.2: Watchlist star */}
+                          <button
+                            onClick={() => toggleWatchlist(score.ticker)}
+                            className={`flex items-center justify-center w-4 h-4 rounded transition-all duration-150 shrink-0 ${
+                              isWatched(score.ticker)
+                                ? 'text-[#fbbf24] hover:text-[#fbbf24]/70'
+                                : 'text-app-text4 hover:text-app-text3'
+                            }`}
+                            title={isWatched(score.ticker) ? 'Quitar de watchlist' : 'Agregar a watchlist'}
+                          >
+                            <Star className={`w-2.5 h-2.5 ${isWatched(score.ticker) ? 'fill-[#fbbf24]' : ''}`} />
+                          </button>
+                          {/* V5.2: Price alert bell */}
+                          <PriceAlertPopover
+                            ticker={score.ticker}
+                            currentPrice={price}
+                            alert={getAlert(score.ticker)}
+                            onSetAlert={setAlert}
+                            onRemoveAlert={removeAlert}
+                            onClearAll={clearAllAlerts}
+                            alertCount={alertCount}
+                          />
                         </div>
 
                         {/* Price */}
@@ -1013,9 +1447,9 @@ export default function CockpitTab({
                         </div>
 
                         {/* V5.0: SCORE — EL GATILLADOR */}
-                        <div className="flex justify-end">
+                        <div className="flex justify-end items-center gap-1">
                           <span
-                            className={`px-2 py-1 rounded-lg text-[9px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse' : ''}`}
+                            className={`action-score-badge px-2 py-1 rounded-lg text-[9px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse action-score-gatillar' : ''} ${isAtractivoAction ? 'action-score-atractivo' : ''}`}
                             style={{
                               color: asc.color,
                               background: asc.bg,
@@ -1026,6 +1460,10 @@ export default function CockpitTab({
                             {isGatillar ? '🔥 ' : isAtractivoAction ? '✓ ' : ''}
                             {score.actionScore.label}
                           </span>
+                          {/* V5.2: Score ring next to badge */}
+                          {score.actionScore.label !== 'SIN SEÑAL' && (
+                            <ScoreRing score={score.actionScore.score} color={asc.color} size={22} />
+                          )}
                         </div>
                       </div>
 

@@ -325,3 +325,210 @@ Stage Summary:
 - Typography: Score column text-sm → text-base, desktop row py-2
 - 2 files modified: CockpitTab.tsx (full rewrite of table section), globals.css (new V5.1 CSS section)
 - Lint clean, no new TypeScript errors
+
+---
+Task ID: 7a
+Agent: CockpitTab Styling Agent
+Task: Improve CockpitTab.tsx styling with 3 major visual enhancements (V5.2)
+
+Work Log:
+- Read worklog.md for full project context (Tasks 1-6, Task 4, Task 4b, all phases complete)
+- Read full CockpitTab.tsx (~1190 lines) and globals.css (~1494 lines) to understand current state
+- Enhancement 1: Market Heatmap Mini-Visualization
+  - Added `MarketHeatmapStrip` component before existing ElGritoCard component
+  - Horizontal bar of colored blocks (8px × 32px, 2px gap) representing all instruments
+  - Color mapping: #2eebc8 (GATILLAR YA), #fbbf24 (ATRACTIVO), #6b7280 (NEUTRAL/SIN SEÑAL), #f87171 (close to S/R <0.5%)
+  - Hover: shows ticker name + action label via title attribute
+  - Clickable: scrolls to instrument row with flash animation (cockpit-row-flash CSS class)
+  - Legend below: "🔥 Gatillar ✓ Atractivo ● Neutral Cerca S/R" with colored squares
+  - Added `handleHeatmapClick` callback using document.getElementById + scrollIntoView + flash class
+  - Added `id={cockpit-row-${ticker}}` to each table row for scroll targeting
+  - Placed after SUMMARY BAR, before HORIZON FILTER
+- Enhancement 2: Keyboard Shortcuts Info Panel
+  - Added `shortcutsExpanded` state (default: false)
+  - Added `Keyboard` icon import from lucide-react
+  - Toggle button "⌨ Shortcuts" with expand/collapse arrow (▲/▼)
+  - Collapsible panel with 6 <kbd> elements:
+    - 1-5: Switch tabs
+    - L: Toggle LIVE mode
+    - S: Toggle Sound alerts
+    - C: Export CSV
+    - /: Focus search
+    - Esc: Clear search
+  - Styled as subtle panel with bg-app-subtle/20 border
+  - Placed after stale data warning, before summary bar
+- Enhancement 3: Improved Action Score Visual Badge
+  - GATILLAR YA: Added diagonal stripe pattern via CSS repeating-linear-gradient (-45deg, 4px/8px) + stronger glow (24px outer)
+  - ATRACTIVO: Added breathing glow border animation (2.5s ease-in-out infinite) with border-color + box-shadow transition
+  - Score Ring: Added `ScoreRing` SVG component — circular progress indicator (stroke-dasharray) showing score 0-100
+    - 22px size on desktop, 18px on mobile
+    - Background track + filled arc with color matching action score
+    - Smooth transition on stroke-dashoffset (0.6s ease-out)
+    - Only shown for non-SIN SEÑAL items (keeps UI clean for low-signal instruments)
+  - Added CSS classes: .action-score-gatillar, .action-score-atractivo, .score-ring
+  - Added light mode variants for both badge types
+- CSS additions to globals.css (V5.2 section, ~105 lines):
+  - .cockpit-heatmap / .cockpit-heatmap-block: heatmap strip styling with hover scale
+  - @keyframes cockpitRowFlash: flash animation for heatmap click-to-scroll
+  - .action-score-gatillar: repeating-linear-gradient diagonal stripes + stronger box-shadow
+  - @keyframes atractivoBreathingGlow: border + shadow pulse for ATRACTIVO badges
+  - .action-score-atractivo: animated border with breathing glow
+  - .score-ring circle: smooth stroke-dashoffset transition
+  - Light mode overrides: .action-score-gatillar, .action-score-atractivo with appropriate colors
+- Fixed pre-existing lint error: PriceAlertPopover `setState in effect` → converted to lazy state initializers
+- Version label updated: V5.1 SCANNER → V5.2 SCANNER
+- Header comment updated: added V5.2 feature description
+- ESLint passes with 0 errors (verified with `bun run lint -- --ignore-pattern 'upload/**' --ignore-pattern 'examples/**'`)
+
+Stage Summary:
+- 3 major visual enhancements added to CockpitTab.tsx:
+  1. Market Heatmap Mini-Visualization — colored block strip with click-to-scroll
+  2. Keyboard Shortcuts Info Panel — collapsible <kbd> panel
+  3. Enhanced Action Score Badges — diagonal stripes, breathing glow, SVG score ring
+- 2 files modified: CockpitTab.tsx (new components + state + render changes), globals.css (V5.2 CSS section)
+- New imports: Keyboard from lucide-react
+- New components: MarketHeatmapStrip, ScoreRing
+- New state: shortcutsExpanded
+- New callbacks: handleHeatmapClick
+- New CSS: .cockpit-heatmap, .cockpit-heatmap-block, .cockpit-row-flash, .action-score-gatillar, .action-score-atractivo, .score-ring, @keyframes atractivoBreathingGlow, @keyframes cockpitRowFlash
+- No existing functionality changed, only visual additions
+- Lint clean
+
+---
+Task ID: 7b
+Agent: Feature Agent
+Task: Add Watchlist (Favorites) and Price Alert features to CockpitTab
+
+Work Log:
+- Read worklog.md for full project context (Tasks 1-7a, all phases complete)
+- Read CockpitTab.tsx (~1190 lines), page.tsx, globals.css to understand current state
+- Feature 1: Watchlist / Favorites
+  - Added `useWatchlist()` custom hook with localStorage persistence (key: `arbradar_watchlist`)
+  - Returns: { watchlist, toggleWatchlist, isWatched } — JSON array of tickers
+  - Added Star icon (☆/★) next to each instrument's ticker name in both desktop and mobile rows
+  - Clicking the star toggles the instrument as a favorite — filled yellow star when watched
+  - Added "★ Watchlist" filter toggle button in horizon filter row — when active, only shows favorited instruments
+  - Counter badge "★ N" next to the Watchlist button showing how many instruments are in the watchlist
+  - Counter badge in CockpitTab header area showing watchlist count with gold star icon
+  - Counter badge "★N" on Cockpit tab label in page.tsx navigation bar (passed via onWatchlistCountChange callback)
+  - In mobile card layout, star button included in the top row alongside action score badge
+- Feature 2: Price Alert Thresholds
+  - Added `usePriceAlerts()` custom hook with localStorage persistence (key: `arbradar_price_alerts`)
+  - Returns: { alerts, setAlert, removeAlert, clearAllAlerts, getAlert, alertCount }
+  - Storage format: Record<string, { direction: '>' | '<', price: number }>
+  - Added `PriceAlertPopover` component — uses shadcn/ui Popover + Input
+  - Popover shows: "Alertar cuando precio {> / <} {input}" with Activar/Actualizar + remove buttons
+  - Bell icon (Bell/BellRing from lucide-react) on each instrument row (desktop and mobile)
+  - BellRing icon (gold) when alert is active, plain Bell when no alert
+  - "Clear All Alerts" button in the popover when alerts exist
+  - "🔔 N alertas activas" counter in the popover footer
+  - Price alert threshold check in existing GATILLAR YA useEffect
+  - When price crosses an alert threshold, flash the row with `.price-alert-flash` CSS class + play beep sound
+  - `triggeredAlerts` Set<string> state tracks currently-triggered alerts to avoid repeat beeps
+  - Alert counter badge in CockpitTab header with BellRing icon in red
+  - "🔔 N alertas activas" counter in page.tsx status bar (passed via onAlertsCountChange callback)
+- Updated displayedScores useMemo to incorporate watchlist filter alongside search filter
+- Updated row wrapper class to include `price-alert-flash` when alert is triggered
+- CSS additions to globals.css (V5.2 section):
+  - @keyframes priceAlertFlash: 4-step gold/amber flash animation
+  - .price-alert-flash: animation + gold left border + subtle shadow
+  - Light mode variant: @keyframes priceAlertFlashLight + .price-alert-flash light theme
+- Updated CockpitTabProps: added `onAlertsCountChange` and `onWatchlistCountChange` callbacks
+- Updated page.tsx:
+  - Added `priceAlertsCount` and `watchlistCount` state
+  - Passed callbacks to CockpitTab via props
+  - Added watchlist counter badge on Cockpit tab navigation button
+  - Added price alerts counter in status bar
+- Version label already V5.2 from previous task
+- ESLint passes with 0 errors (verified with `bun run lint -- --ignore-pattern 'upload/**' --ignore-pattern 'examples/**'`)
+- Dev server compiles and serves correctly
+
+Stage Summary:
+- 2 major features added: Watchlist (Favorites) + Price Alert Thresholds
+- 3 files modified: CockpitTab.tsx, page.tsx, globals.css
+- New hooks: useWatchlist(), usePriceAlerts()
+- New component: PriceAlertPopover (with shadcn/ui Popover + Input)
+- New imports: Star, BellRing, X from lucide-react; Popover/PopoverContent/PopoverTrigger, Input from shadcn/ui
+- New state: watchlistFilterActive, triggeredAlerts, priceAlertsCount, watchlistCount
+- New callbacks: onAlertsCountChange, onWatchlistCountChange (CockpitTab → page.tsx communication)
+- localStorage keys: arbradar_watchlist, arbradar_price_alerts
+- Price alert flash animation: gold/amber 3-pulse flash with left border indicator
+- Watchlist filter: toggle button with counter badge, integrated into displayedScores pipeline
+- Lint clean, dev server compiles OK
+
+---
+Task ID: 8
+Agent: Main Agent (QA Round)
+Task: Bug fixes + V5.2 QA and feature deployment
+
+Work Log:
+- Analyzed user-reported error screenshot: `Runtime ReferenceError: curveShape is not defined` at line 1108 in page.tsx
+- ROOT CAUSE 1: In FASE 1, `curveShape` computation was eliminated (CurvasTab removed) but the status bar reference in page.tsx lines 1106-1119 was missed — dead code still referencing undefined variable
+- FIX 1: Removed the entire Yield Curve Shape block (lines 1106-1119) from page.tsx status bar section
+- ROOT CAUSE 2: `instrumentMap` useMemo defined at line 442 in CockpitTab.tsx, but `handleExportCSV` callback at line 377 references it — temporal dead zone (const before initialization)
+- FIX 2: Moved `instrumentMap` useMemo definition ABOVE `handleExportCSV` (now at line 376), removed the duplicate definition that was at line 450
+- Tested via agent-browser: Mercado tab renders correctly (200 OK, no errors)
+- Tested via agent-browser: Cockpit tab had runtime error (instrumentMap TDZ) — fixed
+- Deployed V5.2 styling enhancements via subagent: Market Heatmap, Keyboard Shortcuts panel, Enhanced Action Score badges
+- Deployed V5.2 features via subagent: Watchlist (favorites), Price Alert Thresholds
+- Lint passes with 0 errors
+- Dev server compiles and serves correctly (HTTP 200)
+
+Stage Summary:
+- 2 critical runtime bugs fixed:
+  1. `curveShape is not defined` — dead code removed from page.tsx status bar
+  2. `Cannot access 'instrumentMap' before initialization` — reordered useMemo declarations in CockpitTab.tsx
+- 3 visual enhancements added: Heatmap strip, Keyboard shortcuts panel, Enhanced action score badges (diagonal stripes, breathing glow, SVG score ring)
+- 2 features added: Watchlist favorites (star toggle + filter), Price Alert thresholds (popover + flash + beep)
+- Version: V5.2 SCANNER
+- Files modified: page.tsx, CockpitTab.tsx, globals.css
+
+---
+Task ID: 8b
+Agent: Main Agent (Final TDZ Fix)
+Task: Fix persistent instrumentMap TDZ error reintroduced by subagents
+
+Work Log:
+- Discovered that subagent 7b (Watchlist/Price Alerts) reintroduced the instrumentMap TDZ bug
+- The price alert useEffect (line 667) referenced instrumentMap (line 673), but instrumentMap was defined at line 689 — temporal dead zone
+- Previous fix (Task 8) moved instrumentMap above handleExportCSV, but subagent 7b added new code between them
+- FIX: Moved instrumentMap useMemo to line 650 (right after displayedScores, before all useEffects/useCallbacks that reference it)
+- Removed duplicate instrumentMap definition that was at line 697
+- Verified: instrumentMap defined at line 651, all usages at lines 682, 704, 1112 — correct order
+- Lint passes with 0 errors
+- Agent-browser confirms: Cockpit tab renders correctly, no runtime errors, no JS errors in console
+- V5.2 SCANNER title visible, Shortcuts panel present, Summary bar working
+
+Stage Summary:
+- instrumentMap TDZ bug permanently fixed — moved to top of hook chain (after displayedScores, before all consumers)
+- Cockpit tab renders without errors — confirmed via agent-browser + VLM analysis
+- No console errors (only expected API fetch warnings for sandbox-inaccessible endpoints)
+- Version: V5.2 SCANNER
+
+## Current Project Status
+
+### Completed Phases
+- **FASE 1**: Layout cleanup, dead tab removal, store cleanup ✅
+- **FASE 2**: Volume intradía fix, Presión Order Book fix, Prisma snapshotCount fix ✅
+- **FASE 3**: Price Action Scanner — S/R, Volume Injection, El Gatillador ✅
+- **V5.1**: Mobile responsive, visual enhancements, scrollable container ✅
+- **V5.2**: Bug fixes (curveShape, instrumentMap TDZ), Heatmap, Shortcuts, Score Ring, Watchlist, Price Alerts ✅
+
+### Architecture
+- Backend: /api/cockpit-score → calculates all 5 CockpitScore factors + 4 V5.0 fields
+- Frontend: CockpitTab.tsx renders 11-column table + heatmap strip + watchlist filter + price alerts
+- Algorithms: calculateNearestSR, calculateVolumeInjection, calculateActionScore in calculations.ts
+- Persistence: localStorage for watchlist (arbradar_watchlist) + price alerts (arbradar_price_alerts) + sound toggle
+
+### Unresolved Issues / Risks
+- Dev server is resource-intensive in sandbox (Turbopack OOM kills after ~30s)
+- S/R derivation uses bid/ask + change_pct heuristics (not full historical S/R)
+- Volume Injection ratios are heuristic-based
+- For production: connect real historical S/R data via API endpoint
+
+### Priority Recommendations for Next Phase
+- Add S/R from historico_precios.json via API endpoint
+- Implement real volume moving average from IOL volume snapshots (Prisma DB)
+- Add instrument detail panel (click row → expand with charts)
+- Add portfolio rebalancing suggestions based on Action Score
+- Improve mobile card layout for the Mercado tab (similar to CockpitTab treatment)

@@ -201,6 +201,11 @@ function HomeContent() {
   const prevRiesgoPaisRef = useRef<number | null>(null);
   const [riesgoPaisTrend, setRiesgoPaisTrend] = useState<'up' | 'down' | 'flat' | null>(null);
 
+  // V5.2: Price alerts count from CockpitTab
+  const [priceAlertsCount, setPriceAlertsCount] = useState(0);
+  // V5.2: Watchlist count from CockpitTab
+  const [watchlistCount, setWatchlistCount] = useState(0);
+
   // ════════════════════════════════════════════════════════════════
   // V2.0.3 — GLOBAL LIVE DATA (moved from MercadoTab to page.tsx)
   // All tabs now share the same live data source.
@@ -648,7 +653,7 @@ function HomeContent() {
       case 'mercado':
         return <MercadoTab instruments={effectiveInstruments} config={config} position={position} momentumMap={momentumMap} priceHistory={priceHistory} onMepRate={handleMepRate} onCclRate={handleCclRate} onDolarUpdate={handleDolarUpdate} liveData={liveData} liveDataMap={liveDataMap} riesgoPaisAuto={riesgoPaisAuto} />;
       case 'cockpit':
-        return <CockpitTab instruments={effectiveInstruments} config={config} position={position} liveDataMap={liveDataMap} isLive={liveData.active} />;
+        return <CockpitTab instruments={effectiveInstruments} config={config} position={position} liveDataMap={liveDataMap} isLive={liveData.active} onAlertsCountChange={setPriceAlertsCount} onWatchlistCountChange={setWatchlistCount} />;
       // FASE 1: curvas & estrategias cases removed
       case 'cartera':
         return <CarteraTab instruments={effectiveInstruments} config={config} setConfig={updateConfig} position={position} setPosition={updatePosition} transactions={transactions} setTransactions={updateTransactions} externalHistory={externalHistory} setExternalHistory={updateExternalHistory} momentumMap={momentumMap} priceHistory={priceHistory} liveDataMap={liveDataMap} isLive={liveData.active} />;
@@ -831,6 +836,12 @@ function HomeContent() {
             >
               <span className="text-sm">{tab.icon}</span>
               <span>{tab.label}</span>
+              {/* V5.2: Watchlist counter badge on Cockpit tab */}
+              {tab.id === 'cockpit' && watchlistCount > 0 && (
+                <span className="ml-0.5 px-1 py-0.5 rounded text-[7px] font-bold bg-[#fbbf24]/15 text-[#fbbf24] border border-[#fbbf24]/20 leading-none">
+                  ★{watchlistCount}
+                </span>
+              )}
               {/* Shortcut hint on hover */}
               <span className={`ml-1 text-[8px] font-mono transition-opacity ${activeTab === tab.id ? 'opacity-0' : 'opacity-0 group-hover:opacity-50'}`}>
                 {tab.shortcut}
@@ -960,6 +971,14 @@ function HomeContent() {
               {effectiveInstruments.length} inst.
               {priceHistory && ' · 📜'}
             </div>
+            {/* V5.2: Price alerts counter in status bar */}
+            {priceAlertsCount > 0 && (
+              <div className="flex items-center gap-1 text-[9px] bg-[#fbbf24]/8 px-2 py-1 rounded-md border border-[#fbbf24]/15">
+                <span className="text-[#fbbf24]">🔔</span>
+                <span className="font-mono font-medium text-[#fbbf24]">{priceAlertsCount}</span>
+                <span className="text-app-text4 text-[8px]">alerta{priceAlertsCount !== 1 ? 's' : ''} activa{priceAlertsCount !== 1 ? 's' : ''}</span>
+              </div>
+            )}
             {/* V4.0 BLINDADO: Reset Button — Simplified (no confirmation dialog) */}
             <button
               onClick={handleReset}
@@ -1099,20 +1118,6 @@ function HomeContent() {
                     <span className="text-[9px] text-app-text4 uppercase tracking-wider">MEP/CCL</span>
                     <span className={`text-[11px] font-mono font-medium`} style={{ color: dotColor }}>{brechaPct >= 0 ? '+' : ''}{brechaPct.toFixed(1)}%</span>
                     <span className="text-[8px] text-app-text4 font-mono">(${brecha.toFixed(0)})</span>
-                  </div>
-                </>
-              );
-            })()}
-            {/* Yield Curve Shape */}
-            {(() => {
-              const shapeColor = curveShape.shape === 'NORMAL' ? '#2eebc8' : curveShape.shape === 'PLANA' ? '#fbbf24' : curveShape.shape === 'INVERTIDA' ? '#f87171' : '#f472b6';
-              return (
-                <>
-                  <div className="w-px h-3 bg-app-border/40 shrink-0" />
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill={shapeColor} opacity="0.7" /></svg>
-                    <span className="text-[9px] text-app-text4 uppercase tracking-wider">Curva</span>
-                    <span className="text-[11px] font-mono font-medium" style={{ color: shapeColor }}>{curveShape.shape.replace('_', ' ')}</span>
                   </div>
                 </>
               );
