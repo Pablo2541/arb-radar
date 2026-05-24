@@ -261,6 +261,22 @@ export interface CockpitScore {
   volume: number;              // data912 notional ARS volume (fallback for VOL column)
   iolVolume: number;           // IOL cantidadOperada (primary for VOL column)
 
+  // ── V5.0 SCANNER: Price Action columns ──
+  nearestSR: {                 // Nearest S/R level to current price
+    level: number;             // Price level of nearest S/R
+    type: 'S' | 'R';           // Support or Resistance
+  } | null;
+  distanceToSR: number;        // % distance to nearest S/R (absolute value)
+  volumeInjection: {           // Volume acceleration metric
+    ratio: number;             // Current volume / average volume
+    label: 'NORMAL' | 'X2' | 'X3' | 'X5' | 'EXPLOSIVO';
+  };
+  actionScore: {               // Composite action signal
+    score: number;             // 0-100 quantified signal strength
+    label: 'GATILLAR YA' | 'ATRACTIVO' | 'NEUTRAL' | 'SIN SEÑAL';
+    reason: string;            // Human-readable reason
+  };
+
   withinHorizon: boolean;      // Within horizon filter (default 45 days — Scalping Extendido)
 }
 

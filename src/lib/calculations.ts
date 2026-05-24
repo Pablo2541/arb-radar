@@ -1654,5 +1654,292 @@ export function calculateCockpitScore(
     upsideCapital: effectiveUpsideCapital,
     days,
     withinHorizon,
+    // V5.0 SCANNER: Price Action columns (defaults — enriched by cockpit-score API)
+    nearestSR: null,
+    distanceToSR: 0,
+    volumeInjection: { ratio: 1, label: 'NORMAL' as const },
+    actionScore: { score: 0, label: 'SIN SEÑAL' as const, reason: 'Sin datos de S/R' },
+    volume: 0,
+    iolVolume: 0,
   };
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// V5.0 SCANNER — Price Action Helper Functions
+// ════════════════════════════════════════════════════════════════════════
+
+/**
+ * V5.0: Calculate nearest Support/Resistance level from live data.
+ * 
+ * Since S/R from historico_precios.json is NOT available in the API route
+ * (it's a client-side file), we derive S/R from the current session's
+ * price data using statistical methods:
+ *   - Support ≈ price × (1 - spread_half)  →  bid side floor
+ *   - Resistance ≈ price × (1 + spread_half) →  ask side ceiling
+ *   - For instruments with change_pct: adjust dynamically
+ *   - Fallback: 2% band around current price
+ */
+export function calculateNearestSR(
+  price: number,
+  bid: number | undefined,
+  ask: number | undefined,
+  changePct: number | undefined,
+): { level: number; type: 'S' | 'R' } | null {
+  if (!price || price <= 0) return null;
+
+  // If we have bid/ask, derive S/R from the spread
+  if (bid && bid > 0 && ask && ask > 0) {
+    const midPrice = (bid + ask) / 2;
+    const support = bid; // Bid is the floor (buyers willing to pay)
+    const resistance = ask; // Ask is the ceiling (sellers asking)
+
+    const distToSupport = Math.abs((price - support) / price) * 100;
+    const distToResistance = Math.abs((resistance - price) / price) * 100;
+
+    if (distToSupport <= distToResistance) {
+      return { level: support, type: 'S' };
+    } else {
+      return { level: resistance, type: 'R' };
+    }
+  }
+
+  // Fallback: estimate S/R from price movement
+  // If price is going up (change > 0), support is behind, resistance ahead
+  // If price is going down, support is ahead, resistance behind
+  const chg = changePct ?? 0;
+  if (chg > 0) {
+    // Price rising — nearest is support (the floor we bounced from)
+    const support = price / (1 + Math.abs(chg) / 100);
+    return { level: support, type: 'S' };
+  } else if (chg < 0) {
+    // Price falling — nearest is resistance (the ceiling we dropped from)
+    const resistance = price / (1 - Math.abs(chg) / 100);
+    return { level: resistance, type: 'R' };
+  }
+
+  // No movement — use 1% band
+  return { level: price * 0.99, type: 'S' };
+}
+
+/**
+ * V5.0: Calculate Volume Injection metric.
+ * 
+ * Compares current session volume against a baseline average.
+ * Since we don't have intraday minute-by-minute data, we use:
+ *   - IOL volume (cantidadOperada) as current volume
+ *   - data912 volume as notional reference
+ *   - Estimate average daily volume from volume / hours_elapsed
+ *   - Compare against a heuristic baseline
+ * 
+ * Returns: { ratio, label }
+ *   NORMAL: ratio 0-2x
+ *   X2: ratio 2-3x
+ *   X3: ratio 3-5x
+ *   X5: ratio 5-10x
+ *   EXPLOSIVO: ratio > 10x
+ */
+export function calculateVolumeInjection(
+  iolVolume: number,
+  data912Volume: number,
+  changePct: number | undefined,
+): { ratio: number; label: 'NORMAL' | 'X2' | 'X3' | 'X5' | 'EXPLOSIVO' } {
+  // Use IOL volume as primary (it's real traded volume)
+  // Fall back to data912 notional volume
+  const currentVolume = iolVolume || data912Volume || 0;
+
+  if (currentVolume <= 0) {
+    return { ratio: 0, label: 'NORMAL' };
+  }
+
+  // Estimate baseline: we approximate average volume from the change_pct
+  // and current volume. In a normal session, volume distributes roughly
+  // uniformly. If change_pct is large, volume tends to be above average.
+  //
+  // Heuristic: "average" daily volume ≈ current volume (assuming mid-session)
+  // Then ratio = acceleration factor based on price momentum
+  // 
+  // More pragmatic: use the raw data912 volume as a proxy for "normal"
+  // and IOL volume as "current". If IOL > data912, it's injection.
+  //
+  // Best approach for sandbox: use a composite signal.
+  // 1. If we have both volumes, ratio = iolVolume / max(1, data912Volume / 10)
+  // 2. If only one, estimate from change momentum
+  
+  let ratio = 1.0;
+
+  if (iolVolume > 0 && data912Volume > 0) {
+    // IOL is real quantity, data912 is notional ARS
+    // Normalize: data912 notional / typical_lecap_price ≈ quantity
+    // Typical LECAP price is ~1.0-1.2 per VN unit
+    const estimatedAvgQty = data912Volume / 1.1; // rough average daily quantity
+    if (estimatedAvgQty > 0) {
+      // If IOL volume > estimated average, there's injection
+      // But since IOL is cumulative intraday, compare against
+      // a fraction of data912 (which is also intraday cumulative)
+      ratio = iolVolume / (estimatedAvgQty * 0.3 + 1); // .3 factor for partial session
+    }
+  } else if (iolVolume > 0) {
+    // Only IOL volume — estimate from absolute level
+    // LECAP typical volume: 100K-500K nominal is normal
+    // > 1M is notable, > 5M is high
+    if (iolVolume >= 5_000_000) ratio = 5.0;
+    else if (iolVolume >= 2_000_000) ratio = 3.0;
+    else if (iolVolume >= 1_000_000) ratio = 2.0;
+    else ratio = 1.0;
+  } else if (data912Volume > 0) {
+    // Only data912 notional — similar heuristic
+    if (data912Volume >= 50_000_000) ratio = 5.0;
+    else if (data912Volume >= 20_000_000) ratio = 3.0;
+    else if (data912Volume >= 10_000_000) ratio = 2.0;
+    else ratio = 1.0;
+  }
+
+  // Boost ratio if there's strong price movement (volume + move = injection)
+  const chg = Math.abs(changePct ?? 0);
+  if (chg > 1.0) ratio *= 1.5;
+  else if (chg > 0.5) ratio *= 1.2;
+
+  // Classify
+  let label: 'NORMAL' | 'X2' | 'X3' | 'X5' | 'EXPLOSIVO';
+  if (ratio >= 10) label = 'EXPLOSIVO';
+  else if (ratio >= 5) label = 'X5';
+  else if (ratio >= 3) label = 'X3';
+  else if (ratio >= 2) label = 'X2';
+  else label = 'NORMAL';
+
+  return { ratio: Math.round(ratio * 10) / 10, label };
+}
+
+/**
+ * V5.0: Calculate the ACTION SCORE — "El Gatillador Cuantitativo"
+ * 
+ * Crosses 3 variables in real-time:
+ *   1. Distance to S/R (< 0.5% = "a tiro de gatillo")
+ *   2. Volume Injection (≥ X3 = institutional entry)
+ *   3. Presión del Book (buying/selling pressure)
+ * 
+ * Returns: { score: 0-100, label, reason }
+ *   GATILLAR YA: Price at S/R <0.5% + Volume ≥ X3 + Pressure strongly favoring
+ *   ATRACTIVO: Approaching key zone + volume rising or pressure loading
+ *   NEUTRAL: Sideways, far from zones, no real liquidity
+ *   SIN SEÑAL: No data available
+ */
+export function calculateActionScore(
+  distanceToSR: number,
+  srType: 'S' | 'R' | null,
+  volumeInjectionLabel: 'NORMAL' | 'X2' | 'X3' | 'X5' | 'EXPLOSIVO',
+  volumeRatio: number,
+  presionPuntas: number | null,
+  spreadNeto: number,
+  deltaTIR: number | null,
+): { score: number; label: 'GATILLAR YA' | 'ATRACTIVO' | 'NEUTRAL' | 'SIN SEÑAL'; reason: string } {
+  let score = 0;
+  const reasons: string[] = [];
+
+  // ── Factor 1: Distance to S/R (0-40 points) ──
+  // Closer to S/R = higher score (price is at a decision point)
+  if (distanceToSR <= 0) {
+    // Already AT or PAST the level — maximum urgency
+    score += 40;
+    reasons.push(srType === 'S' ? 'Testeando soporte' : 'Rompieron resistencia');
+  } else if (distanceToSR < 0.3) {
+    score += 38;
+    reasons.push(`A ${distanceToSR.toFixed(2)}% de ${srType === 'S' ? 'soporte' : 'resistencia'}`);
+  } else if (distanceToSR < 0.5) {
+    score += 32;
+    reasons.push(`A ${distanceToSR.toFixed(2)}% de ${srType === 'S' ? 'soporte' : 'resistencia'}`);
+  } else if (distanceToSR < 1.0) {
+    score += 20;
+    reasons.push(`Acercándose a zona (${distanceToSR.toFixed(1)}%)`);
+  } else if (distanceToSR < 2.0) {
+    score += 10;
+  }
+  // > 2%: no points for proximity
+
+  // ── Factor 2: Volume Injection (0-35 points) ──
+  const volScore = (() => {
+    switch (volumeInjectionLabel) {
+      case 'EXPLOSIVO': return 35;
+      case 'X5': return 30;
+      case 'X3': return 25;
+      case 'X2': return 15;
+      case 'NORMAL': return 5;
+    }
+  })();
+  score += volScore;
+  if (volumeInjectionLabel !== 'NORMAL') {
+    reasons.push(`Volumen ${volumeInjectionLabel} (${volumeRatio.toFixed(1)}x)`);
+  }
+
+  // ── Factor 3: Pressure Direction (0-25 points) ──
+  // Pressure must AGREE with the trade direction:
+  // - Near SUPPORT → buying pressure is good (bounce confirmation)
+  // - Near RESISTANCE → selling pressure is bad (but break through = good)
+  if (presionPuntas !== null) {
+    if (srType === 'S' && presionPuntas > 1.2) {
+      // Near support + buying pressure = good entry
+      score += 25;
+      reasons.push('Presión compradora en soporte');
+    } else if (srType === 'R' && presionPuntas > 1.3) {
+      // Near resistance + strong buying = potential breakout
+      score += 22;
+      reasons.push('Presión compradora rompiendo resistencia');
+    } else if (srType === 'S' && presionPuntas < 0.8) {
+      // Near support + selling pressure = risk of breakdown
+      score += 5;
+      reasons.push('Presión vendedora en soporte (riesgo)');
+    } else if (srType === 'R' && presionPuntas < 0.8) {
+      // Near resistance + selling pressure = rejection likely
+      score += 8;
+      reasons.push('Presión vendedora en resistencia');
+    } else if (presionPuntas > 1.0) {
+      score += 12;
+      reasons.push('Presión compradora');
+    } else {
+      score += 5;
+    }
+  } else {
+    // No pressure data — neutral
+    score += 8;
+  }
+
+  // ── Bonus: Spread Neto positive (carry confirms) ──
+  if (spreadNeto > 0.3) {
+    score += 5;
+    reasons.push('Carry positivo');
+  }
+
+  // ── Bonus: ΔTIR positive (momentum confirms) ──
+  if (deltaTIR !== null && deltaTIR > 0.03) {
+    score += 5;
+    reasons.push('Momentum alcista');
+  }
+
+  // ── Cap at 100 ──
+  score = Math.min(100, score);
+
+  // ── Classify ──
+  let label: 'GATILLAR YA' | 'ATRACTIVO' | 'NEUTRAL' | 'SIN SEÑAL';
+
+  // GATILLAR YA: Must be VERY close to S/R (<0.5%) + Volume ≥ X3 + Pressure agreeing
+  const isNearSR = distanceToSR < 0.5;
+  const hasVolume = volumeInjectionLabel === 'X3' || volumeInjectionLabel === 'X5' || volumeInjectionLabel === 'EXPLOSIVO';
+  const pressureAgrees = presionPuntas !== null && (
+    (srType === 'S' && presionPuntas > 1.1) ||
+    (srType === 'R' && presionPuntas > 1.2)
+  );
+
+  if (isNearSR && hasVolume && pressureAgrees && score >= 70) {
+    label = 'GATILLAR YA';
+  } else if (score >= 50) {
+    label = 'ATRACTIVO';
+  } else if (score >= 25) {
+    label = 'NEUTRAL';
+  } else {
+    label = 'SIN SEÑAL';
+  }
+
+  const reason = reasons.length > 0 ? reasons.join(' · ') : 'Sin señales activas';
+
+  return { score, label, reason };
 }

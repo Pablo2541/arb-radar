@@ -1,11 +1,13 @@
 'use client';
 
 // ════════════════════════════════════════════════════════════════════════
-// V3.3-PRO TERMINAL — CockpitTab: UNIFIED COCKPIT
+// V5.0 SCANNER — CockpitTab: PRICE ACTION SCANNER
 //
-// Replaces 3 old tabs (Oportunidades, Arbitraje, Diagnóstico) with a
-// single unified view. El Grito alerts, Tabla Fusionada double-height
-// rows, Horizon Filter, and Summary Bar.
+// Unified cockpit with 4 new Price Action columns:
+//   1. S/R Más Cercano — nearest support/resistance level
+//   2. Distancia a S/R (%) — % distance with <0.5% visual alert
+//   3. Inyección de Volumen — volume acceleration (X2, X3, X5, EXPLOSIVO)
+//   4. SCORE — El Gatillador (GATILLAR YA / ATRACTIVO / NEUTRAL / SIN SEÑAL)
 //
 // BLINDAJE: La comisión del 0.15% NO se toca. price × 1.0015 = IMMUTABLE.
 // ════════════════════════════════════════════════════════════════════════
@@ -31,6 +33,23 @@ const VERDICT_CONFIG: Record<string, { label: string; color: string; bg: string 
   ATRACTIVO: { label: 'ATRACTIVO', color: '#2eebc8', bg: 'rgba(46,235,200,0.08)' },
   NEUTRAL: { label: 'NEUTRAL', color: '#94a3b8', bg: 'rgba(148,163,184,0.06)' },
   EVITAR: { label: 'EVITAR', color: '#6b7280', bg: 'rgba(107,114,128,0.06)' },
+};
+
+// ─── V5.0: Action Score Config ────────────────────────────────────────
+const ACTION_SCORE_CONFIG: Record<string, { label: string; color: string; bg: string; glow: string }> = {
+  'GATILLAR YA': { label: '🔥 GATILLAR YA', color: '#f87171', bg: 'rgba(248,113,113,0.18)', glow: '0 0 12px rgba(248,113,113,0.4)' },
+  'ATRACTIVO': { label: '✓ ATRACTIVO', color: '#2eebc8', bg: 'rgba(46,235,200,0.12)', glow: '0 0 8px rgba(46,235,200,0.2)' },
+  'NEUTRAL': { label: 'NEUTRAL', color: '#94a3b8', bg: 'rgba(148,163,184,0.06)', glow: 'none' },
+  'SIN SEÑAL': { label: 'SIN SEÑAL', color: '#6b7280', bg: 'rgba(107,114,128,0.04)', glow: 'none' },
+};
+
+// ─── V5.0: Volume Injection Label Config ──────────────────────────────
+const VOL_INJECTION_CONFIG: Record<string, { color: string; bg: string; pulse: boolean }> = {
+  EXPLOSIVO: { color: '#f87171', bg: 'rgba(248,113,113,0.18)', pulse: true },
+  X5: { color: '#fb923c', bg: 'rgba(251,146,60,0.14)', pulse: true },
+  X3: { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', pulse: false },
+  X2: { color: '#a78bfa', bg: 'rgba(167,139,250,0.10)', pulse: false },
+  NORMAL: { color: '#94a3b8', bg: 'rgba(148,163,184,0.06)', pulse: false },
 };
 
 // ─── Micro-Score Bar Colors ──────────────────────────────────────────
@@ -75,7 +94,6 @@ function getStaggerClass(index: number): string {
 }
 
 // ─── Micro-Score Bar Component ────────────────────────────────────────
-// Uses transform: scaleX() instead of width for GPU-accelerated animations
 function MicroScoreBar({ value, max = 10, color }: { value: number; max?: number; color: string }) {
   const scale = Math.min(value / max, 1);
   return (
@@ -99,7 +117,8 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
 
   const saltoScores = scores.filter(s => s.verdict === 'SALTO_TACTICO');
   const carameloScores = scores.filter(s => s.verdict === 'PUNTO_CARAMELO');
-  const topScores = [...saltoScores, ...carameloScores].slice(0, 5);
+  const gatillarScores = scores.filter(s => s.actionScore.label === 'GATILLAR YA');
+  const topScores = [...gatillarScores, ...saltoScores, ...carameloScores].slice(0, 6);
 
   if (topScores.length === 0) return null;
 
@@ -119,11 +138,17 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
             EL GRITO
           </span>
           <span className="text-[10px] text-app-text4 uppercase tracking-wider">— Capa 1 Alert</span>
+          {gatillarScores.length > 0 && (
+            <span className="ml-2 px-2 py-0.5 rounded-lg text-[9px] font-bold animate-pulse" style={{ color: '#f87171', background: 'rgba(248,113,113,0.2)', boxShadow: '0 0 12px rgba(248,113,113,0.3)' }}>
+              🔥 {gatillarScores.length} GATILLAR
+            </span>
+          )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2">
           {topScores.map((s, i) => {
-            const vc = VERDICT_CONFIG[s.verdict];
+            const isGatillar = s.actionScore.label === 'GATILLAR YA';
+            const vc = isGatillar ? { label: '🔥 GATILLAR YA', color: '#f87171', bg: 'rgba(248,113,113,0.15)' } : VERDICT_CONFIG[s.verdict];
             return (
               <div
                 key={s.ticker}
@@ -131,22 +156,23 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
                 style={{
                   borderColor: `${vc.color}33`,
                   background: vc.bg,
+                  boxShadow: isGatillar ? '0 0 16px rgba(248,113,113,0.25)' : 'none',
                 }}
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="font-mono font-bold text-xs text-app-text truncate">{s.ticker}</span>
-                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${s.type === 'LECAP' ? 'bg-app-accent-dim text-[#2eebc8]' : 'bg-[#f472b6]/10 text-[#f472b6]'}`}>
+                    <span className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold ${s.type === 'LECAP' ? 'bg-app-accent-dim text-[#2eebc8]' : 'bg-[#f472b6]/10 text-[#f472b6]'}`}>
                       {s.type}
                     </span>
                   </div>
                   <div className="font-mono text-[10px] mt-0.5" style={{ color: vc.color }}>
-                    {vc.label}
+                    {isGatillar ? '🔥 GATILLAR YA' : vc.label}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
                   <div className="font-mono font-bold text-lg" style={{ color: vc.color }}>
-                    {s.cockpitScore.toFixed(1)}
+                    {s.actionScore.label !== 'SIN SEÑAL' ? s.actionScore.score : s.cockpitScore.toFixed(1)}
                   </div>
                 </div>
               </div>
@@ -154,14 +180,17 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
           })}
         </div>
 
-        {saltoScores.length > 0 && (
-          <div className="mt-2 text-[10px] text-app-text4">
-            ⚡ Salto Táctico: <span className="font-mono font-bold" style={{ color: '#f87171' }}>{saltoScores.length}</span>
-            {carameloScores.length > 0 && (
-              <> · 🍬 Punto Caramelo: <span className="font-mono font-bold" style={{ color: '#fbbf24' }}>{carameloScores.length}</span></>
-            )}
-          </div>
-        )}
+        <div className="mt-2 text-[10px] text-app-text4">
+          {gatillarScores.length > 0 && (
+            <span>🔥 Gatillar: <span className="font-mono font-bold" style={{ color: '#f87171' }}>{gatillarScores.length}</span></span>
+          )}
+          {saltoScores.length > 0 && (
+            <> · ⚡ Salto: <span className="font-mono font-bold" style={{ color: '#f87171' }}>{saltoScores.length}</span></>
+          )}
+          {carameloScores.length > 0 && (
+            <> · 🍬 Caramelo: <span className="font-mono font-bold" style={{ color: '#fbbf24' }}>{carameloScores.length}</span></>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -185,7 +214,6 @@ export default function CockpitTab({
   const marketTruth = useRadarStore(s => s.marketTruth);
 
   // ─── Local State ──────────────────────────────────────────────────
-  // Initialize from localStorage or default to 45
   const [horizon, setHorizon] = useState<number>(() => {
     if (typeof window === 'undefined') return 45;
     try {
@@ -198,7 +226,6 @@ export default function CockpitTab({
     return 45;
   });
 
-  // Persist horizon to localStorage on change
   const handleHorizonChange = useCallback((value: number) => {
     setHorizon(value);
     try {
@@ -220,22 +247,15 @@ export default function CockpitTab({
   const [engineVersion, setEngineVersion] = useState('');
   const [isStale, setIsStale] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Ref to track whether we have data (avoids dependency on allScores.length)
   const hasDataRef = useRef(false);
 
-  // ─── Fetch Cockpit Scores (once, ALL instruments, no horizon param) ──
-  // Horizon filtering is done CLIENT-SIDE for instant switching
-  // PRIORITY HYDRATION: Only set loading=true on FIRST fetch (no data yet)
+  // ─── Fetch Cockpit Scores ─────────────────────────────────────────
   const fetchScores = useCallback(async () => {
-    // SWR: Only show loading spinner if we have NO data at all
-    // If we have stale data, silently revalidate in background
     const hasData = hasDataRef.current;
     if (!hasData) setCockpitScoresLoading(true);
     try {
       const res = await fetch('/api/cockpit-score?horizon=365');
       if (!res.ok) {
-        // API error — mark as stale if we have existing data
         if (hasDataRef.current) setIsStale(true);
         return;
       }
@@ -245,7 +265,6 @@ export default function CockpitTab({
         return;
       }
 
-      // Store ALL scores (unfiltered) — horizon filter is client-side
       const raw: CockpitScore[] = data.all_scores ?? data.scores ?? [];
       setAllScores(raw);
       hasDataRef.current = raw.length > 0;
@@ -253,35 +272,42 @@ export default function CockpitTab({
       setEngineVersion(data.engine_version ?? '');
       setIsStale(data.stale === true);
     } catch {
-      // Network error — mark as stale if we have existing data
       if (hasDataRef.current) setIsStale(true);
     } finally {
       if (!hasData) setCockpitScoresLoading(false);
     }
   }, [setCockpitScoresLoading]);
 
-  // PRIORITY HYDRATION: Fire immediately on mount, no setTimeout delay
   useEffect(() => {
-    fetchScores(); // IMMEDIATE — cache must be warm when user enters terminal
+    fetchScores();
     intervalRef.current = setInterval(fetchScores, 50_000);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [fetchScores]); // Now stable — fetchScores only depends on setCockpitScoresLoading
+  }, [fetchScores]);
 
   // ─── Client-side horizon filtering ────────────────────────────────
-  // INSTANT — no server roundtrip when changing horizon
   const filteredScores = useMemo(() => {
-    if (horizon === 9999) return allScores; // "ALL" = no filter
+    if (horizon === 9999) return allScores;
     return allScores.filter(s => s.days <= horizon);
   }, [allScores, horizon]);
 
-  // ─── Computed: sorted scores ───────────────────────────────────────
+  // ─── V5.0: Sort by ACTION SCORE first, then cockpitScore ──────────
   const sortedScores = useMemo(() => {
-    return [...filteredScores].sort((a, b) => b.cockpitScore - a.cockpitScore);
+    return [...filteredScores].sort((a, b) => {
+      // Primary sort: Action Score (GATILLAR YA > ATRACTIVO > NEUTRAL > SIN SEÑAL)
+      const actionOrder: Record<string, number> = { 'GATILLAR YA': 4, 'ATRACTIVO': 3, 'NEUTRAL': 2, 'SIN SEÑAL': 1 };
+      const aAction = actionOrder[a.actionScore.label] ?? 0;
+      const bAction = actionOrder[b.actionScore.label] ?? 0;
+      if (aAction !== bAction) return bAction - aAction;
+      // Secondary sort: actionScore.score descending
+      if (a.actionScore.score !== b.actionScore.score) return b.actionScore.score - a.actionScore.score;
+      // Tertiary: cockpitScore descending
+      return b.cockpitScore - a.cockpitScore;
+    });
   }, [filteredScores]);
 
-  // ─── Sync filtered scores to store (for other tabs) ──────────────
+  // ─── Sync filtered scores to store ────────────────────────────────
   useEffect(() => {
     setCockpitScores(sortedScores);
   }, [sortedScores, setCockpitScores]);
@@ -289,7 +315,7 @@ export default function CockpitTab({
   // ─── Computed: El Grito instruments ────────────────────────────────
   const elGritoScores = useMemo(() => {
     return sortedScores.filter(
-      s => s.verdict === 'SALTO_TACTICO' || s.verdict === 'PUNTO_CARAMELO'
+      s => s.verdict === 'SALTO_TACTICO' || s.verdict === 'PUNTO_CARAMELO' || s.actionScore.label === 'GATILLAR YA'
     );
   }, [sortedScores]);
 
@@ -299,7 +325,7 @@ export default function CockpitTab({
     return opt ? opt.desc : `${horizon}d`;
   }, [horizon]);
 
-  // ─── Computed: summary counts (client-side, always fresh) ────────
+  // ─── Computed: summary counts ──────────────────────────────────────
   const localSummary = useMemo(() => {
     const allCount = allScores.length;
     const filteredCount = filteredScores.length;
@@ -311,10 +337,12 @@ export default function CockpitTab({
       atractivo: filteredScores.filter(s => s.verdict === 'ATRACTIVO').length,
       neutral: filteredScores.filter(s => s.verdict === 'NEUTRAL').length,
       evitar: filteredScores.filter(s => s.verdict === 'EVITAR').length,
+      gatillar: filteredScores.filter(s => s.actionScore.label === 'GATILLAR YA').length,
+      atractivoAction: filteredScores.filter(s => s.actionScore.label === 'ATRACTIVO').length,
     };
   }, [allScores, filteredScores]);
 
-  // ─── Instrument lookup Map (O(1) instead of O(N) find) ───────────
+  // ─── Instrument lookup Map ─────────────────────────────────────────
   const instrumentMap = useMemo(() => {
     const map = new Map<string, Instrument>();
     for (const inst of instruments) {
@@ -329,7 +357,6 @@ export default function CockpitTab({
   const rpValue = marketTruth?.riesgo_pais?.value ?? null;
   const rpConfidence = marketTruth?.riesgo_pais?.confidence ?? null;
 
-  // ─── Confidence badge color ────────────────────────────────────────
   function confidenceBadge(level: string | null): { color: string; bg: string } {
     if (!level) return { color: '#6b7280', bg: 'rgba(107,114,128,0.08)' };
     switch (level) {
@@ -353,10 +380,10 @@ export default function CockpitTab({
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-lg font-light text-app-text mb-1">
-              🎯 Cockpit Táctico — V3.4.5 PRO TERMINAL
+              🎯 Cockpit Táctico — V5.0 SCANNER
             </h2>
             <p className="text-sm text-app-text3">
-              Señal de scalping compuesta · 5 factores ponderados · Horizonte: {horizonLabel}
+              Price Action Scanner · S/R + Volumen + Presión → Gatillador Cuantitativo · Horizonte: {horizonLabel}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -374,7 +401,7 @@ export default function CockpitTab({
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* STALE DATA WARNING — shown when API fallback is active       */}
+      {/* STALE DATA WARNING                                            */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {isStale && (
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#fb923c]/8 border border-[#fb923c]/20 text-[10px] text-[#fb923c] animate-fadeInUp">
@@ -385,7 +412,7 @@ export default function CockpitTab({
       )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* SUMMARY BAR                                                   */}
+      {/* SUMMARY BAR — V5.0 Enhanced with Action Score counts          */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="glass-card px-4 py-2.5 animate-fadeInUp overflow-x-auto scrollbar-hide">
         <div className="flex items-center gap-3 min-w-max text-xs">
@@ -399,6 +426,28 @@ export default function CockpitTab({
           </div>
           <div className="w-px h-3 bg-app-border/40" />
 
+          {/* V5.0: GATILLAR YA count */}
+          {localSummary.gatillar > 0 && (
+            <>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: '#f87171' }}>🔥 Gatillar</span>
+                <span className="font-mono font-bold animate-pulse" style={{ color: '#f87171' }}>{localSummary.gatillar}</span>
+              </div>
+              <div className="w-px h-3 bg-app-border/40" />
+            </>
+          )}
+
+          {/* V5.0: ATRACTIVO action count */}
+          {localSummary.atractivoAction > 0 && (
+            <>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: '#2eebc8' }}>✓ Atractivo</span>
+                <span className="font-mono font-bold" style={{ color: '#2eebc8' }}>{localSummary.atractivoAction}</span>
+              </div>
+              <div className="w-px h-3 bg-app-border/40" />
+            </>
+          )}
+
           {/* SALTO_TACTICO */}
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] uppercase tracking-wider" style={{ color: '#f87171' }}>⚡ Salto</span>
@@ -410,13 +459,6 @@ export default function CockpitTab({
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] uppercase tracking-wider" style={{ color: '#fbbf24' }}>🍬 Caramelo</span>
             <span className="font-mono font-bold" style={{ color: '#fbbf24' }}>{localSummary.punto_caramelo}</span>
-          </div>
-          <div className="w-px h-3 bg-app-border/40" />
-
-          {/* ATRACTIVO */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-app-text4 uppercase tracking-wider text-[10px]">Atractivo</span>
-            <span className="font-mono font-bold text-[#2eebc8]">{localSummary.atractivo}</span>
           </div>
           <div className="w-px h-3 bg-app-border/40" />
 
@@ -462,7 +504,7 @@ export default function CockpitTab({
             </>
           )}
 
-          {/* Engine status — SWR stale indicator */}
+          {/* Engine status */}
           <div className="flex items-center gap-1.5">
             <span className={`inline-block w-1.5 h-1.5 rounded-full ${cockpitScoresLoading ? 'bg-[#fbbf24] animate-pulse' : isStale ? 'bg-[#fb923c]' : cockpitScores.length > 0 ? 'bg-[#2eebc8]' : 'bg-app-text4'}`} />
             <span className={`text-[10px] uppercase tracking-wider ${isStale ? 'text-[#fb923c]' : 'text-app-text4'}`}>
@@ -504,7 +546,7 @@ export default function CockpitTab({
       {elGritoScores.length > 0 && <ElGritoCard scores={sortedScores} />}
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* TABLA FUSIONADA — Double-Height Rows                          */}
+      {/* TABLA FUSIONADA — V5.0 with 4 new Price Action columns        */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {sortedScores.length === 0 ? (
         <div className="glass-card p-8 text-center animate-fadeInUp">
@@ -521,16 +563,19 @@ export default function CockpitTab({
         </div>
       ) : (
         <div className="glass-card animate-fadeInUp">
-          {/* Table Header */}
-          <div className="table-header-enhanced px-4 py-2.5 grid grid-cols-[32px_1fr_80px_70px_60px_80px_70px_1fr] gap-2 items-center text-[9px] text-app-text4 uppercase tracking-wider font-medium">
+          {/* V5.0: Table Header — 12 columns */}
+          <div className="table-header-enhanced px-3 py-2.5 grid grid-cols-[28px_1fr_64px_52px_52px_64px_52px_52px_64px_52px_1fr] gap-1.5 items-center text-[8px] text-app-text4 uppercase tracking-wider font-medium">
             <span>#</span>
             <span>Instrumento</span>
             <span className="text-right">Precio</span>
             <span className="text-right">TEM</span>
             <span className="text-right">VOL</span>
-            <span className="text-right">Spread Neto</span>
+            <span className="text-right">S/R Cercano</span>
+            <span className="text-right">Dist %</span>
+            <span className="text-right">Inyección</span>
+            <span className="text-right">Spread</span>
             <span className="text-right">Score</span>
-            <span className="text-right">Veredicto</span>
+            <span className="text-right">ACCIÓN</span>
           </div>
 
           {/* Rows */}
@@ -543,50 +588,58 @@ export default function CockpitTab({
               const price = liveData?.last_price ?? instData?.price ?? 0;
               const tem = instData?.tem ?? 0;
 
+              // V5.0: Action Score styling
+              const asc = ACTION_SCORE_CONFIG[score.actionScore.label] ?? ACTION_SCORE_CONFIG['SIN SEÑAL'];
+              const isGatillar = score.actionScore.label === 'GATILLAR YA';
+
+              // V5.0: Volume Injection styling
+              const vic = VOL_INJECTION_CONFIG[score.volumeInjection.label] ?? VOL_INJECTION_CONFIG['NORMAL'];
+
+              // V5.0: Distance to S/R alert
+              const isNearSR = score.distanceToSR < 0.5;
+              const isVeryNearSR = score.distanceToSR < 0.3;
+
               return (
                 <div
                   key={`${score.ticker}-${score.type}`}
-                  className={`table-row-highlight table-row-alt px-4 py-2 animate-row-in ${getStaggerClass(idx)}`}
-                  style={idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 70px' } : undefined}
+                  className={`table-row-highlight table-row-alt px-3 py-1.5 animate-row-in ${getStaggerClass(idx)} ${isGatillar ? 'gatillar-row' : ''}`}
+                  style={idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 56px' } : undefined}
                 >
-                  {/* ── ROW 1: Main Data ── */}
-                  <div className="grid grid-cols-[32px_1fr_80px_70px_60px_80px_70px_1fr] gap-2 items-center">
+                  {/* ── SINGLE ROW: All 12 columns ── */}
+                  <div className="grid grid-cols-[28px_1fr_64px_52px_52px_64px_52px_52px_64px_52px_1fr] gap-1.5 items-center">
                     {/* Rank */}
-                    <div className={`rank-badge ${getRankClass(rank)} text-[10px]`}>
+                    <div className={`rank-badge ${getRankClass(rank)} text-[9px]`} style={{ width: 24, height: 24, fontSize: 9 }}>
                       {rank}
                     </div>
 
                     {/* Ticker + Type */}
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="font-mono font-bold text-xs text-app-text truncate">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="font-mono font-bold text-[11px] text-app-text truncate">
                         {score.ticker}
                       </span>
-                      <span className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-bold ${
+                      <span className={`shrink-0 px-1 py-0.5 rounded text-[7px] font-bold ${
                         score.type === 'LECAP'
                           ? 'bg-app-accent-dim text-[#2eebc8]'
                           : 'bg-[#f472b6]/10 text-[#f472b6]'
                       }`}>
                         {score.type}
                       </span>
+                      <span className="text-[8px] text-app-text4 font-mono">{score.days}d</span>
                     </div>
 
                     {/* Price */}
-                    <div className="text-right font-mono text-xs text-app-text2">
+                    <div className="text-right font-mono text-[11px] text-app-text2">
                       {price > 0 ? fmtNum(price, 4) : '—'}
                     </div>
 
                     {/* TEM */}
-                    <div className="text-right font-mono text-xs text-app-text2">
+                    <div className="text-right font-mono text-[11px] text-app-text2">
                       {fmtNum(tem, 2)}%
                     </div>
 
-                    {/* VOL — V4.0.7: IOL volume (primary) / data912 volume (fallback) */}
-                    <div className="text-right font-mono text-xs text-app-text2">
+                    {/* VOL */}
+                    <div className="text-right font-mono text-[11px] text-app-text2">
                       {(() => {
-                        // V4.0.7 FIX: Use || instead of ?? so 0 falls through to fallback.
-                        // IOL cantidadOperada can be 0 (no trades yet), but data912 nota.v
-                        // is always populated. Old ?? operator treated 0 as valid, blocking
-                        // the data912 fallback. Now: iolVolume=0 → data912Volume takes over.
                         const vol = score.iolVolume || score.volume || instData?.iolVolume || liveData?.iol_volume || instData?.data912Volume || liveData?.volume;
                         if (vol && vol > 0) {
                           return vol >= 1_000_000
@@ -599,8 +652,54 @@ export default function CockpitTab({
                       })()}
                     </div>
 
+                    {/* ═══ V5.0: S/R MÁS CERCANO ═══ */}
+                    <div className="text-right font-mono text-[11px]">
+                      {score.nearestSR ? (
+                        <span className={score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}>
+                          <span className="text-[8px] font-bold opacity-70">{score.nearestSR.type}: </span>
+                          {score.nearestSR.level.toFixed(4)}
+                        </span>
+                      ) : (
+                        <span className="text-app-text4">—</span>
+                      )}
+                    </div>
+
+                    {/* ═══ V5.0: DISTANCIA A S/R (%) ═══ */}
+                    <div className="text-right font-mono text-[11px] relative">
+                      <span
+                        className={`font-bold ${
+                          isVeryNearSR ? 'text-[#f87171] animate-pulse' :
+                          isNearSR ? 'text-[#fbbf24] font-bold' :
+                          score.distanceToSR < 1.0 ? 'text-app-accent-text' :
+                          'text-app-text3'
+                        }`}
+                      >
+                        {score.distanceToSR < 99 ? `${score.distanceToSR.toFixed(2)}%` : '—'}
+                      </span>
+                      {/* Visual alert indicator for < 0.5% */}
+                      {isNearSR && score.distanceToSR < 99 && (
+                        <span
+                          className="absolute -left-1 top-1/2 -translate-y-1/2 w-1 h-3 rounded-full"
+                          style={{
+                            backgroundColor: isVeryNearSR ? '#f87171' : '#fbbf24',
+                            boxShadow: isVeryNearSR ? '0 0 6px rgba(248,113,113,0.6)' : '0 0 4px rgba(251,191,36,0.4)',
+                          }}
+                        />
+                      )}
+                    </div>
+
+                    {/* ═══ V5.0: INYECCIÓN DE VOLUMEN ═══ */}
+                    <div className="text-right">
+                      <span
+                        className={`inline-block px-1.5 py-0.5 rounded-md text-[9px] font-bold ${vic.pulse ? 'animate-pulse' : ''}`}
+                        style={{ color: vic.color, background: vic.bg }}
+                      >
+                        {score.volumeInjection.label}
+                      </span>
+                    </div>
+
                     {/* Spread Neto */}
-                    <div className={`text-right font-mono text-xs font-semibold ${
+                    <div className={`text-right font-mono text-[11px] font-semibold ${
                       score.spreadNeto >= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'
                     }`}>
                       {fmtPct(score.spreadNeto, 3)}
@@ -609,36 +708,37 @@ export default function CockpitTab({
                     {/* CockpitScore */}
                     <div className="text-right">
                       <span
-                        className="font-mono font-bold text-base"
+                        className="font-mono font-bold text-sm"
                         style={{ color: vc.color }}
                       >
                         {score.cockpitScore.toFixed(1)}
                       </span>
                     </div>
 
-                    {/* Verdict badge */}
+                    {/* ═══ V5.0: SCORE — EL GATILLADOR ═══ */}
                     <div className="flex justify-end">
                       <span
-                        className="px-2 py-0.5 rounded-lg text-[9px] font-bold whitespace-nowrap"
-                        style={{ color: vc.color, background: vc.bg }}
+                        className={`px-2 py-1 rounded-lg text-[9px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse' : ''}`}
+                        style={{
+                          color: asc.color,
+                          background: asc.bg,
+                          boxShadow: isGatillar ? asc.glow : 'none',
+                          border: isGatillar ? `1px solid ${asc.color}40` : '1px solid transparent',
+                        }}
                       >
-                        {vc.label}
+                        {isGatillar ? '🔥 ' : score.actionScore.label === 'ATRACTIVO' ? '✓ ' : ''}
+                        {score.actionScore.label}
                       </span>
                     </div>
                   </div>
 
-                  {/* ── ROW 2: Context Row ── */}
-                  <div className="mt-1.5 grid grid-cols-[32px_1fr] gap-2 items-start">
+                  {/* ── CONTEXT ROW: Micro scores + Action reason ── */}
+                  <div className="mt-1 grid grid-cols-[28px_1fr] gap-1.5 items-start">
                     <div /> {/* spacer for rank column */}
 
-                    <div className="flex items-center gap-3 flex-wrap">
-                      {/* Days to expiry */}
-                      <span className="text-[9px] text-app-text4">
-                        <span className="text-app-text3 font-mono">{score.days}</span>d
-                      </span>
-
+                    <div className="flex items-center gap-2 flex-wrap">
                       {/* ΔTIR */}
-                      <span className="text-[9px] text-app-text4">
+                      <span className="text-[8px] text-app-text4">
                         ΔTIR{' '}
                         <span className={`font-mono ${score.deltaTIR !== null ? (score.deltaTIR > 0 ? 'text-[#2eebc8]' : score.deltaTIR < -0.02 ? 'text-[#f87171]' : 'text-app-text3') : 'text-app-text4'}`}>
                           {score.deltaTIR !== null ? fmtPct(score.deltaTIR, 3) : '—'}
@@ -646,7 +746,7 @@ export default function CockpitTab({
                       </span>
 
                       {/* Presión Punta */}
-                      <span className="text-[9px] text-app-text4">
+                      <span className="text-[8px] text-app-text4">
                         Presión{' '}
                         <span className={`font-mono ${
                           score.presionPuntas !== null
@@ -659,8 +759,8 @@ export default function CockpitTab({
                         </span>
                       </span>
 
-                      {/* Upside Capital */}
-                      <span className="text-[9px] text-app-text4">
+                      {/* Upside */}
+                      <span className="text-[8px] text-app-text4">
                         Upside{' '}
                         <span className={`font-mono ${score.upsideCapital > 1 ? 'text-[#2eebc8]' : score.upsideCapital > 0.3 ? 'text-[#fbbf24]' : 'text-app-text3'}`}>
                           +{fmtNum(score.upsideCapital, 2)}%
@@ -669,14 +769,14 @@ export default function CockpitTab({
 
                       {/* Micro-score bars */}
                       <div className="flex items-center gap-1.5 ml-1">
-                        <div className="flex flex-col gap-[3px]">
+                        <div className="flex flex-col gap-[2px]">
                           <MicroScoreBar value={score.spreadNetoScore} color={MICRO_BAR_COLORS.spreadNeto} />
                           <MicroScoreBar value={score.deltaTIRScore} color={MICRO_BAR_COLORS.deltaTIR} />
                           <MicroScoreBar value={score.presionPuntasScore} color={MICRO_BAR_COLORS.presion} />
                           <MicroScoreBar value={score.upsideCapitalScore} color={MICRO_BAR_COLORS.upside} />
                           <MicroScoreBar value={score.velocidadScore} color={MICRO_BAR_COLORS.velocidad} />
                         </div>
-                        <div className="flex flex-col gap-[3px] text-[7px] text-app-text4 leading-none">
+                        <div className="flex flex-col gap-[2px] text-[6px] text-app-text4 leading-none">
                           <span>Sp</span>
                           <span>ΔT</span>
                           <span>Pr</span>
@@ -685,9 +785,16 @@ export default function CockpitTab({
                         </div>
                       </div>
 
-                      {/* Verdict reason (truncated) */}
-                      {score.verdictReason && (
-                        <span className="text-[8px] text-app-text4 truncate max-w-[180px] hidden sm:inline-block" title={score.verdictReason}>
+                      {/* V5.0: Action Score reason (truncated) */}
+                      {score.actionScore.label !== 'SIN SEÑAL' && score.actionScore.reason && (
+                        <span className="text-[7px] truncate max-w-[200px] hidden sm:inline-block" style={{ color: asc.color + 'bb' }} title={score.actionScore.reason}>
+                          {score.actionScore.reason}
+                        </span>
+                      )}
+
+                      {/* Verdict reason (truncated) — only if different from action reason */}
+                      {score.verdictReason && score.actionScore.label === 'SIN SEÑAL' && (
+                        <span className="text-[7px] text-app-text4 truncate max-w-[180px] hidden sm:inline-block" title={score.verdictReason}>
                           {score.verdictReason}
                         </span>
                       )}
@@ -701,31 +808,82 @@ export default function CockpitTab({
       )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* WEIGHT LEGEND                                                 */}
+      {/* V5.0: WEIGHT LEGEND + ACTION SCORE METHODOLOGY                */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {sortedScores.length > 0 && (
-        <div className="flex items-center gap-4 flex-wrap text-[9px] text-app-text4 animate-fadeInUp">
-          <span className="uppercase tracking-wider font-medium">Pesos:</span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.spreadNeto }} />
-            Spread Neto 25%
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.deltaTIR }} />
-            ΔTIR 25%
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.presion }} />
-            Presión 20%
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.upside }} />
-            Upside 20%
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.velocidad }} />
-            Velocidad 10%
-          </span>
+        <div className="space-y-3 animate-fadeInUp">
+          {/* Cockpit Score Weights */}
+          <div className="flex items-center gap-4 flex-wrap text-[9px] text-app-text4">
+            <span className="uppercase tracking-wider font-medium">Pesos Cockpit:</span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.spreadNeto }} />
+              Spread 25%
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.deltaTIR }} />
+              ΔTIR 25%
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.presion }} />
+              Presión 20%
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.upside }} />
+              Upside 20%
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.velocidad }} />
+              Vel. 10%
+            </span>
+          </div>
+
+          {/* V5.0: Action Score Methodology */}
+          <div className="glass-card px-4 py-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-[10px] font-semibold text-app-text3 uppercase tracking-wider">El Gatillador — Metodología</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[9px]">
+              <div className="bg-app-subtle/30 rounded-lg p-2.5">
+                <div className="font-semibold text-[#fbbf24] mb-1">📍 Distancia S/R (0-40 pts)</div>
+                <div className="text-app-text3">
+                  &lt;0.3% → 38pts · &lt;0.5% → 32pts · &lt;1% → 20pts · &lt;2% → 10pts
+                  <br />
+                  <span className="text-[#f87171]">Alerta visual &lt;0.5%: "a tiro de gatillo"</span>
+                </div>
+              </div>
+              <div className="bg-app-subtle/30 rounded-lg p-2.5">
+                <div className="font-semibold text-[#a78bfa] mb-1">📊 Inyección Volumen (0-35 pts)</div>
+                <div className="text-app-text3">
+                  EXPLOSIVO → 35pts · X5 → 30pts · X3 → 25pts · X2 → 15pts · NORMAL → 5pts
+                  <br />
+                  <span className="text-app-text4">Volumen actual vs media · Multiplicadores de aceleración</span>
+                </div>
+              </div>
+              <div className="bg-app-subtle/30 rounded-lg p-2.5">
+                <div className="font-semibold text-[#2eebc8] mb-1">📈 Presión Book (0-25 pts)</div>
+                <div className="text-app-text3">
+                  Compradora en soporte → 25pts · Rompiendo resistencia → 22pts
+                  <br />
+                  <span className="text-app-text4">+5 carry positivo · +5 momentum alcista</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 mt-2 flex-wrap text-[8px]">
+              <span className="text-app-text4">UMBRALES:</span>
+              <span className="px-2 py-0.5 rounded font-bold" style={{ color: '#f87171', background: 'rgba(248,113,113,0.18)', boxShadow: '0 0 8px rgba(248,113,113,0.3)' }}>
+                🔥 GATILLAR YA ≥70 + S/R&lt;0.5% + Vol≥X3 + Presión
+              </span>
+              <span className="px-2 py-0.5 rounded font-bold" style={{ color: '#2eebc8', background: 'rgba(46,235,200,0.12)' }}>
+                ✓ ATRACTIVO ≥50
+              </span>
+              <span className="px-2 py-0.5 rounded font-bold" style={{ color: '#94a3b8', background: 'rgba(148,163,184,0.06)' }}>
+                NEUTRAL ≥25
+              </span>
+              <span className="px-2 py-0.5 rounded font-bold" style={{ color: '#6b7280', background: 'rgba(107,114,128,0.04)' }}>
+                SIN SEÑAL &lt;25
+              </span>
+            </div>
+          </div>
         </div>
       )}
     </div>

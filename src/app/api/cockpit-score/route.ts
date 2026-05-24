@@ -13,7 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import type { CockpitScore } from '@/lib/types';
-import { calculateCockpitScore } from '@/lib/calculations';
+import { calculateCockpitScore, calculateNearestSR, calculateVolumeInjection, calculateActionScore } from '@/lib/calculations';
 
 export const dynamic = 'force-dynamic';
 
@@ -192,6 +192,52 @@ export async function GET(request: NextRequest) {
         ),
         volume: (inst.volume as number) || 0,
         iolVolume: (inst.iol_volume as number) || 0,
+        // V5.0 SCANNER: Price Action columns — enriched by calculateNearestSR + calculateVolumeInjection + calculateActionScore
+        nearestSR: calculateNearestSR(
+          instrument.price,
+          inst.iol_bid as number | undefined,
+          inst.iol_ask as number | undefined,
+          inst.change_pct as number | undefined,
+        ),
+        distanceToSR: (() => {
+          const sr = calculateNearestSR(
+            instrument.price,
+            inst.iol_bid as number | undefined,
+            inst.iol_ask as number | undefined,
+            inst.change_pct as number | undefined,
+          );
+          if (!sr) return 99;
+          return Math.abs((instrument.price - sr.level) / instrument.price) * 100;
+        })(),
+        volumeInjection: calculateVolumeInjection(
+          (inst.iol_volume as number) || 0,
+          (inst.volume as number) || 0,
+          inst.change_pct as number | undefined,
+        ),
+        actionScore: (() => {
+          const sr = calculateNearestSR(
+            instrument.price,
+            inst.iol_bid as number | undefined,
+            inst.iol_ask as number | undefined,
+            inst.change_pct as number | undefined,
+          );
+          const distSR = sr ? Math.abs((instrument.price - sr.level) / instrument.price) * 100 : 99;
+          const volInj = calculateVolumeInjection(
+            (inst.iol_volume as number) || 0,
+            (inst.volume as number) || 0,
+            inst.change_pct as number | undefined,
+          );
+          const spreadNetoPct = (inst.spread_neto as number) * 100;
+          return calculateActionScore(
+            distSR,
+            sr?.type ?? null,
+            volInj.label,
+            volInj.ratio,
+            iolMarketPressure,
+            spreadNetoPct,
+            deltaTIR,
+          );
+        })(),
       };
     });
 

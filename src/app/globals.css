@@ -1266,6 +1266,29 @@ kbd {
   background: linear-gradient(135deg, rgba(21, 29, 46, 0.95) 0%, rgba(12, 18, 32, 0.98) 50%, rgba(28, 38, 64, 0.92) 100%);
 }
 
+/* ══════════════════════════════════════════════════════════════
+   V5.0 SCANNER — GATILLAR YA Row Highlight
+   Rows with GATILLAR YA action score get a pulsing left border + glow
+   ══════════════════════════════════════════════════════════════ */
+.gatillar-row {
+  border-left: 3px solid rgba(248, 113, 113, 0.6) !important;
+  background: linear-gradient(90deg, rgba(248, 113, 113, 0.06), transparent 60%) !important;
+}
+
+@keyframes gatillarPulse {
+  0%, 100% { border-left-color: rgba(248, 113, 113, 0.6); }
+  50% { border-left-color: rgba(248, 113, 113, 1); }
+}
+
+.gatillar-row {
+  animation: gatillarPulse 2s ease-in-out infinite;
+}
+
+:root[data-theme="light"] .gatillar-row {
+  border-left: 3px solid rgba(220, 38, 38, 0.5) !important;
+  background: linear-gradient(90deg, rgba(220, 38, 38, 0.04), transparent 60%) !important;
+}
+
 :root[data-theme="light"] .header-gradient-bg {
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(241, 245, 249, 0.98) 50%, rgba(255, 255, 255, 0.92) 100%);
 }

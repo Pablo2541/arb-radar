@@ -145,3 +145,79 @@ Stage Summary:
 - 5 archivos modificados: types.ts, cockpit-score/route.ts, CockpitTab.tsx, price-history/route.ts, update-prices.ts
 - Entorno compila limpio, sin errores de lint ni TypeScript
 - PRÓXIMO PASO: FASE 3 — Columnas S/R, Inyección de Volumen, SCORE de acción rápida
+
+---
+Task ID: 6
+Agent: Main Agent
+Task: FASE 3 — Centralización de Señales de Price Action y Algoritmo de Score (El Gatillador)
+
+Work Log:
+- Analizado EstrategiasTab.tsx para extraer lógica de S/R (calculateSR de priceHistory.ts)
+- Analizado calculateCockpitScore en calculations.ts (5 factores ponderados)
+- Actualizado CockpitScore type en types.ts con 4 nuevos campos:
+  - nearestSR: { level, type: 'S'|'R' } | null
+  - distanceToSR: number (% al S/R más cercano)
+  - volumeInjection: { ratio, label: 'NORMAL'|'X2'|'X3'|'X5'|'EXPLOSIVO' }
+  - actionScore: { score: 0-100, label: 'GATILLAR YA'|'ATRACTIVO'|'NEUTRAL'|'SIN SEÑAL', reason }
+- Implementado 3 nuevos algoritmos en calculations.ts (~300 líneas):
+  - calculateNearestSR(): Deriva S/R desde bid/ask spread + change_pct (sin depender de historico_precios.json)
+  - calculateVolumeInjection(): Compara volumen IOL vs data912 + momentum de precio
+  - calculateActionScore(): Cruza 3 variables → Distancia S/R (0-40 pts) + Volumen Inyección (0-35 pts) + Presión Book (0-25 pts) + bonus carry/momentum
+- Actualizado cockpit-score API (route.ts):
+  - Importadas 3 nuevas funciones de calculations.ts
+  - Cada instrumento calcula nearestSR, distanceToSR, volumeInjection y actionScore
+  - Spread a calculateCockpitScore() + override de los campos V5.0
+- Rediseñado CockpitTab.tsx (reescritura completa):
+  - Tabla con 11 columnas: #, Instrumento, Precio, TEM, VOL, S/R Cercano, Dist%, Inyección, Spread, Score, ACCIÓN
+  - El Grito Card mejorado: incluye GATILLAR YA count con badge animado
+  - Summary Bar mejorado: muestra Gatillar + Atractivo action score counts
+  - Sort order: Action Score primero (GATILLAR YA > ATRACTIVO > NEUTRAL > SIN SEÑAL), luego cockpitScore
+  - Visual alerts implementadas:
+    - Distancia < 0.5%: texto amarillo/rojo + barra lateral indicadora + glow
+    - Distancia < 0.3%: texto rojo pulsante
+    - GATILLAR YA: badge rojo pulsante con glow + emoji 🔥
+    - Volume Injection: badges coloreados (NORMAL gris, X2 purple, X3 gold, X5 orange, EXPLOSIVO red pulsante)
+    - GATILLAR YA rows: borde izquierdo rojo pulsante + fondo gradient
+  - Methodología card: explica los 3 factores y umbrales del Gatillador
+- CSS nuevo en globals.css:
+  - .gatillar-row: borde izquierdo pulsante + fondo gradient para filas GATILLAR YA
+  - @keyframes gatillarPulse: animación del borde
+  - Soporte light mode
+- ESLint pasa limpio en src/
+- TypeScript: 0 errores en CockpitTab.tsx y archivos modificados
+- Dev server compila y sirve correctamente (HTTP 200 confirmado)
+
+Stage Summary:
+- FASE 3 completada exitosamente
+- 4 columnas Price Action implementadas: S/R Cercano, Distancia %, Inyección de Volumen, SCORE (El Gatillador)
+- 5 archivos modificados: types.ts, calculations.ts, cockpit-score/route.ts, CockpitTab.tsx, globals.css
+- Algoritmo "El Gatillador Cuantitativo" cruza 3 variables en tiempo real (distancia S/R + volumen + presión)
+- Visual alerts agresivas para distancia < 0.5% y GATILLAR YA
+- Sort order prioriza Action Score sobre Cockpit Score tradicional
+- El Grito card mejorado para incluir señales GATILLAR YA
+- Entorno compila limpio, sin errores de lint ni TypeScript en src/
+
+## Current Project Status
+
+### Completed Phases
+- **FASE 1**: Layout cleanup, dead tab removal, store cleanup ✅
+- **FASE 2**: Volume intradía fix, Presión Order Book fix, Prisma snapshotCount fix ✅
+- **FASE 3**: Price Action Scanner — S/R, Volume Injection, El Gatillador ✅
+
+### Architecture
+- Backend: /api/cockpit-score → calculates all 5 CockpitScore factors + 4 new V5.0 fields
+- Frontend: CockpitTab.tsx renders 11-column table with visual alerts
+- Algorithms: calculateNearestSR, calculateVolumeInjection, calculateActionScore in calculations.ts
+
+### Unresolved Issues / Risks
+- Dev server is resource-intensive in sandbox (Turbopack compilation can crash with OOM)
+- S/R derivation uses bid/ask + change_pct heuristics (not full historical S/R from priceHistory.json — that data is client-side only)
+- Volume Injection ratios are heuristic-based (no true intraday minute-by-minute data available from APIs)
+- For production: connect real historical S/R data (from EstrategiasTab's calculateSR) when available via API
+
+### Priority Recommendations for Next Phase
+- Add S/R from historico_precios.json via API endpoint (server-side access to price history)
+- Implement real volume moving average from IOL volume snapshots (Prisma DB)
+- Add keyboard shortcuts for quick action on GATILLAR YA instruments
+- Add sound/notification alert when GATILLAR YA appears
+- Mobile-responsive optimization for the 11-column table
