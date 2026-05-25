@@ -683,3 +683,49 @@ Stage Summary:
 - No mock data, no simulation, no breaking changes
 - Polling automatically restores to 60s/50s when market opens
 - Lint clean, compiles OK
+
+---
+Task ID: 11
+Agent: Main Agent
+Task: Redesign ConfiguracionTab.tsx — QUANT X Engine refactoring
+
+Work Log:
+- Read all relevant files for diagnostic: ConfiguracionTab.tsx (~1070 lines), page.tsx, useLiveInstruments.ts, store.ts, types.ts
+- Analyzed user requirements: 4 key changes (RP read-only, Caución clean input, QUANT X auto-op section, premium aesthetics)
+- Rewrote ConfiguracionTab.tsx from scratch with V7.0 QUANT X design:
+  1. HEADER: Changed to `◈ CONFIG — QUANT X` with monospace subtitle
+  2. QUANT X ENGINE section: New automated operation status card showing:
+     - Polling status with adaptive interval indicator (60s rueda / 5m cierre)
+     - RAVA API connection status for Riesgo País (green pulsing dot when connected)
+     - Only manual requirement note: "Validar/setear la tasa de Caución"
+     - Summary footer with instrument count, RP, comisión, capital
+  3. CAUCIÓN section: Premium styled with gold accent (border-[#fbbf24]/15):
+     - Caución 1 día marked with ★ as primary reference
+     - Monospace font-xl bold inputs on bg-slate-950/60
+     - TNA% suffix inside input
+  4. CAPITAL Y COMISIÓN: Compact 4-column grid with QUANT X styling
+  5. RIESGO PAÍS: READ-ONLY indicator — removed manual input:
+     - Live indicator dot (green pulsing when RAVA connected)
+     - Large font-mono value display with status color
+     - Status badge (NORMAL/PRECAUCIÓN/ALERTA/PELIGRO)
+     - AUTO badge replacing old manual input
+     - Threshold legend on desktop
+  6. BACKUP: Minimalist restyle with QUANT X card design
+  7. HISTORIAL DE PRECIOS: Same functionality, QUANT X aesthetic
+  8. DATOS MANUALES: New collapsible section (collapsed by default) for offline/fallback raw data input
+- Added new props to ConfiguracionTabProps: `riesgoPaisAuto?: number | null` and `marketOpen?: boolean`
+- Updated page.tsx: Added `riesgoPaisAuto={riesgoPaisAuto} marketOpen={marketOpen}` to ConfiguracionTab render
+- Fixed lint error: `StatusToast` component defined during render → converted to `renderStatusToast` helper function
+- Verified CockpitTab.tsx untouched — all `.toFixed(4)` precision preserved (5 instances)
+- ESLint: 0 errors
+- Dev server: compiles cleanly (HTTP 200)
+- Created scheduled cron task for webDevReview (15-min interval)
+
+Stage Summary:
+- 2 source files modified: ConfiguracionTab.tsx (full rewrite), page.tsx (1 line)
+- Riesgo País: Manual input → Read-only RAVA indicator (AUTO badge, live dot, color-coded value)
+- Caución: Premium gold-accent card with monospace font-xl input, only manual action
+- QUANT X Engine section: Automated operation status with polling/RAVA/Caución status
+- Raw Data Input: Collapsible "Datos Manuales (Fallback)" section (collapsed by default)
+- All QUANT X aesthetics: bg-slate-900/40 translucent cards, border-white/10, font-mono
+- Lint clean, dev server compiles OK, Cockpit decimals preserved

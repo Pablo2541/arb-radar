@@ -1,5 +1,15 @@
 'use client';
 
+// ════════════════════════════════════════════════════════════════════════
+// V7.0 — CONFIG TAB — QUANT X ENGINE
+//
+// Redesigned for automated operation:
+// - Riesgo País: READ-ONLY (auto-fetched from RAVA API)
+// - Caución: ONLY manual parameter (super clean input)
+// - QUANT X Engine status section replaces old workflow
+// - Premium QUANT X aesthetics (translucent cards, mono typography)
+// ════════════════════════════════════════════════════════════════════════
+
 import React, { useState, useRef } from 'react';
 import {
   Instrument,
@@ -50,6 +60,10 @@ export interface ConfiguracionTabProps {
   setPriceHistory: (v: PriceHistoryFile) => void;
   snapshots: Snapshot[];
   onRestoreSnapshots: (snaps: Snapshot[]) => void;
+  /** Auto-fetched Riesgo País from RAVA API (null = not yet fetched) */
+  riesgoPaisAuto?: number | null;
+  /** Whether the market is currently open (for QUANT X status display) */
+  marketOpen?: boolean;
 }
 
 export default function ConfiguracionTab({
@@ -72,6 +86,8 @@ export default function ConfiguracionTab({
   setPriceHistory,
   snapshots,
   onRestoreSnapshots,
+  riesgoPaisAuto,
+  marketOpen,
 }: ConfiguracionTabProps) {
   // ── Local state ──
   const [parseError, setParseError] = useState<string | null>(null);
@@ -81,9 +97,27 @@ export default function ConfiguracionTab({
   const [backupStatus, setBackupStatus] = useState<string>('');
   const [priceHistoryStatus, setPriceHistoryStatus] = useState<string>('');
   const [eodStatus, setEodStatus] = useState<string>('');
+  const [rawInputExpanded, setRawInputExpanded] = useState(false);
 
   const importFileRef = useRef<HTMLInputElement>(null);
   const priceHistoryFileRef = useRef<HTMLInputElement>(null);
+
+  // ── Effective Riesgo País: auto takes priority, manual as fallback ──
+  const effectiveRP = riesgoPaisAuto ?? config.riesgoPais;
+  const rpSource = riesgoPaisAuto != null ? 'RAVA API' : 'Manual';
+  const rpStatusColor = riesgoPaisAuto != null
+    ? effectiveRP < 450 ? '#2eebc8'
+    : effectiveRP < 550 ? '#fbbf24'
+    : effectiveRP < 650 ? '#fb923c'
+    : '#f87171'
+    : '#6b7280';
+
+  const rpStatusLabel = riesgoPaisAuto != null
+    ? effectiveRP < 450 ? 'NORMAL'
+    : effectiveRP < 550 ? 'PRECAUCIÓN'
+    : effectiveRP < 650 ? 'ALERTA'
+    : 'PELIGRO'
+    : 'SIN DATOS';
 
   // ── 1. RAW DATA INPUT ──────────────────────────────────────────────────
 
@@ -186,7 +220,6 @@ export default function ConfiguracionTab({
       const text = await file.text();
       const rawData = JSON.parse(text);
 
-      // Basic validation
       if (!rawData.version && !rawData.config) {
         setBackupStatus(
           '❌ Archivo no válido: no es un backup de ARB-RADAR'
@@ -195,7 +228,6 @@ export default function ConfiguracionTab({
         return;
       }
 
-      // Normalize data (backward compatibility)
       const {
         config: normConfig,
         position: normPosition,
@@ -207,58 +239,35 @@ export default function ConfiguracionTab({
         migrationLog,
       } = normalizeImportedData(rawData);
 
-      // ════════════════════════════════════════════════════════════════
-      // V2.0.4 — OVERWRITE MODE: Backup replaces ALL existing data
-      // The JSON is the single source of truth. If capital is $463.706,
-      // that's the final value — regardless of what existed before.
-      // ════════════════════════════════════════════════════════════════
-
-      // ── 1. Config: ALWAYS overwrite (this is the key fix) ──
       setConfig(normConfig);
       saveToStorage(STORAGE_KEYS.CONFIG, normConfig);
-
-      // ── 2. Position: Overwrite (null means "no position" — valid state) ──
       setPosition(normPosition);
       saveToStorage(STORAGE_KEYS.POSITION, normPosition);
-
-      // ── 3. Transactions: Overwrite (empty array = no ghost operations) ──
       setTransactions(normTransactions);
       saveToStorage(STORAGE_KEYS.TRANSACTIONS, normTransactions);
-
-      // ── 4. Simulations: Overwrite ──
       setSimulations(normSimulations);
       saveToStorage(STORAGE_KEYS.SIMULATIONS, normSimulations);
-
-      // ── 5. Instruments: Overwrite ──
       setInstruments(normInstruments.length > 0 ? normInstruments : instruments);
       if (normInstruments.length > 0) {
         saveToStorage(STORAGE_KEYS.INSTRUMENTS, normInstruments);
       }
-
-      // ── 6. External History: Overwrite ──
       setExternalHistory(normHistory);
       saveToStorage(STORAGE_KEYS.EXTERNAL_HISTORY, normHistory);
-
-      // ── 7. Snapshots: Overwrite (not merge) ──
       if (normSnapshots.length > 0) {
         onRestoreSnapshots(normSnapshots);
       } else {
-        onRestoreSnapshots([]); // V2.0.4: Clear snapshots if backup has none
+        onRestoreSnapshots([]);
       }
 
-      // ── 8. Price History: Overwrite (not incremental merge) ──
-      // Store the raw backup for potential future reference
       const exportDate = rawData.exportDate || new Date().toISOString();
       const dateKey = exportDate.slice(0, 10);
       try {
         localStorage.setItem(`arbradar_backup_${dateKey}`, JSON.stringify(rawData));
       } catch { /* storage full */ }
 
-      // V2.0.4: Replace price history entirely if backup has instruments
-      // If backup has no instruments, keep existing price history
       if (normInstruments.length > 0) {
         const newHistory = mergeInstrumentsIntoHistory(
-          null as any, // Start from scratch — no merge with existing
+          null as Parameters<typeof mergeInstrumentsIntoHistory>[0],
           normInstruments,
           dateKey
         );
@@ -266,7 +275,6 @@ export default function ConfiguracionTab({
         persistPriceHistory(newHistory);
       }
 
-      // Build status message
       const parts: string[] = [];
       if (normInstruments.length > 0)
         parts.push(normInstruments.length + ' instr.');
@@ -291,12 +299,10 @@ export default function ConfiguracionTab({
       setTimeout(() => setBackupStatus(''), 5000);
     }
 
-    // Reset file input
     event.target.value = '';
   };
 
   // ── 4. PRICE HISTORY IMPORT ────────────────────────────────────────────
-  // V1.8.2: Incremental merge — new data adds to existing history, never overwrites
 
   const handleLoadPriceHistory = async (
     event: React.ChangeEvent<HTMLInputElement>
@@ -308,7 +314,6 @@ export default function ConfiguracionTab({
       const text = await file.text();
       const data = JSON.parse(text) as PriceHistoryFile;
 
-      // Basic validation
       if (!data.historico || typeof data.historico !== 'object') {
         setPriceHistoryStatus(
           '❌ Archivo no válido: no contiene campo "historico"'
@@ -326,19 +331,17 @@ export default function ConfiguracionTab({
         return;
       }
 
-      // V1.8.3: Normalize incoming data — auto-divide prices > 10 by 100
       const normResult = normalizePriceHistory(data);
       const normalized = normResult.normalized;
       const normalizedDateCount = Object.keys(normalized.historico).length;
 
-      // V1.8.3: Incremental merge — adds to existing history without overwriting
       const mergeResult = mergePriceHistoryIncremental(priceHistory, normalized);
       const merged = mergeResult.merged;
 
       setPriceHistory(merged);
       savePriceHistory(merged);
 
-      const tickerCount = new Set(
+      const phTickerCount = new Set(
         Object.values(merged.historico as Record<string, Record<string, unknown>>).flatMap((day) => Object.keys(day))
       ).size;
 
@@ -346,19 +349,14 @@ export default function ConfiguracionTab({
         ? Object.keys(normalized.historico).filter(d => !(d in priceHistory.historico)).length
         : normalizedDateCount;
 
-      // Build audit status message
-      let statusMsg = `✅ Historial mergeado: ${newDatesAdded} día(s) nuevo(s), ${tickerCount} tickers, ${normalizedDateCount} días totales`;
-      // V1.8.3: Show scale normalization info
+      let statusMsg = `✅ Historial mergeado: ${newDatesAdded} día(s) nuevo(s), ${phTickerCount} tickers, ${normalizedDateCount} días totales`;
       const totalScaled = normResult.scaledCount + mergeResult.scaledCount;
       if (totalScaled > 0) {
-        statusMsg += ` | 🔄 ${totalScaled} precio(s) normalizado(s) (×÷100 → escala 1.XXXX)`;
+        statusMsg += ` | 🔄 ${totalScaled} precio(s) normalizado(s)`;
       }
       const totalRejected = normResult.rejectedCount + mergeResult.rejectedCount;
       if (totalRejected > 0) {
         statusMsg += ` | ⚠️ ${totalRejected} entrada(s) basura rechazada(s)`;
-      }
-      if (normalizedDateCount < dateCount) {
-        statusMsg += ` | ${dateCount - normalizedDateCount} día(s) sin datos válidos`;
       }
 
       setPriceHistoryStatus(statusMsg);
@@ -370,11 +368,9 @@ export default function ConfiguracionTab({
       setTimeout(() => setPriceHistoryStatus(''), 5000);
     }
 
-    // Reset file input
     event.target.value = '';
   };
 
-  // V1.8.2: Download JSON — export the actual in-memory priceHistory for auditing
   const handleDownloadPriceHistory = () => {
     if (!priceHistory) {
       setPriceHistoryStatus('❌ No hay historial para descargar');
@@ -396,21 +392,19 @@ export default function ConfiguracionTab({
     setTimeout(() => setPriceHistoryStatus(''), 4000);
   };
 
-  // V1.8.3: Reset History — complete wipe of price history
   const handleResetPriceHistory = () => {
     clearPriceHistory();
     const empty: PriceHistoryFile = {
-      descripcion: 'Histórico limpiado — V1.8.3',
+      descripcion: 'Histórico limpiado — V7.0',
       metadatos: { moneda: 'ARS', periodo: '', instrumentos_maestro: {} },
       historico: {},
     };
     setPriceHistory(empty);
     savePriceHistory(empty);
-    setPriceHistoryStatus('✅ Historial de precios reseteado. Todos los datos eliminados incluyendo backups.');
+    setPriceHistoryStatus('✅ Historial de precios reseteado.');
     setTimeout(() => setPriceHistoryStatus(''), 5000);
   };
 
-  // V1.9.1: EOD Append — Save today's instruments as closing prices in price history
   const handleEODAppend = () => {
     if (instruments.length === 0) {
       setEodStatus('❌ No hay instrumentos cargados para guardar el cierre');
@@ -421,7 +415,6 @@ export default function ConfiguracionTab({
     const today = new Date();
     const dateKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-    // Check if today's data already exists
     const todayExists = priceHistory && priceHistory.historico[dateKey];
     const existingTickerCount = todayExists ? Object.keys(todayExists).length : 0;
 
@@ -437,12 +430,11 @@ export default function ConfiguracionTab({
     } else if (todayExists && addedCount > 0) {
       setEodStatus(`✅ Cierre del ${dateKey} actualizado — ${addedCount} ticker(s) nuevo(s), ${newTickerCount} totales`);
     } else {
-      setEodStatus(`✅ Cierre EOD guardado: ${newTickerCount} instrumento(s) registrados al ${dateKey} — S/R se recalculará automáticamente`);
+      setEodStatus(`✅ Cierre EOD guardado: ${newTickerCount} instrumento(s) registrados al ${dateKey}`);
     }
     setTimeout(() => setEodStatus(''), 5000);
   };
 
-  // V1.8.3: Normalize existing history — auto-scale prices > 10 and remove garbage
   const handleNormalizeHistory = () => {
     if (!priceHistory) {
       setPriceHistoryStatus('❌ No hay historial para normalizar');
@@ -456,7 +448,7 @@ export default function ConfiguracionTab({
 
     const parts: string[] = [];
     if (result.scaledCount > 0) {
-      parts.push(`${result.scaledCount} precio(s) normalizado(s) (×÷100)`);
+      parts.push(`${result.scaledCount} precio(s) normalizado(s)`);
     }
     if (result.rejectedCount > 0) {
       parts.push(`${result.rejectedCount} entrada(s) basura eliminada(s)`);
@@ -464,7 +456,7 @@ export default function ConfiguracionTab({
     if (parts.length > 0) {
       setPriceHistoryStatus(`✅ Normalización completada: ${parts.join(', ')} de ${result.totalCount} totales`);
     } else {
-      setPriceHistoryStatus('✅ Historial limpio — todos los precios ya están en escala 1.XXXX');
+      setPriceHistoryStatus('✅ Historial limpio — todos los precios en escala 1.XXXX');
     }
     setTimeout(() => setPriceHistoryStatus(''), 5000);
   };
@@ -479,7 +471,6 @@ export default function ConfiguracionTab({
       })()
     : '';
 
-  // V1.9.1: Price history freshness — how many days since last EOD close
   const lastCloseDate = hasPriceHistory
     ? (() => {
         const dates = Object.keys(priceHistory!.historico).sort();
@@ -496,117 +487,252 @@ export default function ConfiguracionTab({
   const todayKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`;
   const todayCloseExists = hasPriceHistory && priceHistory!.historico[todayKey];
 
-  // V1.8.3: Compute audit stats for current history
   const auditStats = hasPriceHistory ? countAuditEntries(priceHistory!) : null;
-  const tickerCount = hasPriceHistory
+  const phTickerCount = hasPriceHistory
     ? new Set(Object.values(priceHistory!.historico).flatMap(d => Object.keys(d))).size
     : 0;
 
+  // ── Shared status toast helper (returns JSX, NOT a component) ──
+  const renderStatusToast = (message: string) => (
+    <div className={`mt-3 p-3 rounded-xl text-xs font-medium animate-fadeIn backdrop-blur-sm ${
+      message.startsWith('✅') ? 'bg-[#2eebc8]/8 text-[#2eebc8] border border-[#2eebc8]/15' :
+      message.startsWith('❌') ? 'bg-[#f87171]/8 text-[#f87171] border border-[#f87171]/15' :
+      'bg-slate-900/40 text-app-text3 border border-white/10'
+    }`}>
+      {message}
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-5">
+      {/* ══════════════════════════════════════════════════════════════════
+          HEADER — QUANT X ENGINE
+          ══════════════════════════════════════════════════════════════════ */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-app-text mb-1">
-            ⚙️ Configuración
+          <h2 className="text-lg font-semibold text-app-text mb-0.5">
+            <span className="text-[#2eebc8]">◈</span> CONFIG — <span className="text-[#2eebc8]">QUANT X</span>
           </h2>
-          <p className="text-sm text-app-text3">
-            Datos del mercado, parámetros, backup y historial de precios
+          <p className="text-[11px] text-app-text3 font-mono">
+            Motor automatizado · Parámetros de referencia · Persistencia
           </p>
         </div>
         <div className="flex items-center gap-3">
           {saveSuccess && (
-            <span className="text-[#2eebc8] text-sm font-medium">
-              ✓ Configuración guardada
+            <span className="text-[#2eebc8] text-xs font-mono font-medium animate-fadeIn">
+              ✓ Guardado
             </span>
           )}
           <button
             onClick={handleSaveConfig}
-            className="px-5 py-2 bg-[#2eebc8] text-[#0c1220] font-medium text-sm rounded-lg hover:opacity-90 transition-colors"
+            className="px-4 py-1.5 bg-[#2eebc8]/10 text-[#2eebc8] font-mono text-xs font-medium rounded-lg border border-[#2eebc8]/20 hover:bg-[#2eebc8]/20 transition-all duration-200"
           >
-            💾 Guardar Configuración
+            💾 Guardar
           </button>
         </div>
       </div>
 
-      {/* ── 1. RAW DATA INPUT ──────────────────────────────────────────────── */}
-      <div className="bg-app-card rounded-xl border border-app-border/60 p-5">
-        <h3 className="text-sm font-medium text-app-text2 mb-4">
-          📥 Cargar Datos del Mercado
-        </h3>
-        <p className="text-xs text-app-text4 mb-3">
-          Pegá los datos crudos de acuantoesta.com.ar — detecta formato automático
-        </p>
-        <textarea
-          value={rawInput}
-          onChange={(e) => setRawInput(e.target.value)}
-          className="w-full h-48 rounded-xl bg-app-input border border-app-border/60 font-mono text-xs focus:border-[#2eebc8]/50 focus:outline-none resize-y p-3 text-app-text2 placeholder:text-app-text4"
-          placeholder={`Formato vertical (copy-paste directo de acuantoesta.com.ar):
-S30A6LECAP
-30/04/2026
-12
-1,2685
-0.19%
-...
+      {/* ══════════════════════════════════════════════════════════════════
+          ◈ OPERACIÓN AUTOMATIZADA — QUANT X ENGINE
+          ══════════════════════════════════════════════════════════════════ */}
+      <div className="bg-slate-900/40 rounded-xl border border-white/10 p-5 backdrop-blur-sm">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-[#2eebc8] text-sm">◈</span>
+          <h3 className="text-sm font-bold text-app-text tracking-wide uppercase">
+            Operación Automatizada — QUANT X Engine
+          </h3>
+        </div>
 
-O formato pipe-delimited:
-S30O6|LECAP|30/10/2026|196|1.1550|0.57|28.0|2.15|16.95`}
-        />
-        <div className="flex items-center gap-3 mt-3">
-          <button
-            onClick={handleParse}
-            disabled={!rawInput.trim()}
-            className="px-6 py-2 bg-[#2eebc8] text-[#0c1220] font-medium text-sm rounded-lg hover:opacity-90 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            Parsear y Actualizar
-          </button>
-          <button
-            onClick={handleClearRawInput}
-            className="px-6 py-2 bg-app-subtle/60 border border-app-border/60 text-app-text2 rounded-lg hover:bg-app-hover transition-colors"
-          >
-            Limpiar
-          </button>
-          {parseSuccess && (
-            <div className="mt-2 p-2.5 rounded-lg text-xs font-medium bg-[#2eebc8]/10 text-[#2eebc8] border border-[#2eebc8]/20 animate-fadeIn">
-              ✓ {instruments.length} instrumento(s) cargado(s) correctamente
+        <div className="space-y-3">
+          {/* Polling Status */}
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5">
+              <div className={`w-2 h-2 rounded-full ${marketOpen ? 'bg-[#2eebc8] animate-pulse' : 'bg-[#fb923c]'}`} />
             </div>
-          )}
-          {parseError && (
-            <span className="text-[#f87171] text-sm">✗ {parseError}</span>
-          )}
-        </div>
-        {instruments.length > 0 && (
-          <div className="text-[10px] text-app-text4 mt-2">
-            {instruments.length} instrumento(s) cargado(s) — último update:{' '}
-            {localStorage.getItem(STORAGE_KEYS.LAST_UPDATE)?.replace(/"/g, '') || '—'}
+            <div className="flex-1">
+              <div className="text-xs text-app-text2 font-medium">
+                Polling activo de instrumentos e historial vía IOL API
+              </div>
+              <div className="text-[10px] text-app-text4 font-mono mt-0.5">
+                Adaptativo: <span className="text-[#2eebc8]">60s</span> rueda / <span className="text-[#fb923c]">5m</span> cierre · Estado actual:{' '}
+                <span className={marketOpen ? 'text-[#2eebc8]' : 'text-[#fb923c]'}>
+                  {marketOpen ? 'RUEDA' : 'FUERA DE HORARIO'}
+                </span>
+              </div>
+            </div>
           </div>
-        )}
+
+          {/* RAVA API — Riesgo País */}
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5">
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{
+                  backgroundColor: riesgoPaisAuto != null ? '#2eebc8' : '#6b7280',
+                  animation: riesgoPaisAuto != null ? 'pulse 2s infinite' : 'none',
+                }}
+              />
+            </div>
+            <div className="flex-1">
+              <div className="text-xs text-app-text2 font-medium">
+                Sincronización de Riesgo País automatizada vía RAVA API
+              </div>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] font-mono text-app-text4">
+                  Status:
+                </span>
+                <span className={`text-[10px] font-mono font-bold ${riesgoPaisAuto != null ? 'text-[#2eebc8]' : 'text-app-text4'}`}>
+                  {riesgoPaisAuto != null ? 'CONECTADO A RAVA' : 'ESPERANDO DATOS'}
+                </span>
+                {riesgoPaisAuto != null && (
+                  <>
+                    <span className="text-[10px] text-app-text4">·</span>
+                    <span className="text-[10px] font-mono" style={{ color: rpStatusColor }}>
+                      {effectiveRP.toFixed(0)} pb — {rpStatusLabel}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Caución — Only Manual Requirement */}
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5">
+              <div className="w-2 h-2 rounded-full bg-[#fbbf24]" />
+            </div>
+            <div className="flex-1">
+              <div className="text-xs text-app-text2 font-medium">
+                Único requerimiento manual: Validar/setear la tasa de Caución de referencia al inicio de la rueda
+              </div>
+              <div className="text-[10px] text-app-text4 font-mono mt-0.5">
+                Fuente: PPI Cauciones · Setear abajo ↓
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="mt-4 pt-3 border-t border-white/5">
+          <div className="flex items-center gap-4 text-[9px] text-app-text4 font-mono uppercase tracking-wider">
+            <span>Instrumentos: <span className="text-app-text2">{instruments.length}</span></span>
+            <span>·</span>
+            <span>RP: <span style={{ color: rpStatusColor }}>{effectiveRP.toFixed(0)} pb</span></span>
+            <span>·</span>
+            <span>Comisión: <span className="text-app-text2">{config.comisionTotal.toFixed(2)}%</span></span>
+            <span>·</span>
+            <span>Capital: <span className="text-[#2eebc8]">${config.capitalDisponible.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span></span>
+          </div>
+        </div>
       </div>
 
-      {/* ── 2. CONFIGURATION SECTION ───────────────────────────────────────── */}
-      {/* Capital Disponible */}
-      <div className="bg-app-card rounded-xl border border-app-border/60 p-5">
-        <h3 className="text-sm font-medium text-app-text2 mb-4">
-          💰 Capital Disponible para Invertir
-        </h3>
+      {/* ══════════════════════════════════════════════════════════════════
+          CAUCIÓN DE REFERENCIA — The ONLY Manual Action
+          Premium monospace input with QUANT X styling
+          ══════════════════════════════════════════════════════════════════ */}
+      <div className="bg-slate-900/40 rounded-xl border border-[#fbbf24]/15 p-5 backdrop-blur-sm">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-[#fbbf24] text-xs">◉</span>
+          <h3 className="text-sm font-bold text-app-text tracking-wide uppercase">
+            Tasa de Caución — Referencia Manual
+          </h3>
+          <span className="text-[8px] px-1.5 py-0.5 rounded bg-[#fbbf24]/10 text-[#fbbf24] font-mono font-bold border border-[#fbbf24]/20">
+            MANUAL
+          </span>
+        </div>
+        <p className="text-[10px] text-app-text4 mb-4 font-mono">
+          Extraída visualmente de PPI Cauciones. Setear al inicio de cada rueda.
+        </p>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="block text-[10px] text-app-text3 uppercase tracking-wider font-medium mb-1.5">
-              Capital Disponible ($)
+            <label className="block text-[9px] text-app-text4 uppercase tracking-[0.15em] font-mono font-medium mb-2">
+              Caución 1 día <span className="text-[#fbbf24]">★</span>
             </label>
-            <input
-              type="number"
-              step="1000"
-              value={Math.round(config.capitalDisponible)}
-              onChange={(e) =>
-                handleConfigChange('capitalDisponible', e.target.value)
-              }
-              className="w-full bg-app-input border border-app-border/60 rounded-lg px-4 py-2.5 text-app-accent-text font-mono text-lg font-bold focus:border-[#2eebc8]/50 focus:outline-none"
-            />
+            <div className="relative">
+              <input
+                type="number"
+                step="0.1"
+                value={Number(config.caucion1d.toFixed(1))}
+                onChange={(e) => handleConfigChange('caucion1d', e.target.value)}
+                className="w-full bg-slate-950/60 border border-white/10 rounded-lg px-4 py-3 text-[#fbbf24] font-mono text-xl font-bold focus:border-[#fbbf24]/40 focus:outline-none focus:ring-1 focus:ring-[#fbbf24]/20 transition-all placeholder:text-app-text4/30"
+                placeholder="TNA %"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-app-text4 font-mono">TNA%</span>
+            </div>
           </div>
           <div>
-            <label className="block text-[10px] text-app-text3 uppercase tracking-wider font-medium mb-1.5">
-              Agregar Capital ($)
+            <label className="block text-[9px] text-app-text4 uppercase tracking-[0.15em] font-mono font-medium mb-2">
+              Caución 7 días
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.1"
+                value={Number(config.caucion7d.toFixed(1))}
+                onChange={(e) => handleConfigChange('caucion7d', e.target.value)}
+                className="w-full bg-slate-950/60 border border-white/10 rounded-lg px-4 py-3 text-app-text font-mono text-lg font-bold focus:border-[#2eebc8]/30 focus:outline-none focus:ring-1 focus:ring-[#2eebc8]/10 transition-all placeholder:text-app-text4/30"
+                placeholder="TNA %"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-app-text4 font-mono">TNA%</span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-[9px] text-app-text4 uppercase tracking-[0.15em] font-mono font-medium mb-2">
+              Caución 30 días
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.1"
+                value={Number(config.caucion30d.toFixed(1))}
+                onChange={(e) => handleConfigChange('caucion30d', e.target.value)}
+                className="w-full bg-slate-950/60 border border-white/10 rounded-lg px-4 py-3 text-app-text font-mono text-lg font-bold focus:border-[#2eebc8]/30 focus:outline-none focus:ring-1 focus:ring-[#2eebc8]/10 transition-all placeholder:text-app-text4/30"
+                placeholder="TNA %"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-app-text4 font-mono">TNA%</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-[10px] text-app-text4 mt-3 font-mono">
+          Fuente: PPI Cauciones · Actualizar al inicio de cada rueda
+        </div>
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          CAPITAL Y COMISIÓN — Compact Section
+          ══════════════════════════════════════════════════════════════════ */}
+      <div className="bg-slate-900/40 rounded-xl border border-white/10 p-5 backdrop-blur-sm">
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-[#2eebc8] text-xs">◈</span>
+          <h3 className="text-sm font-bold text-app-text tracking-wide uppercase">
+            Capital y Comisión
+          </h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Capital Disponible */}
+          <div>
+            <label className="block text-[9px] text-app-text4 uppercase tracking-[0.15em] font-mono font-medium mb-2">
+              Capital Disponible
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] text-app-text4 font-mono">$</span>
+              <input
+                type="number"
+                step="1000"
+                value={Math.round(config.capitalDisponible)}
+                onChange={(e) => handleConfigChange('capitalDisponible', e.target.value)}
+                className="w-full bg-slate-950/60 border border-white/10 rounded-lg pl-7 pr-4 py-2.5 text-[#2eebc8] font-mono text-lg font-bold focus:border-[#2eebc8]/30 focus:outline-none focus:ring-1 focus:ring-[#2eebc8]/10 transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Agregar Capital */}
+          <div>
+            <label className="block text-[9px] text-app-text4 uppercase tracking-[0.15em] font-mono font-medium mb-2">
+              Agregar Capital
             </label>
             <div className="flex gap-2">
               <input
@@ -614,160 +740,148 @@ S30O6|LECAP|30/10/2026|196|1.1550|0.57|28.0|2.15|16.95`}
                 step="1000"
                 value={addCapitalAmount}
                 onChange={(e) => setAddCapitalAmount(e.target.value)}
-                placeholder="Monto a agregar"
-                className="w-full bg-app-input border border-app-border/60 rounded-lg px-4 py-2.5 text-app-text font-mono text-sm focus:border-[#2eebc8]/50 focus:outline-none placeholder:text-app-text4"
+                placeholder="Monto"
+                className="w-full bg-slate-950/60 border border-white/10 rounded-lg px-3 py-2.5 text-app-text font-mono text-sm focus:border-[#2eebc8]/30 focus:outline-none transition-all placeholder:text-app-text4/30"
               />
               <button
                 onClick={handleAddCapital}
-                disabled={
-                  !addCapitalAmount || parseFloat(addCapitalAmount) <= 0
-                }
-                className="px-4 py-2.5 bg-[#2eebc8] text-[#0c1220] font-medium text-sm rounded-lg hover:opacity-90 transition-colors disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
+                disabled={!addCapitalAmount || parseFloat(addCapitalAmount) <= 0}
+                className="px-3 py-2.5 bg-[#2eebc8]/10 text-[#2eebc8] font-mono text-xs font-medium rounded-lg border border-[#2eebc8]/20 hover:bg-[#2eebc8]/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
               >
-                + Agregar
+                + Add
               </button>
             </div>
           </div>
+
+          {/* Comisión */}
+          <div>
+            <label className="block text-[9px] text-app-text4 uppercase tracking-[0.15em] font-mono font-medium mb-2">
+              Comisión Round-Trip
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.01"
+                value={Number(config.comisionTotal.toFixed(2))}
+                onChange={(e) => handleConfigChange('comisionTotal', e.target.value)}
+                className="w-full bg-slate-950/60 border border-white/10 rounded-lg px-4 py-2.5 text-app-text font-mono text-sm focus:border-[#2eebc8]/30 focus:outline-none transition-all"
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-app-text4 font-mono">%</span>
+            </div>
+          </div>
+
+          {/* Capital Total Display */}
           <div className="flex items-end">
-            <div className="bg-app-subtle/60 rounded-lg p-3 w-full">
-              <div className="text-[10px] text-app-text3 uppercase tracking-wider font-medium mb-1">
+            <div className="bg-slate-950/60 rounded-lg p-3 w-full border border-white/5">
+              <div className="text-[8px] text-app-text4 uppercase tracking-[0.15em] font-mono mb-1">
                 Capital Total
               </div>
-              <div className="font-mono text-2xl font-bold text-[#2eebc8]">
-                $
-                {config.capitalDisponible.toLocaleString('es-AR', {
-                  maximumFractionDigits: 0,
-                })}
-              </div>
-              <div className="text-[10px] text-app-text4 mt-1">
-                Se actualiza automáticamente al comprar/vender en Cartera
+              <div className="font-mono text-xl font-bold text-[#2eebc8]">
+                ${config.capitalDisponible.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
               </div>
             </div>
           </div>
         </div>
-        <div className="text-[10px] text-app-text4 mt-3">
-          💡 El capital se descuenta automáticamente cuando comprás un
-          instrumento y se suma al vender. Usá &quot;Agregar Capital&quot; para
-          registrar aportes adicionales a tu cuenta.
+
+        <div className="text-[10px] text-app-text4 mt-3 font-mono">
+          El capital se descuenta automáticamente al comprar y se suma al vender. Usá &quot;Agregar&quot; para registrar aportes adicionales.
         </div>
       </div>
 
-      {/* Tasas de Caución */}
-      <div className="bg-app-card rounded-xl border border-app-border/60 p-5">
-        <h3 className="text-sm font-medium text-app-text2 mb-4">
-          Tasas de Caución (TNA %)
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-[10px] text-app-text3 uppercase tracking-wider font-medium mb-1.5">
-              Caución 1 día
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={Number(config.caucion1d.toFixed(1))}
-              onChange={(e) =>
-                handleConfigChange('caucion1d', e.target.value)
-              }
-              className="w-full bg-app-input border border-app-border/60 rounded-lg px-4 py-2.5 text-app-text font-mono text-sm focus:border-[#2eebc8]/50 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] text-app-text3 uppercase tracking-wider font-medium mb-1.5">
-              Caución 7 días
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={Number(config.caucion7d.toFixed(1))}
-              onChange={(e) =>
-                handleConfigChange('caucion7d', e.target.value)
-              }
-              className="w-full bg-app-input border border-app-border/60 rounded-lg px-4 py-2.5 text-app-text font-mono text-sm focus:border-[#2eebc8]/50 focus:outline-none"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] text-app-text3 uppercase tracking-wider font-medium mb-1.5">
-              Caución 30 días
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={Number(config.caucion30d.toFixed(1))}
-              onChange={(e) =>
-                handleConfigChange('caucion30d', e.target.value)
-              }
-              className="w-full bg-app-input border border-app-border/60 rounded-lg px-4 py-2.5 text-app-text font-mono text-sm focus:border-[#2eebc8]/50 focus:outline-none"
-            />
-          </div>
+      {/* ══════════════════════════════════════════════════════════════════
+          RIESGO PAÍS — READ ONLY (Auto from RAVA API)
+          ══════════════════════════════════════════════════════════════════ */}
+      <div className="bg-slate-900/40 rounded-xl border border-white/10 p-5 backdrop-blur-sm">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[#a78bfa] text-xs">◈</span>
+          <h3 className="text-sm font-bold text-app-text tracking-wide uppercase">
+            Riesgo País
+          </h3>
+          <span className="text-[8px] px-1.5 py-0.5 rounded bg-[#2eebc8]/10 text-[#2eebc8] font-mono font-bold border border-[#2eebc8]/20">
+            AUTO
+          </span>
         </div>
-        <div className="text-[10px] text-app-text4 mt-2">
-          Fuente recomendada: a3mercados.com.ar — actualizar 2-3 veces por día
-        </div>
-      </div>
 
-      {/* Riesgo País y Comisión */}
-      <div className="bg-app-card rounded-xl border border-app-border/60 p-5">
-        <h3 className="text-sm font-medium text-app-text2 mb-4">
-          Riesgo País y Comisión
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-[10px] text-app-text3 uppercase tracking-wider font-medium mb-1.5">
-              Riesgo País (pb)
-            </label>
-            <input
-              type="number"
-              step="1"
-              value={config.riesgoPais}
-              onChange={(e) =>
-                handleConfigChange('riesgoPais', e.target.value)
-              }
-              className="w-full bg-app-input border border-app-border/60 rounded-lg px-4 py-2.5 text-app-text font-mono text-sm focus:border-[#2eebc8]/50 focus:outline-none"
+        <div className="flex items-center gap-4">
+          {/* Live indicator dot */}
+          <div className="flex flex-col items-center gap-1">
+            <div
+              className="w-3 h-3 rounded-full"
+              style={{
+                backgroundColor: riesgoPaisAuto != null ? '#2eebc8' : '#6b7280',
+                animation: riesgoPaisAuto != null ? 'pulse 2s infinite' : 'none',
+                boxShadow: riesgoPaisAuto != null ? '0 0 8px #2eebc8' : 'none',
+              }}
             />
-            <div className="text-[10px] text-app-text4 mt-1">
-              Umbrales: &lt;450 OK | 450-550 Precaución | 550-650 Alerta | &gt;650
-              Peligro
+            <span className="text-[7px] text-app-text4 font-mono">
+              {riesgoPaisAuto != null ? 'LIVE' : 'OFF'}
+            </span>
+          </div>
+
+          {/* Value display */}
+          <div className="flex-1">
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-3xl font-bold" style={{ color: rpStatusColor }}>
+                {effectiveRP.toFixed(0)}
+              </span>
+              <span className="text-xs text-app-text4 font-mono">pb</span>
+              <span
+                className="text-[10px] font-mono font-bold px-2 py-0.5 rounded"
+                style={{
+                  color: rpStatusColor,
+                  backgroundColor: `${rpStatusColor}15`,
+                  border: `1px solid ${rpStatusColor}25`,
+                }}
+              >
+                {rpStatusLabel}
+              </span>
+            </div>
+            <div className="text-[10px] text-app-text4 font-mono mt-1">
+              Fuente: <span className="text-[#2eebc8]">RAVA API</span> · Sincronización automática · Último: {riesgoPaisAuto != null ? 'Conectado' : 'Pendiente'}
             </div>
           </div>
-          <div>
-            <label className="block text-[10px] text-app-text3 uppercase tracking-wider font-medium mb-1.5">
-              Comisión total round-trip (%)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              value={Number(config.comisionTotal.toFixed(2))}
-              onChange={(e) =>
-                handleConfigChange('comisionTotal', e.target.value)
-              }
-              className="w-full bg-app-input border border-app-border/60 rounded-lg px-4 py-2.5 text-app-text font-mono text-sm focus:border-[#2eebc8]/50 focus:outline-none"
-            />
-            <div className="text-[10px] text-app-text4 mt-1">
-              0.15% compra + 0.15% venta = 0.30% total (acuantoesta.com.ar).
-              Usá &quot;Precio con Comisión&quot; en Cartera para priorizar el
-              dato del broker.
+
+          {/* Threshold legend */}
+          <div className="hidden md:block text-[9px] font-mono space-y-0.5">
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#2eebc8]" />
+              <span className="text-app-text4">&lt;450 OK</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#fbbf24]" />
+              <span className="text-app-text4">450-550 Precaución</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#fb923c]" />
+              <span className="text-app-text4">550-650 Alerta</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-1.5 h-1.5 rounded-full bg-[#f87171]" />
+              <span className="text-app-text4">&gt;650 Peligro</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── 3. IMPORT/EXPORT JSON ───────────────────────────────────────────── */}
-      <div className="bg-app-card rounded-xl border border-app-border/60 p-5">
-        <h3 className="text-sm font-medium text-app-text2 mb-4">
-          💾 Backup y Restauración de Datos
-        </h3>
-        <p className="text-xs text-app-text3 mb-4">
-          Exportá un archivo JSON con toda tu configuración, posición, historial
-          y simulaciones. Si borrás el caché del navegador, podés importar el
-          backup para restaurar todo.
+      {/* ══════════════════════════════════════════════════════════════════
+          BACKUP Y RESTAURACIÓN
+          ══════════════════════════════════════════════════════════════════ */}
+      <div className="bg-slate-900/40 rounded-xl border border-white/10 p-5 backdrop-blur-sm">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-app-text3 text-xs">◈</span>
+          <h3 className="text-sm font-bold text-app-text tracking-wide uppercase">
+            Backup y Restauración
+          </h3>
+        </div>
+        <p className="text-[10px] text-app-text4 mb-4 font-mono">
+          Exportá/importá un JSON con toda tu configuración, posición, historial y simulaciones.
         </p>
         <div className="flex flex-wrap gap-3">
           <button
             onClick={handleExportBackup}
-            className="px-4 py-2 bg-[#2eebc8] text-[#0c1220] font-medium text-sm rounded-lg hover:opacity-90 transition-colors"
+            className="px-4 py-2 bg-[#2eebc8]/10 text-[#2eebc8] font-mono text-xs font-medium rounded-lg border border-[#2eebc8]/20 hover:bg-[#2eebc8]/20 transition-all"
           >
-            📥 Exportar Backup (JSON)
+            📥 Exportar Backup
           </button>
           <input
             ref={importFileRef}
@@ -778,65 +892,42 @@ S30O6|LECAP|30/10/2026|196|1.1550|0.57|28.0|2.15|16.95`}
           />
           <button
             onClick={() => importFileRef.current?.click()}
-            className="px-4 py-2 bg-app-subtle/60 border border-app-border/60 text-app-text2 rounded-lg hover:bg-app-hover transition-colors"
+            className="px-4 py-2 bg-slate-800/60 border border-white/10 text-app-text2 font-mono text-xs rounded-lg hover:bg-slate-700/60 transition-all"
           >
-            📤 Importar Backup (JSON)
+            📤 Importar Backup
           </button>
         </div>
-        {backupStatus && (
-          <div className={`mt-3 p-3 rounded-lg text-xs font-medium animate-fadeIn ${
-            backupStatus.startsWith('✅') ? 'bg-[#2eebc8]/10 text-[#2eebc8] border border-[#2eebc8]/20' :
-            backupStatus.startsWith('❌') ? 'bg-[#f87171]/10 text-[#f87171] border border-[#f87171]/20' :
-            'bg-app-subtle/40 text-app-text3 border border-app-border/40'
-          }`}>
-            {backupStatus}
-          </div>
-        )}
-        <div className="mt-3 text-[10px] text-app-text4">
-          El backup incluye: configuración, posición activa, transacciones,
-          simulaciones, instrumentos, historial externo y snapshots de sesión
-          (historial momentum). Al importar un backup de una versión anterior,
-          los datos se normalizan automáticamente (TEM/TNA/días se recalculan si
-          faltan).
-        </div>
+        {backupStatus && renderStatusToast(backupStatus)}
       </div>
 
-      {/* ── 4. PRICE HISTORY (V1.8.4) ────────────────────────────────────────── */}
-      <div className="bg-app-card rounded-xl border border-app-border/60 p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <h3 className="text-sm font-medium text-app-text2">
-            📜 Historial de Precios
+      {/* ══════════════════════════════════════════════════════════════════
+          HISTORIAL DE PRECIOS
+          ══════════════════════════════════════════════════════════════════ */}
+      <div className="bg-slate-900/40 rounded-xl border border-white/10 p-5 backdrop-blur-sm">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-app-text3 text-xs">◈</span>
+          <h3 className="text-sm font-bold text-app-text tracking-wide uppercase">
+            Historial de Precios
           </h3>
-          <span className="text-[8px] px-1.5 py-0.5 rounded bg-[#f472b6]/15 text-[#f472b6] font-mono font-bold">V1.8.5</span>
         </div>
-        <p className="text-xs text-app-text3 mb-4">
-          Cargá el archivo <code className="text-[#2eebc8]">historico_precios.json</code> para
-          habilitar análisis de soporte/resistencia (15 días), momentum de precios y
-          Duration Modified (DM) desde datos históricos reales. El sistema hace <strong className="text-app-text2">merge incremental</strong> y <strong className="text-app-text2">normalización automática</strong>: precios {'>'} 10 se dividen por 100 (ej. 116.15 → 1.1615).
-        </p>
 
-        {/* Status */}
-        <div className="mb-4 p-4 border-2 border-dashed border-app-border/40 rounded-xl hover:border-[#2eebc8]/30 transition-colors">
+        {/* Status indicator */}
+        <div className="mb-4 p-3 border border-dashed border-white/10 rounded-xl hover:border-[#2eebc8]/20 transition-colors">
           <div className="flex items-center gap-2">
-            <span
-              className={`inline-block w-2.5 h-2.5 rounded-full ${
-                hasPriceHistory ? 'bg-[#2eebc8]' : 'bg-app-text4'
-              }`}
+            <div
+              className={`w-2 h-2 rounded-full ${hasPriceHistory ? 'bg-[#2eebc8]' : 'bg-app-text4'}`}
+              style={{ animation: hasPriceHistory ? 'pulse 2s infinite' : 'none' }}
             />
-            <span className="text-sm text-app-text2">
-              {hasPriceHistory
-                ? 'Historial de precios cargado'
-                : 'Sin historial de precios'}
+            <span className="text-xs text-app-text2 font-mono">
+              {hasPriceHistory ? 'Historial cargado' : 'Sin historial'}
             </span>
           </div>
           {hasPriceHistory && (
-            <div className="mt-2 space-y-1 text-[10px] text-app-text4 ml-4">
+            <div className="mt-2 space-y-1 text-[10px] text-app-text4 font-mono ml-4">
               <div>Rango: {priceHistoryDateRange}</div>
-              <div>Instrumentos: {tickerCount} tickers</div>
-              <div>Descripción: {priceHistory!.descripcion || 'Sin descripción'}</div>
-              {/* V1.9.1: Freshness indicator */}
+              <div>Tickers: {phTickerCount}</div>
               <div className={`flex items-center gap-1.5 ${isHistoryStale ? 'text-[#fbbf24]' : 'text-[#2eebc8]'}`}>
-                <span className={`inline-block w-1.5 h-1.5 rounded-full ${isHistoryStale ? 'bg-[#fbbf24]' : 'bg-[#2eebc8]'}`} />
+                <div className={`w-1.5 h-1.5 rounded-full ${isHistoryStale ? 'bg-[#fbbf24]' : 'bg-[#2eebc8]'}`} />
                 <span>
                   {lastCloseDate
                     ? isHistoryStale
@@ -845,49 +936,40 @@ S30O6|LECAP|30/10/2026|196|1.1550|0.57|28.0|2.15|16.95`}
                     : 'Sin cierres registrados'}
                 </span>
               </div>
-              {/* V1.8.3: Audit stats */}
-              {auditStats && (auditStats.scaled > 0 || auditStats.rejected > 0) && (
-                <div className="text-[#fbbf24]">
-                  ⚠️ {auditStats.scaled > 0 && `${auditStats.scaled} precio(s) en escala 100 (necesitan ÷100)`}{auditStats.scaled > 0 && auditStats.rejected > 0 && ' · '}{auditStats.rejected > 0 && `${auditStats.rejected} entrada(s) basura`} de {auditStats.total} totales — normalizá el historial
-                </div>
-              )}
               {auditStats && auditStats.scaled === 0 && auditStats.rejected === 0 && (
-                <div className="text-[#2eebc8]">
-                  ✓ Historial normalizado — todos los precios en escala 1.XXXX
-                </div>
+                <div className="text-[#2eebc8]">✓ Normalizado — escala 1.XXXX</div>
               )}
             </div>
           )}
         </div>
 
-        {/* V1.9.1: Stale Data Warning */}
+        {/* Stale Warning */}
         {hasPriceHistory && isHistoryStale && (
-          <div className="mb-4 p-3 rounded-xl bg-[#fbbf24]/10 border border-[#fbbf24]/30 animate-fadeInUp">
+          <div className="mb-4 p-3 rounded-xl bg-[#fbbf24]/6 border border-[#fbbf24]/15 animate-fadeInUp">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-sm">⚠️</span>
-              <span className="text-[#fbbf24] text-xs font-semibold">HISTORIAL DESACTUALIZADO</span>
+              <span className="text-xs">⚠️</span>
+              <span className="text-[#fbbf24] text-[10px] font-bold font-mono uppercase">Historial desactualizado</span>
             </div>
-            <p className="text-[10px] text-app-text3">
-              Último cierre: <span className="font-mono text-app-text2">{lastCloseDate}</span> (hace <span className="font-mono text-[#fbbf24]">{daysSinceLastClose} día{daysSinceLastClose !== 1 ? 's' : ''}</span>).
-              Los cálculos de S/R y posición en canal pueden estar desactualizados.
-              Usá <strong className="text-app-text2">💾 Guardar Cierre del Día</strong> para actualizar.
+            <p className="text-[10px] text-app-text3 font-mono">
+              Último cierre: <span className="text-app-text2">{lastCloseDate}</span> (hace <span className="text-[#fbbf24]">{daysSinceLastClose}d</span>).
+              Usá <strong className="text-app-text2">💾 Guardar Cierre</strong> para actualizar.
             </p>
           </div>
         )}
 
-        {/* V1.9.1: Today's Close Status */}
+        {/* Today Close Status */}
         {hasPriceHistory && todayCloseExists && (
-          <div className="mb-4 p-3 rounded-xl bg-[#2eebc8]/10 border border-[#2eebc8]/20 animate-fadeInUp">
+          <div className="mb-4 p-3 rounded-xl bg-[#2eebc8]/6 border border-[#2eebc8]/15 animate-fadeInUp">
             <div className="flex items-center gap-2">
-              <span className="text-sm">✅</span>
-              <span className="text-[#2eebc8] text-xs font-semibold">CIERRE DE HOY REGISTRADO</span>
-              <span className="text-[10px] text-app-text4">— {Object.keys(todayCloseExists).length} instrumentos al {todayKey}</span>
+              <span className="text-xs">✅</span>
+              <span className="text-[#2eebc8] text-[10px] font-bold font-mono uppercase">Cierre de hoy registrado</span>
+              <span className="text-[9px] text-app-text4 font-mono">— {Object.keys(todayCloseExists).length} instrumentos</span>
             </div>
           </div>
         )}
 
         {/* Actions */}
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2">
           <input
             ref={priceHistoryFileRef}
             type="file"
@@ -897,318 +979,115 @@ S30O6|LECAP|30/10/2026|196|1.1550|0.57|28.0|2.15|16.95`}
           />
           <button
             onClick={() => priceHistoryFileRef.current?.click()}
-            className="px-4 py-2 bg-[#2eebc8] text-[#0c1220] font-medium text-sm rounded-lg hover:opacity-90 transition-colors"
+            className="px-3 py-1.5 bg-[#2eebc8]/10 text-[#2eebc8] font-mono text-[11px] font-medium rounded-lg border border-[#2eebc8]/20 hover:bg-[#2eebc8]/20 transition-all"
           >
-            📂 Cargar historico_precios.json
+            📂 Cargar JSON
           </button>
-          {/* V1.9.1: EOD Append button */}
           <button
             onClick={handleEODAppend}
             disabled={instruments.length === 0}
-            className={`px-4 py-2 font-medium text-sm rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+            className={`px-3 py-1.5 font-mono text-[11px] font-medium rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
               todayCloseExists
-                ? 'bg-app-subtle/60 border border-[#2eebc8]/30 text-[#2eebc8] hover:bg-[#2eebc8]/10'
-                : 'bg-[#22d3ee] text-[#0c1220] hover:opacity-90'
+                ? 'bg-slate-800/60 border border-[#2eebc8]/20 text-[#2eebc8] hover:bg-[#2eebc8]/10'
+                : 'bg-[#22d3ee]/10 text-[#22d3ee] border border-[#22d3ee]/20 hover:bg-[#22d3ee]/20'
             }`}
-            title={todayCloseExists ? 'Ya existe cierre de hoy — se agregarán tickers faltantes' : 'Guardar precios actuales como cierre EOD en el historial'}
+            title={todayCloseExists ? 'Ya existe cierre de hoy — se agregarán tickers faltantes' : 'Guardar precios actuales como cierre EOD'}
           >
-            💾 Guardar Cierre del Día
+            💾 Guardar Cierre
           </button>
-          {/* V1.8.2: Download JSON button for auditing */}
           {hasPriceHistory && (
             <button
               onClick={handleDownloadPriceHistory}
-              className="px-4 py-2 bg-app-subtle/60 border border-app-border/60 text-[#22d3ee] rounded-lg hover:bg-app-hover transition-colors"
-              title="Descargar el JSON real que el sistema tiene en memoria para auditar errores"
+              className="px-3 py-1.5 bg-slate-800/60 border border-white/10 text-app-text3 font-mono text-[11px] rounded-lg hover:bg-slate-700/60 transition-all"
+              title="Descargar JSON para auditoría"
             >
-              🔍 Descargar JSON de Historial
+              🔍 Auditar JSON
             </button>
           )}
-          {/* V1.8.3: Normalize button — auto-scale prices > 10 and remove garbage */}
           {hasPriceHistory && auditStats && (auditStats.scaled > 0 || auditStats.rejected > 0) && (
             <button
               onClick={handleNormalizeHistory}
-              className="px-4 py-2 bg-[#fbbf24]/10 text-[#fbbf24] border border-[#fbbf24]/20 rounded-lg hover:bg-[#fbbf24]/20 transition-colors"
-              title="Normalizar precios > 10 (÷100) y eliminar entradas basura"
+              className="px-3 py-1.5 bg-[#fbbf24]/8 text-[#fbbf24] border border-[#fbbf24]/15 font-mono text-[11px] rounded-lg hover:bg-[#fbbf24]/15 transition-all"
             >
-              🔄 Normalizar Historial (1.XXXX)
+              🔄 Normalizar
             </button>
           )}
-          {/* V1.8.2: Reset button — complete wipe */}
           {hasPriceHistory && (
             <button
               onClick={handleResetPriceHistory}
-              className="px-4 py-2 bg-[#f87171]/10 text-[#f87171] border border-[#f87171]/20 rounded-lg hover:bg-[#f87171]/20 transition-colors"
-              title="Resetear historial completo incluyendo backups"
+              className="px-3 py-1.5 bg-[#f87171]/8 text-[#f87171] border border-[#f87171]/15 font-mono text-[11px] rounded-lg hover:bg-[#f87171]/15 transition-all"
+              title="Resetear historial completo"
             >
-              🗑️ Resetear Historial
+              🗑️ Resetear
             </button>
           )}
         </div>
-        {/* V1.9.1: EOD Append status */}
-        {eodStatus && (
-          <div className={`mt-3 p-3 rounded-lg text-xs font-medium animate-fadeIn ${
-            eodStatus.startsWith('✅') ? 'bg-[#2eebc8]/10 text-[#2eebc8] border border-[#2eebc8]/20' :
-            eodStatus.startsWith('❌') ? 'bg-[#f87171]/10 text-[#f87171] border border-[#f87171]/20' :
-            'bg-app-subtle/40 text-app-text3 border border-app-border/40'
-          }`}>
-            {eodStatus}
+
+        {eodStatus && renderStatusToast(eodStatus)}
+        {priceHistoryStatus && renderStatusToast(priceHistoryStatus)}
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          DATOS MANUALES (Collapsible — fallback for offline use)
+          ══════════════════════════════════════════════════════════════════ */}
+      <div className="bg-slate-900/40 rounded-xl border border-white/10 backdrop-blur-sm overflow-hidden">
+        <button
+          onClick={() => setRawInputExpanded(prev => !prev)}
+          className="w-full flex items-center justify-between p-4 hover:bg-white/[0.02] transition-all"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-app-text4 text-xs">◈</span>
+            <h3 className="text-sm font-bold text-app-text4 tracking-wide uppercase">
+              Datos Manuales (Fallback)
+            </h3>
+            <span className="text-[8px] px-1.5 py-0.5 rounded bg-app-text4/10 text-app-text4/60 font-mono font-bold border border-app-text4/10">
+              OFFLINE
+            </span>
+          </div>
+          <span className="text-app-text4 text-xs font-mono">
+            {rawInputExpanded ? '▲' : '▼'}
+          </span>
+        </button>
+
+        {rawInputExpanded && (
+          <div className="px-5 pb-5 animate-fadeIn">
+            <p className="text-[10px] text-app-text4 mb-3 font-mono">
+              Pegá datos crudos de acuantoesta.com.ar — solo necesario si LIVE está desactivado.
+            </p>
+            <textarea
+              value={rawInput}
+              onChange={(e) => setRawInput(e.target.value)}
+              className="w-full h-36 rounded-lg bg-slate-950/60 border border-white/10 font-mono text-[10px] focus:border-[#2eebc8]/30 focus:outline-none resize-y p-3 text-app-text2 placeholder:text-app-text4/30 transition-all"
+              placeholder={`Formato vertical (copy-paste de acuantoesta.com.ar):\nS30A6LECAP\n30/04/2026\n12\n1,2685\n0.19%\n...\n\nO formato pipe-delimited:\nS30O6|LECAP|30/10/2026|196|1.1550|0.57|28.0|2.15|16.95`}
+            />
+            <div className="flex items-center gap-3 mt-2">
+              <button
+                onClick={handleParse}
+                disabled={!rawInput.trim()}
+                className="px-4 py-1.5 bg-[#2eebc8]/10 text-[#2eebc8] font-mono text-xs font-medium rounded-lg border border-[#2eebc8]/20 hover:bg-[#2eebc8]/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Parsear
+              </button>
+              <button
+                onClick={handleClearRawInput}
+                className="px-4 py-1.5 bg-slate-800/60 border border-white/10 text-app-text4 font-mono text-xs rounded-lg hover:bg-slate-700/60 transition-all"
+              >
+                Limpiar
+              </button>
+              {parseSuccess && (
+                <span className="text-[10px] text-[#2eebc8] font-mono">✓ {instruments.length} instrumento(s) cargado(s)</span>
+              )}
+              {parseError && (
+                <span className="text-[10px] text-[#f87171] font-mono">✗ {parseError}</span>
+              )}
+            </div>
+            {instruments.length > 0 && (
+              <div className="text-[9px] text-app-text4 mt-2 font-mono">
+                {instruments.length} instrumento(s) — último update: {localStorage.getItem(STORAGE_KEYS.LAST_UPDATE)?.replace(/"/g, '') || '—'}
+              </div>
+            )}
           </div>
         )}
-
-        {priceHistoryStatus && (
-          <div className={`mt-3 p-3 rounded-lg text-xs font-medium animate-fadeIn ${
-            priceHistoryStatus.startsWith('✅') ? 'bg-[#2eebc8]/10 text-[#2eebc8] border border-[#2eebc8]/20' :
-            priceHistoryStatus.startsWith('❌') ? 'bg-[#f87171]/10 text-[#f87171] border border-[#f87171]/20' :
-            'bg-app-subtle/40 text-app-text3 border border-app-border/40'
-          }`}>
-            {priceHistoryStatus}
-          </div>
-        )}
-
-        <div className="mt-3 space-y-1.5 text-[10px] text-app-text4">
-          <div>
-            💡 <strong className="text-app-text3">Merge incremental</strong>: cada carga agrega datos nuevos sin pisar los existentes. Si una fecha ya existe, solo se agregan tickers nuevos.
-          </div>
-          <div>
-            🔄 <strong className="text-app-text3">Importación inteligente</strong>: precios {'>'} 10 se dividen por 100 automáticamente (ej. 116.15 → 1.1615). Todo el sistema funciona en escala 1.XXXX.
-          </div>
-          <div>
-            📊 <strong className="text-app-text3">S/R recalibrado</strong>: soporte y resistencia se calculan sobre los últimos 15 días en escala 1.XXXX. Precios mostrados con 4 decimales.
-          </div>
-          <div>
-            🔍 <strong className="text-app-text3">Auditoría</strong>: usá &quot;Descargar JSON&quot; para bajar el historial real y verificar que los precios estén en escala 1.XXXX.
-          </div>
-        </div>
-      </div>
-
-      {/* ── 5. FORMAT REFERENCE ─────────────────────────────────────────────── */}
-      <div className="bg-app-card rounded-xl border border-app-border/60 p-5">
-        <h3 className="text-sm font-medium text-app-text2 mb-4">
-          📋 Referencia de Formatos Soportados
-        </h3>
-        <div className="space-y-3 text-xs">
-          {/* Vertical format */}
-          <div>
-            <span className="text-[#2eebc8] font-semibold">
-              Formato vertical (recomendado — copy-paste directo):
-            </span>
-            <div className="mt-1 bg-app-input p-2.5 rounded-lg text-app-text2 font-mono text-[10px] leading-relaxed">
-              <span className="text-app-text4">
-                {'//'} Simplemente copiá la tabla de acuantoesta.com.ar y pegá
-                acá
-              </span>
-              <br />
-              S30A6LECAP
-              <br />
-              30/04/2026
-              <br />
-              12
-              <br />
-              1,2685
-              <br />
-              0.19%&nbsp;&nbsp;&nbsp;&nbsp;1,2704&nbsp;&nbsp;&nbsp;&nbsp;1,2749
-              <br />
-              ...<br />
-              $ 0,00&nbsp;&nbsp;&nbsp;&nbsp;+0.35%&nbsp;&nbsp;&nbsp;&nbsp;10.67%&nbsp;&nbsp;&nbsp;&nbsp;0.88%&nbsp;&nbsp;&nbsp;&nbsp;$
-              0,00&nbsp;&nbsp;&nbsp;&nbsp;-
-            </div>
-            <div className="text-app-text4 mt-1">
-              El sistema detecta automáticamente TICKER+TIPO, vencimiento, días,
-              precio, TNA y TEM.
-            </div>
-          </div>
-
-          {/* Pipe format */}
-          <div>
-            <span className="text-[#fbbf24] font-semibold">
-              Formato pipe-delimited:
-            </span>
-            <code className="block mt-1 bg-app-input p-2.5 rounded-lg text-app-text2 font-mono text-[10px]">
-              TICKER|TIPO|VENCIMIENTO|DIAS|PRECIO|CAMBIO|TNA|TEM|GANANCIA
-            </code>
-            <code className="block mt-0.5 bg-app-input p-2.5 rounded-lg text-[#2eebc8] font-mono text-[10px]">
-              S30O6|LECAP|30/10/2026|196|1.1550|0.57|28.0|2.15|16.95
-            </code>
-          </div>
-
-          {/* Price history format */}
-          <div>
-            <span className="text-[#f472b6] font-semibold">
-              Formato historico_precios.json (V1.8.3):
-            </span>
-            <code className="block mt-1 bg-app-input p-2.5 rounded-lg text-app-text2 font-mono text-[10px] leading-relaxed">
-              {'{'}
-              <br />
-              &nbsp;&nbsp;&quot;descripcion&quot;: &quot;Histórico de precios
-              LECAP/BONCAP&quot;,
-              <br />
-              &nbsp;&nbsp;&quot;metadatos&quot;: {'{'}
-              &quot;moneda&quot;: &quot;ARS&quot;, &quot;periodo&quot;:
-              &quot;...&quot;, &quot;instrumentos_maestro&quot;: {'{'}...{'}'} {'}'},
-              <br />
-              &nbsp;&nbsp;&quot;historico&quot;: {'{'}
-              <br />
-              &nbsp;&nbsp;&nbsp;&nbsp;&quot;2026-04-14&quot;: {'{'}
-              &quot;S30O6&quot;: {'{'}
-              &quot;p&quot;: 1.155, &quot;tna&quot;: 28.0, &quot;tem&quot;:
-              2.15, &quot;dm&quot;: -0.526 {'}'}, ...{'}'},
-              <br />
-              &nbsp;&nbsp;&nbsp;&nbsp;...
-              <br />
-              &nbsp;&nbsp;{'}'}
-              <br />
-              {'}'}
-            </code>
-            <div className="text-app-text4 mt-1">
-              Cada entrada tiene: p (precio), tna, tem, dm (duration modified).
-              Las claves del &quot;historico&quot; son fechas ISO (YYYY-MM-DD).
-              V1.8.3: precios {'>'} 10 se normalizan automáticamente (÷100 → escala 1.XXXX).
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 6. WORKFLOW REFERENCE ───────────────────────────────────────────── */}
-      <div className="bg-app-card rounded-xl border border-app-border/60 p-5">
-        <h3 className="text-sm font-medium text-app-text2 mb-4">
-          📌 Flujo de Trabajo Diario
-        </h3>
-        <div className="space-y-2 text-xs text-app-text3">
-          <div className="flex items-start gap-3 py-1">
-            <span className="text-[#2eebc8] font-bold w-6 shrink-0">
-              1.
-            </span>
-            <span>
-              Abrir dashboard y cargar datos en la sección{' '}
-              <strong className="text-app-text2">
-                &quot;Cargar Datos del Mercado&quot;
-              </strong>{' '}
-              arriba
-            </span>
-          </div>
-          <div className="flex items-start gap-3 py-1">
-            <span className="text-[#22d3ee] font-bold w-6 shrink-0">
-              2.
-            </span>
-            <span>
-              Cargar <code className="text-[#2eebc8]">historico_precios.json</code> si no está
-              cargado (para soporte/resistencia y DM) — merge incremental, no pisa datos
-            </span>
-          </div>
-          <div className="flex items-start gap-3 py-1">
-            <span className="text-[#22d3ee] font-bold w-6 shrink-0">
-              2b.
-            </span>
-            <span>
-              <strong className="text-[#22d3ee]">💾 Guardar Cierre del Día</strong> — al final de cada jornada, 
-              presioná este botón para que los precios actuales se guarden en el historial. 
-              Así el S/R se recalcula con datos frescos cada noche (EOD). Si no lo hacés, 
-              los techos y soportes quedan desactualizados.
-            </span>
-          </div>
-          <div className="flex items-start gap-3 py-1">
-            <span className="text-[#fbbf24] font-bold w-6 shrink-0">
-              3.
-            </span>
-            <span>
-              Actualizar caución y riesgo país en la configuración de arriba
-            </span>
-          </div>
-          <div className="flex items-start gap-3 py-1">
-            <span className="text-[#2eebc8] font-bold w-6 shrink-0">
-              4.
-            </span>
-            <span>
-              Revisar <strong className="text-app-text2">Diagnóstico</strong>{' '}
-              para veredicto automático de posición
-            </span>
-          </div>
-          <div className="flex items-start gap-3 py-1">
-            <span className="text-[#22d3ee] font-bold w-6 shrink-0">
-              5.
-            </span>
-            <span>
-              Ver <strong className="text-app-text2">Mercado</strong> para
-              anomalías de curva
-            </span>
-          </div>
-          <div className="flex items-start gap-3 py-1">
-            <span className="text-[#fbbf24] font-bold w-6 shrink-0">
-              6.
-            </span>
-            <span>
-              <strong className="text-app-text2">Estrategias</strong> para
-              señales detalladas por instrumento
-            </span>
-          </div>
-          <div className="flex items-start gap-3 py-1">
-            <span className="text-[#f472b6] font-bold w-6 shrink-0">
-              7.
-            </span>
-            <span>
-              <strong className="text-app-text2">Arbitraje</strong> para
-              evaluar rotaciones y simular operaciones
-            </span>
-          </div>
-          <div className="flex items-start gap-3 py-1">
-            <span className="text-[#f87171] font-bold w-6 shrink-0">
-              8.
-            </span>
-            <span>
-              Actualizar 2-3 veces/día: ~10:30, ~13:00, ~16:30
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Thresholds Reference ────────────────────────────────────────────── */}
-      <div className="bg-app-card rounded-xl border border-app-border/60 p-5">
-        <h3 className="text-sm font-medium text-app-text2 mb-4">
-          📐 Referencia de Umbrales de Señales
-        </h3>
-        <div className="space-y-2 text-xs">
-          <div className="flex items-center gap-3 py-1">
-            <span className="px-2 py-0.5 rounded-lg bg-[#2eebc8]/10 text-[#2eebc8] text-[10px] font-semibold w-28 text-center">
-              COMPRA FUERTE
-            </span>
-            <span className="text-app-text3">
-              Score ≥ 7.5 | RAE &gt; 35% y Spread &gt; 0.5%
-            </span>
-          </div>
-          <div className="flex items-center gap-3 py-1">
-            <span className="px-2 py-0.5 rounded-lg bg-[#2eebc8]/10 text-[#2eebc8] text-[10px] font-semibold w-28 text-center">
-              COMPRA
-            </span>
-            <span className="text-app-text3">
-              Score 5.5–7.5 | Spread &gt; 0.25%
-            </span>
-          </div>
-          <div className="flex items-center gap-3 py-1">
-            <span className="px-2 py-0.5 rounded-lg bg-[#fbbf24]/15 text-[#fbbf24] text-[10px] font-semibold w-28 text-center">
-              NEUTRAL
-            </span>
-            <span className="text-app-text3">
-              Score 3.5–5.5 | Spread 0.10–0.25%
-            </span>
-          </div>
-          <div className="flex items-center gap-3 py-1">
-            <span className="px-2 py-0.5 rounded-lg bg-[#f472b6]/15 text-[#f472b6] text-[10px] font-semibold w-28 text-center">
-              VENDER
-            </span>
-            <span className="text-app-text3">
-              Score 2.0–3.5 | Spread comprimiendo
-            </span>
-          </div>
-          <div className="flex items-center gap-3 py-1">
-            <span className="px-2 py-0.5 rounded-lg bg-[#f87171]/10 text-[#f87171] text-[10px] font-semibold w-28 text-center">
-              EVITAR
-            </span>
-            <span className="text-app-text3">
-              Score &lt; 2.0 | Spread negativo o curva invertida
-            </span>
-          </div>
-        </div>
       </div>
     </div>
   );
