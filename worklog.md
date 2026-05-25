@@ -532,3 +532,84 @@ Stage Summary:
 - Add instrument detail panel (click row → expand with charts)
 - Add portfolio rebalancing suggestions based on Action Score
 - Improve mobile card layout for the Mercado tab (similar to CockpitTab treatment)
+
+---
+Task ID: 2
+Agent: JSX Visual Transformation Agent
+Task: V7.0 Disruptive Aesthetic Transformation — CockpitTab.tsx JSX
+
+Work Log:
+- Read worklog.md for full project context (Tasks 1-8b, V5.2 complete)
+- Read full CockpitTab.tsx (~1650 lines) to identify exact JSX locations for each required change
+- Made 11 targeted JSX edits (NO logic, hooks, state, or data changes):
+
+  1. HEADER: Added `relative` class + changed title to `◈ COCKPIT TÁCTICO — QUANT X` + added scanline overlay div
+  2. STALE WARNING: Enhanced to `px-4 py-2 rounded-xl` + stronger border + amber glow boxShadow
+  3. SUMMARY BAR: Added `glass` class (backdrop blur) + left teal accent border
+  4. HEATMAP: Wrapped in glow container with gradient overlay (teal→transparent→pink)
+  5. HORIZON FILTER: Active state now uses `bg-[#2eebc8]/15` with neon teal shadow glow
+  6. EMPTY STATE: Spinner enlarged to w-5 h-5 + teal glow boxShadow
+  7. EL GRITO CARD: Conditional pulsating boxShadow (red for gatillar, pink for default)
+  8. MOBILE CARDS: Added `rounded-xl` + gradient backgrounds per action state (red/teal/dark)
+  9. MOBILE PRICE: Added teal textShadow glow
+  10. DESKTOP PRICE: Added dual-layer neon textShadow (8px + 20px teal glow)
+  11. DESKTOP ACTION SCORE BADGE: Enhanced boxShadow with dual-layer red glow for GATILLAR, teal glow for ATRACTIVO
+
+- Decimal precision verified: `.toFixed(4)` for prices/S/R, `.toFixed(2)` for distances — all preserved
+- ESLint: 0 errors
+- Dev server: compiles and serves correctly (HTTP 200)
+
+Stage Summary:
+- V7.0 JSX aesthetic transformation completed with 11 dramatic visual edits
+- Only 1 file modified: src/components/dashboard/CockpitTab.tsx
+- Key visual changes: scanline overlay, glassmorphism, neon glows, gradient backgrounds, enhanced badges
+- No functional changes — all logic, state, and data handling preserved
+- Decimal precision rules maintained (4 decimals for price/SR, 2 for distances/percentages)
+
+---
+Task ID: 1
+Agent: CSS Styling Agent
+Task: V7.0 DISRUPTIVE AESTHETIC TRANSFORMATION — globals.css NEXUS styles
+
+Work Log:
+- Read worklog.md for full project context (Tasks 1-8b, all phases complete)
+- Read full globals.css (~2022 lines) to identify existing NEXUS section (V6.0, lines 1758-2022)
+- Replaced entire V6.0 NEXUS section with V7.0 enhanced version including all 26 required visual upgrades:
+  1. `.neon-price` — Enhanced neon glow on price text (3-layer text-shadow)
+  2. `.nexus-row` — Glassmorphism card rows with gradient background, backdrop-filter blur, left accent border, gradient ::before overlay, hover with glow + translateX
+  3. `.nexus-row-gatillar` — Pulsating red glow with `nexusRowFirePulse` keyframe animation
+  4. `.nexus-row-atractivo` — Teal subtle glow with gradient background + hover glow
+  5. `.nexus-banner` — Premium glassmorphism header with gradient, blur, top neon line via ::after
+  6. `.nx-sticky-hdr` — Gradient header with neon bottom border, blur backdrop, shadow
+  7. `.cockpit-scroll-container` — Dark container with border, background, overflow scroll
+  8. `.nx-hmap-block` — 3D heatmap blocks with border, opacity, hover scaleY + glow
+  9. `.score-ring` — SVG glow filter with CSS variable
+  10. `.micro-score-bar-track` / `.micro-score-bar-fill` — Enhanced micro score bars with glow
+  11. `.cockpit-row-card` — Desktop row card with hover background
+  12. `.cockpit-row-flash` — Flash animation keyframe for heatmap click scroll
+  13. `.nx-alert-flash` — Alert trigger flash animation (4-step amber flash)
+  14. `.nx-ctx-sep` — Context section separator (teal border-top)
+  15. `.nx-dot` / `.nx-dot-fire` / `.nx-dot-teal` / `.nx-dot-gray` — Status dots with `dotFirePulse` animation
+  16. `.nx-shimmer` — Text shimmer for GATILLAR YA badge with `nxShimmer` keyframe
+  17. `.nexus-badge-fire` — Enhanced fire badge with glow + hover glow increase
+  18. `.nexus-badge-teal` — Enhanced teal badge with glow
+  19. `.nexus-grito` — El Grito card with animated gradient border via `gritoBorderGlow` keyframe
+  20. `.nexus-prox` / `.nexus-prox-bar` — Proximity indicator with flex layout + transition
+  21. `.nexus-method` — Method badge with left accent bar via ::before
+  22. `.nexus-pill` — Small pill badge (inline-flex, rounded, small font)
+  23. `.nexus-score-gauge` — Score ring wrapper with drop-shadow filter
+  24. `.nexus-vol-badge` — Volume injection badge (uppercase, bold)
+  25. `.cockpit-heatmap` — Heatmap container with gradient background + border
+  26. Light mode overrides — `.nexus-banner`, `.nexus-row`, `.nexus-row-gatillar`, `.neon-price`
+- Added 7 new @keyframes: `nexusRowFirePulse`, `cockpitRowFlash`, `nxAlertFlash`, `dotFirePulse`, `nxShimmer`, `gritoBorderGlow`
+- Removed old V6.0 styles: `nxGatillarPulse` keyframe, scanline overlay on banner, old dot styles (8px size), old prox/method styles
+- New file size: 2093 lines (was 2022 lines)
+- ESLint passes with 0 errors (excluding upload/examples directories)
+
+Stage Summary:
+- 1 file modified: src/app/globals.css (V6.0 NEXUS → V7.0 NEXUS section replacement)
+- 26 visual CSS classes implemented with dramatic aesthetic upgrades
+- 7 @keyframes animations added for pulsating, shimmer, flash, and glow effects
+- Glassmorphism, neon glow, gradient backgrounds, backdrop-filter blur throughout
+- Light mode overrides for 4 key NEXUS classes
+- Lint clean

@@ -397,6 +397,7 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
         willChange: 'transform',
         contain: 'layout style',
         transform: 'translateZ(0)',
+        boxShadow: gatillarScores.length > 0 ? '0 0 30px rgba(248,113,113,0.15)' : '0 0 15px rgba(244,114,182,0.1)',
       }}
     >
       <div className="relative z-10 rounded-2xl p-4 sm:p-5" style={{ background: 'rgba(21,29,46,0.95)' }}>
@@ -795,11 +796,11 @@ export default function CockpitTab({
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* HEADER                                                       */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="nexus-banner p-5 sm:p-6">
+      <div className="nexus-banner relative p-5 sm:p-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-xl font-bold text-app-text neon-price mb-1">
-              ◆ NEXUS TERMINAL — QUANT X
+              ◈ COCKPIT TÁCTICO — QUANT X
             </h2>
             <p className="text-sm text-app-text3">
               Quantitative Scanner · S/R + Volume + Pressure → Trigger Engine · Horizonte: {horizonLabel}
@@ -845,13 +846,14 @@ export default function CockpitTab({
           </div>
         </div>
         <div className="gradient-line-animated mt-3" />
+        <div className="absolute inset-0 pointer-events-none opacity-[0.03]" style={{ background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(46,235,200,0.1) 2px, rgba(46,235,200,0.1) 4px)' }} />
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* STALE DATA WARNING                                            */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {isStale && (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#fb923c]/8 border border-[#fb923c]/20 text-[10px] text-[#fb923c] animate-fadeInUp">
+        <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#fb923c]/8 border border-[#fb923c]/25 text-[10px] text-[#fb923c] animate-fadeInUp" style={{ boxShadow: '0 0 15px rgba(251,146,60,0.1)' }}>
           <span className="text-xs">⏳</span>
           <span className="font-medium uppercase tracking-wider">Datos en caché</span>
           <span className="text-[9px] text-[#fb923c]/70">— Las APIs externas no responden, mostrando último valor disponible</span>
@@ -885,7 +887,7 @@ export default function CockpitTab({
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* SUMMARY BAR — V5.0 Enhanced with Action Score counts          */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="nexus-banner px-4 py-3 animate-fadeInUp overflow-x-auto scrollbar-hide">
+      <div className="nexus-banner glass px-4 py-3 animate-fadeInUp overflow-x-auto scrollbar-hide" style={{ borderLeft: '3px solid rgba(46,235,200,0.2)' }}>
         <div className="flex items-center gap-3 min-w-max text-xs">
           {/* Total instruments */}
           <div className="flex items-center gap-1.5">
@@ -988,7 +990,10 @@ export default function CockpitTab({
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* V5.2: MARKET HEATMAP MINI-VISUALIZATION                       */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <MarketHeatmapStrip scores={displayedScores} onBlockClick={handleHeatmapClick} />
+      <div className="relative">
+        <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#2eebc8]/5 via-transparent to-[#f472b6]/5 pointer-events-none" />
+        <MarketHeatmapStrip scores={displayedScores} onBlockClick={handleHeatmapClick} />
+      </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* HORIZON FILTER                                                */}
@@ -1002,7 +1007,7 @@ export default function CockpitTab({
               onClick={() => handleHorizonChange(opt.value)}
               className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-semibold transition-all duration-150 ${
                 horizon === opt.value
-                  ? 'bg-app-accent-dim text-[#2eebc8] border border-app-accent-border'
+                  ? 'bg-[#2eebc8]/15 text-[#2eebc8] border border-[#2eebc8]/30 shadow-[0_0_10px_rgba(46,235,200,0.15)]'
                   : 'bg-app-subtle/40 text-app-text3 border border-transparent hover:bg-app-hover hover:text-app-text2'
               }`}
               title={opt.desc}
@@ -1070,7 +1075,7 @@ export default function CockpitTab({
           <div className="text-app-text4 text-sm">
             {cockpitScoresLoading ? (
               <span className="flex items-center justify-center gap-2">
-                <span className="animate-spin inline-block w-4 h-4 border-2 border-[#2eebc8] border-t-transparent rounded-full" />
+                <span className="animate-spin inline-block w-5 h-5 border-2 border-[#2eebc8] border-t-transparent rounded-full" style={{ boxShadow: '0 0 10px rgba(46,235,200,0.4)' }} />
                 Cargando señales de cockpit...
               </span>
             ) : searchQuery.trim() ? (
@@ -1160,7 +1165,7 @@ export default function CockpitTab({
                     {/* ═══════════════════════════════════════════════════ */}
                     {/* MOBILE CARD LAYOUT (< md)                           */}
                     {/* ═══════════════════════════════════════════════════ */}
-                    <div className={`md:hidden nexus-row ${isGatillar ? 'nexus-row-gatillar' : ''} ${isAtractivoAction ? 'nexus-row-atractivo' : ''} p-3`}>
+                    <div className={`md:hidden nexus-row ${isGatillar ? 'nexus-row-gatillar' : ''} ${isAtractivoAction ? 'nexus-row-atractivo' : ''} p-3 rounded-xl`} style={{ background: isGatillar ? 'linear-gradient(135deg, rgba(248,113,113,0.08), rgba(21,29,46,0.9))' : isAtractivoAction ? 'linear-gradient(135deg, rgba(46,235,200,0.05), rgba(21,29,46,0.9))' : 'linear-gradient(135deg, rgba(21,29,46,0.85), rgba(15,23,38,0.7))' }}>
                       {/* Top row: Rank + Ticker + Type + Action Score badge */}
                       <div className="flex items-center gap-2 mb-2">
                         <div className={`rank-badge ${getRankClass(rank)} text-[9px]`} style={{ width: 22, height: 22, fontSize: 9 }}>
@@ -1227,7 +1232,7 @@ export default function CockpitTab({
                       <div className="flex items-center gap-3 text-xs mb-1.5">
                         <div>
                           <span className="text-app-text4">Precio </span>
-                          <span className="font-mono text-app-text2">{price > 0 ? fmtNum(price, 4) : '—'}</span>
+                          <span className="font-mono text-app-text2" style={{ textShadow: '0 0 6px rgba(46,235,200,0.3)' }}>{price > 0 ? fmtNum(price, 4) : '—'}</span>
                         </div>
                         <div>
                           <span className="text-app-text4">TEM </span>
@@ -1379,7 +1384,7 @@ export default function CockpitTab({
                         </div>
 
                         {/* Price */}
-                        <div className="text-right font-mono text-base font-bold text-app-text neon-price">
+                        <div className="text-right font-mono text-base font-bold text-app-text neon-price" style={{ textShadow: '0 0 8px rgba(46,235,200,0.5), 0 0 20px rgba(46,235,200,0.2)' }}>
                           {price > 0 ? fmtNum(price, 4) : '—'}
                         </div>
 
@@ -1472,7 +1477,7 @@ export default function CockpitTab({
                             style={{
                               color: asc.color,
                               background: asc.bg,
-                              boxShadow: isGatillar ? asc.glow : 'none',
+                              boxShadow: isGatillar ? '0 0 16px rgba(248,113,113,0.4), 0 0 30px rgba(248,113,113,0.15)' : isAtractivoAction ? '0 0 10px rgba(46,235,200,0.25)' : 'none',
                               border: isGatillar ? `1px solid ${asc.color}40` : '1px solid transparent',
                             }}
                           >
