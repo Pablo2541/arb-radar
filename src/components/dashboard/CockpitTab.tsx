@@ -1,7 +1,7 @@
 'use client';
 
 // ════════════════════════════════════════════════════════════════════════
-// V5.2 SCANNER — CockpitTab: PRICE ACTION SCANNER
+// V6.0 NEXUS TERMINAL — CockpitTab: PREMIUM QUANTITATIVE TERMINAL
 //
 // Unified cockpit with 4 new Price Action columns:
 //   1. S/R Mas Cercano — nearest support/resistance level
@@ -9,6 +9,7 @@
 //   3. Inyeccion de Volumen — volume acceleration (X2, X3, X5, EXPLOSIVO)
 //   4. SCORE — El Gatillador (GATILLAR YA / ATRACTIVO / NEUTRAL / SIN SENAL)
 //
+// V6.0: NEXUS TERMINAL aesthetic — scanline overlay, nexus-row, neon-price, nexus badges
 // V5.2: Market heatmap + keyboard shortcuts panel + enhanced action score badges
 // V5.1: Mobile responsive card layout + visual enhancements
 //
@@ -313,7 +314,7 @@ function MarketHeatmapStrip({ scores, onBlockClick }: { scores: CockpitScore[]; 
         {scores.map(s => (
           <button
             key={`${s.ticker}-${s.type}`}
-            className="cockpit-heatmap-block"
+            className="nx-hmap-block"
             style={{ backgroundColor: getBlockColor(s) }}
             title={`${s.ticker} — ${s.actionScore.label}${s.distanceToSR < 0.5 && s.distanceToSR < 99 ? ' · Cerca S/R' : ''}`}
             onClick={() => onBlockClick(s.ticker)}
@@ -391,7 +392,7 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
 
   return (
     <div
-      className="el-grito-border p-0 animate-fadeInUp"
+      className="nexus-grito p-0 animate-fadeInUp"
       style={{
         willChange: 'transform',
         contain: 'layout style',
@@ -794,11 +795,11 @@ export default function CockpitTab({
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* HEADER                                                       */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div>
+      <div className="nexus-banner p-5 sm:p-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h2 className="text-lg font-light text-app-text mb-1">
-              🎯 Cockpit Táctico — QUANT X
+            <h2 className="text-xl font-bold text-app-text neon-price mb-1">
+              ◆ NEXUS TERMINAL — QUANT X
             </h2>
             <p className="text-sm text-app-text3">
               Quantitative Scanner · S/R + Volume + Pressure → Trigger Engine · Horizonte: {horizonLabel}
@@ -843,6 +844,7 @@ export default function CockpitTab({
             )}
           </div>
         </div>
+        <div className="gradient-line-animated mt-3" />
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
@@ -883,7 +885,7 @@ export default function CockpitTab({
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* SUMMARY BAR — V5.0 Enhanced with Action Score counts          */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="glass-card px-4 py-2.5 animate-fadeInUp overflow-x-auto scrollbar-hide">
+      <div className="nexus-banner px-4 py-3 animate-fadeInUp overflow-x-auto scrollbar-hide">
         <div className="flex items-center gap-3 min-w-max text-xs">
           {/* Total instruments */}
           <div className="flex items-center gap-1.5">
@@ -899,8 +901,8 @@ export default function CockpitTab({
           {localSummary.gatillar > 0 && (
             <>
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] uppercase tracking-wider" style={{ color: '#f87171' }}>🔥 Gatillar</span>
-                <span className="font-mono font-bold animate-pulse" style={{ color: '#f87171' }}>{localSummary.gatillar}</span>
+                <span className="nexus-pill" style={{ color: '#f87171', background: 'rgba(248,113,113,0.15)' }}>🔥 Gatillar</span>
+                <span className="font-mono font-bold animate-pulse text-sm" style={{ color: '#f87171', textShadow: '0 0 8px rgba(248,113,113,0.4)' }}>{localSummary.gatillar}</span>
               </div>
               <div className="w-px h-3 bg-app-border/40" />
             </>
@@ -910,8 +912,8 @@ export default function CockpitTab({
           {localSummary.atractivoAction > 0 && (
             <>
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] uppercase tracking-wider" style={{ color: '#2eebc8' }}>✓ Atractivo</span>
-                <span className="font-mono font-bold" style={{ color: '#2eebc8' }}>{localSummary.atractivoAction}</span>
+                <span className="nexus-pill" style={{ color: '#2eebc8', background: 'rgba(46,235,200,0.1)' }}>✓ Atractivo</span>
+                <span className="font-mono font-bold" style={{ color: '#2eebc8', textShadow: '0 0 6px rgba(46,235,200,0.3)' }}>{localSummary.atractivoAction}</span>
               </div>
               <div className="w-px h-3 bg-app-border/40" />
             </>
@@ -1064,7 +1066,7 @@ export default function CockpitTab({
       {/* TABLA FUSIONADA — V5.1 with mobile responsive                 */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {displayedScores.length === 0 ? (
-        <div className="glass-card p-8 text-center animate-fadeInUp">
+        <div className="nexus-banner p-8 text-center animate-fadeInUp">
           <div className="text-app-text4 text-sm">
             {cockpitScoresLoading ? (
               <span className="flex items-center justify-center gap-2">
@@ -1079,11 +1081,11 @@ export default function CockpitTab({
           </div>
         </div>
       ) : (
-        <div className={`glass-card animate-fadeInUp ${displayedScores.length > 10 ? 'cockpit-fade-bottom' : ''}`}>
+        <div className={`nexus-banner animate-fadeInUp`}>
           {/* Scrollable container with sticky header */}
           <div className="cockpit-scroll-container">
             {/* Desktop table header — sticky */}
-            <div className="hidden md:grid cockpit-sticky-header cockpit-header-premium px-4 py-3.5 grid-cols-[36px_1fr_88px_64px_60px_80px_72px_72px_80px_56px_1fr] gap-2 items-center text-[9px] text-app-text4 uppercase tracking-wider font-medium">
+            <div className="hidden md:grid nx-sticky-hdr px-4 py-3.5 grid-cols-[36px_1fr_88px_64px_60px_80px_72px_72px_80px_56px_1fr] gap-2 items-center text-[9px] text-app-text4 uppercase tracking-wider font-medium">
               <span>#</span>
               <span>Instrumento</span>
               <span className="text-right">Precio</span>
@@ -1098,7 +1100,7 @@ export default function CockpitTab({
             </div>
 
             {/* Mobile header row */}
-            <div className="md:hidden cockpit-sticky-header table-header-enhanced px-3 py-2 text-[8px] text-app-text4 uppercase tracking-wider font-medium flex items-center justify-between">
+            <div className="md:hidden nx-sticky-hdr px-3 py-2 text-[8px] text-app-text4 uppercase tracking-wider font-medium flex items-center justify-between">
               <span>Instrumentos</span>
               <span>Señales</span>
             </div>
@@ -1126,7 +1128,7 @@ export default function CockpitTab({
                 const isVeryNearSR = score.distanceToSR < 0.3;
 
                 // Ticker status dot
-                const dotClass = isGatillar ? 'ticker-dot ticker-dot-gatillar' : isAtractivoAction ? 'ticker-dot ticker-dot-atractivo' : 'ticker-dot ticker-dot-neutral';
+                const dotClass = isGatillar ? 'nx-dot nx-dot-fire' : isAtractivoAction ? 'nx-dot nx-dot-teal' : 'nx-dot nx-dot-gray';
 
                 // VOL display (shared between mobile and desktop)
                 const volDisplay = (() => {
@@ -1146,18 +1148,19 @@ export default function CockpitTab({
                     key={`${score.ticker}-${score.type}`}
                     id={`cockpit-row-${score.ticker}`}
                     className={`
-                      md:table-row-highlight md:table-row-alt animate-row-in ${getStaggerClass(idx)} ${isGatillar ? 'gatillar-row' : ''} ${triggeredAlerts.has(score.ticker) ? 'price-alert-flash' : ''} cockpit-row-premium
+                      nexus-row ${isGatillar ? 'nexus-row-gatillar' : ''} ${isAtractivoAction ? 'nexus-row-atractivo' : ''} animate-row-in ${getStaggerClass(idx)} ${triggeredAlerts.has(score.ticker) ? 'nx-alert-flash' : ''}
                     `}
                     style={{
                       ...(idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 96px' } : {}),
                       '--accent-color': asc.color,
+                      '--nx-accent': asc.color,
                       borderLeftColor: asc.color,
                     } as React.CSSProperties}
                   >
                     {/* ═══════════════════════════════════════════════════ */}
                     {/* MOBILE CARD LAYOUT (< md)                           */}
                     {/* ═══════════════════════════════════════════════════ */}
-                    <div className={`md:hidden cockpit-mobile-card ${isGatillar ? 'gatillar-row' : ''}`}>
+                    <div className={`md:hidden nexus-row ${isGatillar ? 'nexus-row-gatillar' : ''} ${isAtractivoAction ? 'nexus-row-atractivo' : ''} p-3`}>
                       {/* Top row: Rank + Ticker + Type + Action Score badge */}
                       <div className="flex items-center gap-2 mb-2">
                         <div className={`rank-badge ${getRankClass(rank)} text-[9px]`} style={{ width: 22, height: 22, fontSize: 9 }}>
@@ -1178,7 +1181,7 @@ export default function CockpitTab({
                           <span className="text-[8px] text-app-text4 font-mono">{score.days}d</span>
                         </div>
                         <span
-                          className={`action-score-badge px-1.5 py-0.5 rounded-lg text-[8px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse action-score-gatillar' : ''} ${isAtractivoAction ? 'action-score-atractivo' : ''}`}
+                          className={`action-score-badge px-1.5 py-0.5 rounded-lg text-[8px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse nexus-badge-fire nx-shimmer' : ''} ${isAtractivoAction ? 'nexus-badge-teal' : ''}`}
                           style={{
                             color: asc.color,
                             background: asc.bg,
@@ -1191,7 +1194,9 @@ export default function CockpitTab({
                         </span>
                         {/* V5.2: Score ring next to badge */}
                         {score.actionScore.label !== 'SIN SEÑAL' && (
-                          <ScoreRing score={score.actionScore.score} color={asc.color} size={18} />
+                          <div className="nexus-score-gauge">
+                            <ScoreRing score={score.actionScore.score} color={asc.color} size={18} />
+                          </div>
                         )}
                         {/* V5.2: Watchlist star + Price alert bell */}
                         <div className="flex items-center gap-0.5 shrink-0">
@@ -1258,7 +1263,7 @@ export default function CockpitTab({
                           </span>
                         </div>
                         <span
-                          className={`inline-block px-1.5 py-0.5 rounded-md text-[8px] font-bold ${vic.pulse ? 'animate-pulse' : ''}`}
+                          className={`nexus-vol-badge inline-block px-1.5 py-0.5 rounded-md text-[8px] font-bold ${vic.pulse ? 'animate-pulse' : ''}`}
                           style={{ color: vic.color, background: vic.bg }}
                         >
                           {score.volumeInjection.label}
@@ -1272,7 +1277,7 @@ export default function CockpitTab({
                       </div>
 
                       {/* Context row: micro-score bars + reason */}
-                      <div className="mt-2 pt-1.5 cockpit-context-separator">
+                      <div className="mt-2 pt-1.5 nx-ctx-sep">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-[10px] text-app-text4">
                             ΔTIR{' '}
@@ -1400,8 +1405,8 @@ export default function CockpitTab({
                           )}
                         </div>
 
-                        {/* V5.0: DISTANCIA A S/R (%) */}
-                        <div className={`text-right font-mono text-base font-bold relative rounded-md px-2 py-1 ${
+                        {/* V5.0: DISTANCIA A S/R (%) — NEXUS Proximity Gauge */}
+                        <div className={`nexus-prox text-right font-mono text-base font-bold relative ${
                           isVeryNearSR ? 'bg-[#f87171]/15 border border-[#f87171]/30' :
                           isNearSR ? 'bg-[#fbbf24]/10 border border-[#fbbf24]/25' :
                           ''
@@ -1417,9 +1422,9 @@ export default function CockpitTab({
                             {score.distanceToSR < 99 ? `${score.distanceToSR.toFixed(2)}%` : '—'}
                           </span>
                           {score.distanceToSR < 99 && (
-                            <div className="w-full h-[3px] rounded-full bg-app-subtle/40 mt-1 overflow-hidden">
+                            <div className="w-full h-[4px] rounded-full bg-app-subtle/40 mt-1 overflow-hidden">
                               <div
-                                className="h-full rounded-full transition-all duration-700"
+                                className="gauge-fill"
                                 style={{
                                   width: `${Math.max(0, Math.min(100, (1 - score.distanceToSR / 5) * 100))}%`,
                                   backgroundColor: isVeryNearSR ? '#f87171' : isNearSR ? '#fbbf24' : score.distanceToSR < 1.0 ? '#2eebc8' : '#6b7280',
@@ -1433,7 +1438,7 @@ export default function CockpitTab({
                         {/* V5.0: INYECCION DE VOLUMEN */}
                         <div className="text-right">
                           <span
-                            className={`inline-block px-2.5 py-1 rounded-lg text-[11px] font-bold ${vic.pulse ? 'animate-pulse' : ''}`}
+                            className={`nx-vol inline-block px-2.5 py-1 rounded-lg text-[11px] font-bold ${vic.pulse ? 'animate-pulse' : ''}`}
                             style={{ color: vic.color, background: vic.bg, boxShadow: vic.pulse ? `0 0 8px ${vic.color}40` : 'none' }}
                           >
                             {score.volumeInjection.label}
@@ -1449,7 +1454,7 @@ export default function CockpitTab({
 
                         {/* CockpitScore — QUANT X: hero gauge */}
                         <div className="flex justify-center items-center">
-                          <div className="relative">
+                          <div className="nexus-score-gauge relative">
                             <ScoreRing score={score.cockpitScore} color={vc.color} size={40} />
                             <span
                               className="absolute inset-0 flex items-center justify-center font-mono font-black text-sm"
@@ -1463,7 +1468,7 @@ export default function CockpitTab({
                         {/* V5.0: SCORE — EL GATILLADOR */}
                         <div className="flex justify-end items-center gap-1.5">
                           <span
-                            className={`action-score-badge px-3 py-2 rounded-xl text-[11px] font-bold whitespace-nowrap ${isGatillar ? 'action-score-gatillar shimmer-badge' : ''} ${isAtractivoAction ? 'action-score-atractivo' : ''}`}
+                            className={`action-score-badge px-3 py-2 rounded-xl text-[11px] font-bold whitespace-nowrap ${isGatillar ? 'nexus-badge-fire nx-shimmer' : ''} ${isAtractivoAction ? 'nexus-badge-teal' : ''}`}
                             style={{
                               color: asc.color,
                               background: asc.bg,
@@ -1476,13 +1481,15 @@ export default function CockpitTab({
                           </span>
                           {/* V5.2: Score ring next to badge */}
                           {score.actionScore.label !== 'SIN SEÑAL' && (
-                            <ScoreRing score={score.actionScore.score} color={asc.color} size={32} />
+                            <div className="nexus-score-gauge">
+                              <ScoreRing score={score.actionScore.score} color={asc.color} size={32} />
+                            </div>
                           )}
                         </div>
                       </div>
 
                       {/* Context row with separator */}
-                      <div className="mt-1.5 pt-1.5 cockpit-context-separator grid grid-cols-[36px_1fr] gap-2 items-start">
+                      <div className="mt-1.5 pt-1.5 nx-ctx-sep grid grid-cols-[36px_1fr] gap-2 items-start">
                         <div /> {/* spacer for rank column */}
 
                         <div className="flex items-center gap-2 flex-wrap">
@@ -1589,7 +1596,7 @@ export default function CockpitTab({
           </div>
 
           {/* V5.0: Action Score Methodology */}
-          <div className="glass-card px-4 py-3">
+          <div className="nexus-method px-4 py-3">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-[10px] font-semibold text-app-text3 uppercase tracking-wider">El Gatillador — Metodología</span>
             </div>
