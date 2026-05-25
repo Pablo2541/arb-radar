@@ -489,6 +489,7 @@ export default function CockpitTab({
   const { alerts, setAlert, removeAlert, clearAllAlerts, getAlert, alertCount } = usePriceAlerts();
   const [watchlistFilterActive, setWatchlistFilterActive] = useState(false);
   const [triggeredAlerts, setTriggeredAlerts] = useState<Set<string>>(new Set());
+  const prevTriggeredRef = useRef<Set<string>>(new Set()); // ref to break infinite loop
 
   // Notify parent of alert count
   useEffect(() => {
@@ -687,14 +688,19 @@ export default function CockpitTab({
       const crossed = alert.direction === '>' ? price > alert.price : price < alert.price;
       if (crossed) {
         newTriggered.add(score.ticker);
-        // New trigger? Flash + beep
-        if (!triggeredAlerts.has(score.ticker)) {
+        // New trigger? Flash + beep (use ref to avoid infinite loop)
+        if (!prevTriggeredRef.current.has(score.ticker)) {
           playAlertBeep();
         }
       }
     }
-    setTriggeredAlerts(newTriggered);
-  }, [sortedScores, soundEnabled, playAlertBeep, alerts, liveDataMap, instrumentMap, triggeredAlerts]);
+    prevTriggeredRef.current = newTriggered;
+    // Only update state if the set actually changed (avoid unnecessary re-renders)
+    setTriggeredAlerts(prev => {
+      if (prev.size === newTriggered.size && [...prev].every(t => newTriggered.has(t))) return prev;
+      return newTriggered;
+    });
+  }, [sortedScores, soundEnabled, playAlertBeep, alerts, liveDataMap, instrumentMap]);
 
   // ─── V5.1: CSV Export ─────────────────────────────────────────────
   const handleExportCSV = useCallback(() => {

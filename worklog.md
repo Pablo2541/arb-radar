@@ -613,3 +613,31 @@ Stage Summary:
 - Glassmorphism, neon glow, gradient backgrounds, backdrop-filter blur throughout
 - Light mode overrides for 4 key NEXUS classes
 - Lint clean
+
+---
+Task ID: 9
+Agent: Main Agent
+Task: Fix "Maximum update depth exceeded" infinite re-render loop in CockpitTab.tsx
+
+Work Log:
+- Analyzed user-reported screenshot showing React error: "Maximum update depth exceeded"
+- VLM analysis confirmed error in CockpitTab.tsx useEffect at lines 694-699
+- ROOT CAUSE: `triggeredAlerts` state was in its own useEffect dependency array (line 697)
+  - useEffect runs → creates new Set → setTriggeredAlerts(newTriggered) → re-render
+  - useEffect runs again because triggeredAlerts changed → creates new Set → setTriggeredAlerts → INFINITE LOOP
+  - Every call creates a new Set (reference comparison fails even if contents are identical)
+- FIX: 3 changes to break the infinite loop:
+  1. Added `prevTriggeredRef` useRef<Set<string>> — used instead of `triggeredAlerts` state for the "was this already triggered?" check (line 691)
+  2. Changed `setTriggeredAlerts(newTriggered)` to functional update with equality check:
+     `setTriggeredAlerts(prev => { if (prev.size === newTriggered.size && [...prev].every(t => newTriggered.has(t))) return prev; return newTriggered; })`
+  3. Removed `triggeredAlerts` from useEffect dependency array
+- Added `prevTriggeredRef.current = newTriggered` to keep the ref in sync for next cycle
+- ESLint passes with 0 errors
+- Dev server compiles and serves correctly (HTTP 200)
+
+Stage Summary:
+- Critical React infinite re-render loop bug fixed
+- Only 1 file modified: src/components/dashboard/CockpitTab.tsx
+- Root cause: state in its own useEffect dependency array creating circular updates
+- Fix: useRef for read-only tracking + functional setState with equality check + removed state from deps
+- Lint clean, compiles OK
