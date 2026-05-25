@@ -641,3 +641,45 @@ Stage Summary:
 - Root cause: state in its own useEffect dependency array creating circular updates
 - Fix: useRef for read-only tracking + functional setState with equality check + removed state from deps
 - Lint clean, compiles OK
+
+---
+Task ID: 10
+Agent: Main Agent
+Task: Market Closed Banner + Adaptive Polling Optimization
+
+Work Log:
+- Read useLiveInstruments.ts (polling hook) and page.tsx (marketOpen logic)
+- Identified 2 polling sources that need adaptive intervals:
+  1. useLiveInstruments.ts: POLL_INTERVAL = 60_000 (fixed)
+  2. CockpitTab.tsx: setInterval(fetchScores, 50_000) (fixed)
+- Market Closed Banner (Feature 1):
+  - Added banner in page.tsx between header and main content (line 856-871)
+  - Shows "🏦 MERCADO CERRADO — Visualizando datos de la última rueda (polling cada 5 min)"
+  - Only appears when `marketOpen === false` AND `liveData.active === true`
+  - Styled with amber/orange (#fb923c) subtle background + border, consistent with existing stale warning
+  - Added same banner inside CockpitTab.tsx (lines 874-883) for Cockpit-specific context
+- Adaptive Polling (Feature 2):
+  - useLiveInstruments.ts: Split POLL_INTERVAL into POLL_INTERVAL_OPEN (60s) and POLL_INTERVAL_CLOSED (5min)
+  - useLiveInstruments now accepts `marketOpen: boolean` parameter (default: true)
+  - Computes `pollInterval = marketOpen ? POLL_INTERVAL_OPEN : POLL_INTERVAL_CLOSED`
+  - Added `pollInterval` to useEffect dependency array so interval resets when market status changes
+  - page.tsx: Moved `marketOpen` useMemo up (before useLiveInstruments call) to pass it as prop
+  - page.tsx: Updated `useLiveInstruments()` → `useLiveInstruments(marketOpen)`
+  - Removed duplicate `marketOpen` useMemo that was at old location (line 599-615)
+  - CockpitTab.tsx: Added `marketOpen: boolean` to CockpitTabProps
+  - CockpitTab.tsx: Added `cockpitPollInterval = marketOpen ? 50_000 : 5 * 60_000`
+  - CockpitTab.tsx: Added `cockpitPollInterval` to fetchScores useEffect dependency array
+  - page.tsx: Added `marketOpen={marketOpen}` prop to CockpitTab component
+- Decimal precision: No changes to .toFixed() calls — all preserved
+- QUANT X design: No visual changes to existing components — only additions
+- ESLint passes with 0 errors
+- Dev server compiles and serves correctly (HTTP 200)
+
+Stage Summary:
+- 2 architectural improvements implemented:
+  1. Market Closed Banner — visible when market closed + LIVE active (amber, subtle)
+  2. Adaptive Polling — 60s/50s when open, 5min when closed (automatic)
+- 3 files modified: page.tsx, useLiveInstruments.ts, CockpitTab.tsx
+- No mock data, no simulation, no breaking changes
+- Polling automatically restores to 60s/50s when market opens
+- Lint clean, compiles OK

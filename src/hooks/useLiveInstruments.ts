@@ -25,7 +25,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Instrument, LiveInstrument, LetrasApiResponse } from '@/lib/types';
 
-const POLL_INTERVAL = 60_000; // 60 seconds
+const POLL_INTERVAL_OPEN = 60_000; // 60 seconds when market is open
+const POLL_INTERVAL_CLOSED = 5 * 60_000; // 5 minutes when market is closed
 const STATIC_EXPORT = process.env.NEXT_PUBLIC_STATIC_EXPORT;
 const STORAGE_KEY_LIVE = 'arbradar_live_active';
 
@@ -116,7 +117,7 @@ function persistActive(value: boolean): void {
   }
 }
 
-export function useLiveInstruments(): LiveInstrumentsState {
+export function useLiveInstruments(marketOpen: boolean = true): LiveInstrumentsState {
   const [liveInstruments, setLiveInstruments] = useState<LiveInstrument[]>([]);
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [caucionProxy, setCaucionProxy] = useState<{ tna_promedio: number; tem_caucion: number; source: string } | null>(null);
@@ -291,6 +292,9 @@ export function useLiveInstruments(): LiveInstrumentsState {
     }
   }, []);
 
+  // Compute effective poll interval based on market status
+  const pollInterval = marketOpen ? POLL_INTERVAL_OPEN : POLL_INTERVAL_CLOSED;
+
   // Start/stop polling based on active state
   useEffect(() => {
     mountedRef.current = true;
@@ -300,8 +304,8 @@ export function useLiveInstruments(): LiveInstrumentsState {
       lastFreshRef.current = 0; // Reset freshness tracking on activate
       fetchData();
 
-      // Then poll every 60 seconds
-      intervalRef.current = setInterval(fetchData, POLL_INTERVAL);
+      // Poll at adaptive interval: 60s when market open, 5 min when closed
+      intervalRef.current = setInterval(fetchData, pollInterval);
     } else {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -324,7 +328,7 @@ export function useLiveInstruments(): LiveInstrumentsState {
         intervalRef.current = null;
       }
     };
-  }, [active, fetchData]);
+  }, [active, fetchData, pollInterval]);
 
   const isTickerLive = useCallback((ticker: string) => {
     return liveTickers.has(ticker);

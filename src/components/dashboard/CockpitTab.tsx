@@ -30,6 +30,7 @@ interface CockpitTabProps {
   position: Position | null;
   liveDataMap: Map<string, LiveInstrument>;
   isLive: boolean;
+  marketOpen: boolean;
   onAlertsCountChange?: (count: number) => void;
   onWatchlistCountChange?: (count: number) => void;
 }
@@ -474,6 +475,7 @@ export default function CockpitTab({
   position,
   liveDataMap,
   isLive,
+  marketOpen,
   onAlertsCountChange,
   onWatchlistCountChange,
 }: CockpitTabProps) {
@@ -608,13 +610,16 @@ export default function CockpitTab({
     }
   }, [setCockpitScoresLoading]);
 
+  // ─── Adaptive polling: 50s open / 5min closed ────────────────
+  const cockpitPollInterval = marketOpen ? 50_000 : 5 * 60_000;
+
   useEffect(() => {
     fetchScores();
-    intervalRef.current = setInterval(fetchScores, 50_000);
+    intervalRef.current = setInterval(fetchScores, cockpitPollInterval);
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [fetchScores]);
+  }, [fetchScores, cockpitPollInterval]);
 
   // ─── Client-side horizon filtering ────────────────────────────────
   const filteredScores = useMemo(() => {
@@ -863,6 +868,17 @@ export default function CockpitTab({
           <span className="text-xs">⏳</span>
           <span className="font-medium uppercase tracking-wider">Datos en caché</span>
           <span className="text-[9px] text-[#fb923c]/70">— Las APIs externas no responden, mostrando último valor disponible</span>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* MARKET CLOSED WARNING (Cockpit-specific)                      */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {!marketOpen && isLive && (
+        <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#fb923c]/6 border border-[#fb923c]/20 text-[10px] text-[#fb923c] animate-fadeInUp">
+          <span className="text-xs">🏦</span>
+          <span className="font-medium uppercase tracking-wider">Mercado cerrado</span>
+          <span className="text-[9px] text-[#fb923c]/70">— Datos de la última rueda · Polling reducido a 5 min</span>
         </div>
       )}
 

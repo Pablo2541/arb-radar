@@ -210,7 +210,24 @@ function HomeContent() {
   // V2.0.3 — GLOBAL LIVE DATA (moved from MercadoTab to page.tsx)
   // All tabs now share the same live data source.
   // ════════════════════════════════════════════════════════════════
-  const liveData = useLiveInstruments();
+  // ── Market status (computed early for useLiveInstruments polling) ──
+  const marketOpen = useMemo(() => {
+    // V4.0.6: Use Intl.DateTimeFormat for reliable Argentina timezone conversion
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Argentina/Buenos_Aires',
+      hour: 'numeric',
+      hour12: false,
+      weekday: 'short',
+    });
+    const parts = formatter.formatToParts(now);
+    const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
+    const weekday = parts.find(p => p.type === 'weekday')?.value ?? '';
+    const isWeekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday);
+    return isWeekday && hour >= 10 && hour < 18;
+  }, [currentTime]);
+
+  const liveData = useLiveInstruments(marketOpen);
 
   // V2.0.3: Build liveDataMap for quick ticker → LiveInstrument lookup
   const liveDataMap = useMemo(() => {
@@ -579,23 +596,7 @@ function HomeContent() {
     return sessionHistory.calculateMomentum(instruments, config.comisionTotal, config);
   }, [instruments, config, snapshotCount, sessionHistory]);
 
-  // ── Market status ──
-  const marketOpen = useMemo(() => {
-    // V4.0.6: Use Intl.DateTimeFormat for reliable Argentina timezone conversion
-    // Previous approach (new Date().getHours()) used local server time, not Argentina time
-    const now = new Date();
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Argentina/Buenos_Aires',
-      hour: 'numeric',
-      hour12: false,
-      weekday: 'short',
-    });
-    const parts = formatter.formatToParts(now);
-    const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10);
-    const weekday = parts.find(p => p.type === 'weekday')?.value ?? '';
-    const isWeekday = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].includes(weekday);
-    return isWeekday && hour >= 10 && hour < 18;
-  }, [currentTime]);
+  // ── Market status (moved up before useLiveInstruments) ──
 
   // ── V4.0: FILE indicator color + label (replaces DB sync dot) ──
   const fileIndicator = useMemo(() => {
@@ -653,7 +654,7 @@ function HomeContent() {
       case 'mercado':
         return <MercadoTab instruments={effectiveInstruments} config={config} position={position} momentumMap={momentumMap} priceHistory={priceHistory} onMepRate={handleMepRate} onCclRate={handleCclRate} onDolarUpdate={handleDolarUpdate} liveData={liveData} liveDataMap={liveDataMap} riesgoPaisAuto={riesgoPaisAuto} />;
       case 'cockpit':
-        return <CockpitTab instruments={effectiveInstruments} config={config} position={position} liveDataMap={liveDataMap} isLive={liveData.active} onAlertsCountChange={setPriceAlertsCount} onWatchlistCountChange={setWatchlistCount} />;
+        return <CockpitTab instruments={effectiveInstruments} config={config} position={position} liveDataMap={liveDataMap} isLive={liveData.active} marketOpen={marketOpen} onAlertsCountChange={setPriceAlertsCount} onWatchlistCountChange={setWatchlistCount} />;
       // FASE 1: curvas & estrategias cases removed
       case 'cartera':
         return <CarteraTab instruments={effectiveInstruments} config={config} setConfig={updateConfig} position={position} setPosition={updatePosition} transactions={transactions} setTransactions={updateTransactions} externalHistory={externalHistory} setExternalHistory={updateExternalHistory} momentumMap={momentumMap} priceHistory={priceHistory} liveDataMap={liveDataMap} isLive={liveData.active} />;
@@ -852,6 +853,23 @@ function HomeContent() {
         {/* ── Animated Gradient Accent Line ── */}
         <div className="gradient-line-animated" />
       </header>
+
+      {/* ── Market Closed Banner ── */}
+      {!marketOpen && liveData.active && (
+        <div className="animate-fadeInUp flex items-center justify-center gap-2 px-4 py-2 bg-[#fb923c]/6 border-b border-[#fb923c]/15">
+          <span className="text-xs">🏦</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-[#fb923c]">
+            MERCADO CERRADO
+          </span>
+          <span className="text-[9px] text-[#fb923c]/60 font-medium">—</span>
+          <span className="text-[9px] text-[#fb923c]/70">
+            Visualizando datos de la última rueda
+          </span>
+          <span className="text-[8px] text-app-text4 font-mono ml-1">
+            (polling cada 5 min)
+          </span>
+        </div>
+      )}
 
       {/* ── Main Content ── */}
       <main className="flex-1 overflow-y-auto">
