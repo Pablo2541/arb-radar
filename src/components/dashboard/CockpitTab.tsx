@@ -33,6 +33,7 @@ interface CockpitTabProps {
   marketOpen: boolean;
   onAlertsCountChange?: (count: number) => void;
   onWatchlistCountChange?: (count: number) => void;
+  onTakeProfitCountChange?: (count: number) => void;
 }
 
 // ─── V5.2: Watchlist Hook ─────────────────────────────────────────────
@@ -105,6 +106,7 @@ function usePriceAlerts() {
 
 // ─── Verdict Config ───────────────────────────────────────────────────
 const VERDICT_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  TAKE_PROFIT: { label: '🚨 TAKE PROFIT', color: '#dc2626', bg: 'rgba(220,38,38,0.15)' },
   SALTO_TACTICO: { label: '⚡ SALTO TÁCTICO', color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
   PUNTO_CARAMELO: { label: '🍬 PUNTO CARAMELO', color: '#fbbf24', bg: 'rgba(251,191,36,0.12)' },
   ATRACTIVO: { label: 'ATRACTIVO', color: '#2eebc8', bg: 'rgba(46,235,200,0.08)' },
@@ -387,7 +389,9 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
   const saltoScores = scores.filter(s => s.verdict === 'SALTO_TACTICO');
   const carameloScores = scores.filter(s => s.verdict === 'PUNTO_CARAMELO');
   const gatillarScores = scores.filter(s => s.actionScore.label === 'GATILLAR YA');
-  const topScores = [...gatillarScores, ...saltoScores, ...carameloScores].slice(0, 6);
+  const takeProfitScores = scores.filter(s => s.isTakeProfit);
+  // V5.4: TAKE_PROFIT cards shown FIRST (highest priority), then GATILLAR, SALTO, CARAMELO
+  const topScores = [...takeProfitScores, ...gatillarScores, ...saltoScores, ...carameloScores].slice(0, 6);
 
   if (topScores.length === 0) return null;
 
@@ -398,7 +402,7 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
         willChange: 'transform',
         contain: 'layout style',
         transform: 'translateZ(0)',
-        boxShadow: gatillarScores.length > 0 ? '0 0 30px rgba(248,113,113,0.15)' : '0 0 15px rgba(244,114,182,0.1)',
+        boxShadow: takeProfitScores.length > 0 ? '0 0 40px rgba(220,38,38,0.25)' : gatillarScores.length > 0 ? '0 0 30px rgba(248,113,113,0.15)' : '0 0 15px rgba(244,114,182,0.1)',
       }}
     >
       <div className="relative z-10 rounded-2xl p-4 sm:p-5" style={{ background: 'rgba(21,29,46,0.95)' }}>
@@ -408,6 +412,11 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
             EL GRITO
           </span>
           <span className="text-[10px] text-app-text4 uppercase tracking-wider">— Capa 1 Alert</span>
+          {takeProfitScores.length > 0 && (
+            <span className="ml-2 px-2 py-0.5 rounded-lg text-[9px] font-bold animate-pulse" style={{ color: '#fff', background: 'rgba(220,38,38,0.6)', boxShadow: '0 0 12px rgba(220,38,38,0.5)' }}>
+              🚨 TAKE PROFIT
+            </span>
+          )}
           {gatillarScores.length > 0 && (
             <span className="ml-2 px-2 py-0.5 rounded-lg text-[9px] font-bold animate-pulse" style={{ color: '#f87171', background: 'rgba(248,113,113,0.2)', boxShadow: '0 0 12px rgba(248,113,113,0.3)' }}>
               🔥 {gatillarScores.length} GATILLAR
@@ -418,15 +427,21 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2">
           {topScores.map((s, i) => {
             const isGatillar = s.actionScore.label === 'GATILLAR YA';
-            const vc = isGatillar ? { label: '🔥 GATILLAR YA', color: '#f87171', bg: 'rgba(248,113,113,0.15)' } : VERDICT_CONFIG[s.verdict];
+            const isTakeProfit = !!s.isTakeProfit;
+            // V5.4: TAKE_PROFIT uses crimson, GATILLAR uses red, rest uses VERDICT_CONFIG
+            const vc = isTakeProfit
+              ? { label: '🚨 TAKE PROFIT', color: '#dc2626', bg: 'rgba(220,38,38,0.15)' }
+              : isGatillar
+                ? { label: '🔥 GATILLAR YA', color: '#f87171', bg: 'rgba(248,113,113,0.15)' }
+                : VERDICT_CONFIG[s.verdict];
             return (
               <div
                 key={s.ticker}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border animate-fadeInUp ${getStaggerClass(i)}`}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border animate-fadeInUp ${getStaggerClass(i)} ${isTakeProfit ? 'border-red-600' : ''}`}
                 style={{
-                  borderColor: `${vc.color}33`,
+                  borderColor: isTakeProfit ? 'rgba(220,38,38,0.6)' : `${vc.color}33`,
                   background: vc.bg,
-                  boxShadow: isGatillar ? '0 0 16px rgba(248,113,113,0.25)' : 'none',
+                  boxShadow: isTakeProfit ? '0 0 20px rgba(220,38,38,0.35), 0 0 40px rgba(220,38,38,0.15)' : isGatillar ? '0 0 16px rgba(248,113,113,0.25)' : 'none',
                 }}
               >
                 <div className="flex-1 min-w-0">
@@ -437,12 +452,13 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
                     </span>
                   </div>
                   <div className="font-mono text-[10px] mt-0.5" style={{ color: vc.color }}>
-                    {isGatillar ? '🔥 GATILLAR YA' : vc.label}
+                    {isTakeProfit ? '🚨 TAKE PROFIT' : isGatillar ? '🔥 GATILLAR YA' : vc.label}
                   </div>
                 </div>
                 <div className="text-right shrink-0">
+                  {/* V5.4: ALWAYS show unifiedScore (base-100) — single source of truth */}
                   <div className="font-mono font-bold text-lg" style={{ color: vc.color }}>
-                    {s.actionScore.label !== 'SIN SEÑAL' ? s.actionScore.score : s.cockpitScore.toFixed(1)}
+                    {s.unifiedScore.toFixed(0)}
                   </div>
                 </div>
               </div>
@@ -450,9 +466,28 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
           })}
         </div>
 
+        {/* V5.4: TAKE PROFIT rotation suggestions */}
+        {takeProfitScores.length > 0 && takeProfitScores[0].rotationSuggestions && takeProfitScores[0].rotationSuggestions.length > 0 && (
+          <div className="mt-3 p-2 rounded-lg" style={{ background: 'rgba(46,235,200,0.05)', border: '1px solid rgba(46,235,200,0.15)' }}>
+            <div className="text-[10px] font-semibold mb-1" style={{ color: '#2eebc8' }}>↻ ROTACIÓN SUGERIDA</div>
+            <div className="flex gap-2 flex-wrap">
+              {takeProfitScores[0].rotationSuggestions.map(sug => (
+                <div key={sug.ticker} className="flex items-center gap-1.5 px-2 py-1 rounded-md" style={{ background: 'rgba(46,235,200,0.08)' }}>
+                  <span className="font-mono font-bold text-[11px]" style={{ color: '#2eebc8' }}>{sug.ticker}</span>
+                  <span className="font-mono text-[9px] text-app-text4">Score {sug.unifiedScore.toFixed(0)}</span>
+                  <span className="font-mono text-[9px] text-app-text4">Spread +{sug.spreadNeto.toFixed(2)}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mt-2 text-[10px] text-app-text4">
+          {takeProfitScores.length > 0 && (
+            <span>🚨 Take Profit: <span className="font-mono font-bold" style={{ color: '#dc2626' }}>{takeProfitScores.length}</span></span>
+          )}
           {gatillarScores.length > 0 && (
-            <span>🔥 Gatillar: <span className="font-mono font-bold" style={{ color: '#f87171' }}>{gatillarScores.length}</span></span>
+            <> · 🔥 Gatillar: <span className="font-mono font-bold" style={{ color: '#f87171' }}>{gatillarScores.length}</span></>
           )}
           {saltoScores.length > 0 && (
             <> · ⚡ Salto: <span className="font-mono font-bold" style={{ color: '#f87171' }}>{saltoScores.length}</span></>
@@ -478,6 +513,7 @@ export default function CockpitTab({
   marketOpen,
   onAlertsCountChange,
   onWatchlistCountChange,
+  onTakeProfitCountChange,
 }: CockpitTabProps) {
   // ─── Store ────────────────────────────────────────────────────────
   const cockpitScores = useRadarStore(s => s.cockpitScores);
@@ -552,6 +588,7 @@ export default function CockpitTab({
   });
   const audioCtxRef = useRef<AudioContext | null>(null);
   const prevGatillarRef = useRef<Set<string>>(new Set());
+  const prevTakeProfitRef = useRef<Set<string>>(new Set());  // V5.4: Track TAKE_PROFIT transitions
 
   const toggleSound = useCallback(() => {
     setSoundEnabled(prev => {
@@ -561,23 +598,52 @@ export default function CockpitTab({
     });
   }, []);
 
-  // Play beep when new GATILLAR YA appears
-  const playAlertBeep = useCallback(() => {
+  // Play beep when new GATILLAR YA or TAKE_PROFIT appears
+  // V5.4: Robust audio — handles browser autoplay policy by resuming suspended AudioContext
+  const playAlertBeep = useCallback((type: 'entry' | 'exit' = 'entry') => {
     try {
       if (!audioCtxRef.current) {
         audioCtxRef.current = new AudioContext();
       }
       const ctx = audioCtxRef.current;
+      // V5.4 FIX: Resume AudioContext if suspended by browser autoplay policy
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(880, ctx.currentTime);
-      gain.gain.setValueAtTime(0.15, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.2);
+      if (type === 'exit') {
+        // TAKE PROFIT alert: higher frequency, double beep
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(1200, ctx.currentTime);
+        gain.gain.setValueAtTime(0.18, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.15);
+        // Second beep
+        const osc2 = ctx.createOscillator();
+        const gain2 = ctx.createGain();
+        osc2.type = 'sawtooth';
+        osc2.frequency.setValueAtTime(1400, ctx.currentTime + 0.18);
+        gain2.gain.setValueAtTime(0.18, ctx.currentTime + 0.18);
+        gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.33);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(ctx.currentTime + 0.18);
+        osc2.stop(ctx.currentTime + 0.33);
+      } else {
+        // Entry alert: clean beep (GATILLAR YA / ATRACTIVO)
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.2);
+      }
     } catch { /* silent */ }
   }, []);
 
@@ -664,26 +730,106 @@ export default function CockpitTab({
     return map;
   }, [instruments]);
 
-  // ─── V5.1: Sound alert for new GATILLAR YA + V5.2: Price alert check ──
+  // ─── V5.4: Portfolio-Aware Take Profit Detection ──────────────────
+  // Enriches sortedScores with TAKE_PROFIT verdict for held positions
+  // showing exit signals (price surge, yield compression, S/R resistance hit)
+  const enrichedScores = useMemo(() => {
+    if (!position) return sortedScores;
+
+    const heldTicker = position.ticker;
+    const heldScore = sortedScores.find(s => s.ticker === heldTicker);
+    if (!heldScore) return sortedScores;
+
+    // Get live price change for the held instrument
+    const liveData = liveDataMap.get(heldTicker);
+    const instData = instrumentMap.get(heldTicker);
+    const changePct = liveData?.change_pct ?? instData?.change ?? 0;
+
+    // TAKE PROFIT conditions:
+    // 1. Price surge >= +1.5% (yield compression, overbought)
+    // 2. Action Score plummets (SIN SEÑAL or NEUTRAL) AND unifiedScore < 40
+    // 3. Near resistance (distanceToSR < 0.3% and nearestSR type = 'R')
+    const isPriceSurge = changePct >= 1.5;
+    const isScoreCrater = (heldScore.actionScore.label === 'SIN SEÑAL' || heldScore.actionScore.label === 'NEUTRAL') && heldScore.unifiedScore < 40;
+    const isAtResistance = heldScore.nearestSR?.type === 'R' && heldScore.distanceToSR < 0.3;
+
+    if (!isPriceSurge && !isScoreCrater && !isAtResistance) return sortedScores;
+
+    // Build rotation suggestions: top 2 instruments by unifiedScore (excluding held)
+    const candidates = sortedScores
+      .filter(s => s.ticker !== heldTicker && s.unifiedScore >= 40)
+      .sort((a, b) => b.unifiedScore - a.unifiedScore)
+      .slice(0, 2)
+      .map(s => ({
+        ticker: s.ticker,
+        unifiedScore: s.unifiedScore,
+        tem: s.spreadNeto, // spread neto as a proxy for attractiveness
+        spreadNeto: s.spreadNeto,
+      }));
+
+    let reason = '';
+    if (isPriceSurge) reason = `🚨 TAKE PROFIT: ${heldTicker} subió +${changePct.toFixed(2)}% — rendimiento comprimido, sobrecomprado.`;
+    else if (isAtResistance) reason = `🚨 TAKE PROFIT: ${heldTicker} en resistencia R2/R3 (dist ${heldScore.distanceToSR.toFixed(2)}%) — riesgo de reversión.`;
+    else if (isScoreCrater) reason = `🚨 TAKE PROFIT: ${heldTicker} Score colapsó a ${heldScore.unifiedScore} — salida recomendada.`;
+
+    return sortedScores.map(s => {
+      if (s.ticker !== heldTicker) return s;
+      return {
+        ...s,
+        verdict: 'TAKE_PROFIT' as const,
+        verdictReason: reason,
+        isTakeProfit: true,
+        takeProfitReason: reason,
+        rotationSuggestions: candidates,
+      };
+    });
+  }, [sortedScores, position, liveDataMap, instrumentMap]);
+
+  // Report take-profit count to parent
   useEffect(() => {
-    if (!soundEnabled || sortedScores.length === 0) return;
-    const currentGatillar = new Set(
-      sortedScores.filter(s => s.actionScore.label === 'GATILLAR YA').map(s => s.ticker)
+    if (onTakeProfitCountChange) {
+      const count = enrichedScores.filter(s => s.isTakeProfit).length;
+      onTakeProfitCountChange(count);
+    }
+  }, [enrichedScores, onTakeProfitCountChange]);
+
+  // ─── V5.4: Sound alert for GATILLAR YA, ATRACTIVO, TAKE_PROFIT + Price alerts ──
+  useEffect(() => {
+    if (!soundEnabled || enrichedScores.length === 0) return;
+
+    // V5.4: Detect NEW GATILLAR YA and ATRACTIVO (unifiedScore > 50)
+    const currentAlerts = new Set(
+      enrichedScores
+        .filter(s => s.actionScore.label === 'GATILLAR YA' || (s.actionScore.label === 'ATRACTIVO' && s.unifiedScore > 50))
+        .map(s => s.ticker)
     );
-    // Only beep on NEW transitions (not initial load)
     if (prevGatillarRef.current.size > 0) {
-      for (const ticker of currentGatillar) {
+      for (const ticker of currentAlerts) {
         if (!prevGatillarRef.current.has(ticker)) {
-          playAlertBeep();
-          break; // One beep per cycle, even if multiple new
+          playAlertBeep('entry');
+          break;
         }
       }
     }
-    prevGatillarRef.current = currentGatillar;
+    prevGatillarRef.current = currentAlerts;
+
+    // V5.4: Detect TAKE_PROFIT (portfolio sell signal)
+    const currentTakeProfit = new Set(
+      enrichedScores.filter(s => s.isTakeProfit).map(s => s.ticker)
+    );
+    if (prevTakeProfitRef.current.size > 0) {
+      for (const ticker of currentTakeProfit) {
+        if (!prevTakeProfitRef.current.has(ticker)) {
+          playAlertBeep('exit');
+          break;
+        }
+      }
+    }
+    prevTakeProfitRef.current = currentTakeProfit;
 
     // V5.2: Check price alert thresholds
     const newTriggered = new Set<string>();
-    for (const score of sortedScores) {
+    for (const score of enrichedScores) {
       const alert = alerts[score.ticker];
       if (!alert) continue;
       const liveData = liveDataMap.get(score.ticker);
@@ -693,25 +839,23 @@ export default function CockpitTab({
       const crossed = alert.direction === '>' ? price > alert.price : price < alert.price;
       if (crossed) {
         newTriggered.add(score.ticker);
-        // New trigger? Flash + beep (use ref to avoid infinite loop)
         if (!prevTriggeredRef.current.has(score.ticker)) {
-          playAlertBeep();
+          playAlertBeep('entry');
         }
       }
     }
     prevTriggeredRef.current = newTriggered;
-    // Only update state if the set actually changed (avoid unnecessary re-renders)
     setTriggeredAlerts(prev => {
       if (prev.size === newTriggered.size && [...prev].every(t => newTriggered.has(t))) return prev;
       return newTriggered;
     });
-  }, [sortedScores, soundEnabled, playAlertBeep, alerts, liveDataMap, instrumentMap]);
+  }, [enrichedScores, soundEnabled, playAlertBeep, alerts, liveDataMap, instrumentMap]);
 
   // ─── V5.1: CSV Export ─────────────────────────────────────────────
   const handleExportCSV = useCallback(() => {
     const rows = displayedScores;
     if (rows.length === 0) return;
-    const header = 'Ticker,Type,Price,TEM,Volume,SR_Cercano,SR_Type,Distancia%,Inyeccion,Spread,CockpitScore,ActionScore,ActionLabel';
+    const header = 'Ticker,Type,Price,TEM,Volume,SR_Cercano,SR_Type,Distancia%,Inyeccion,Spread,UnifiedScore,ActionScore,ActionLabel';
     const lines = rows.map(s => {
       const liveData = liveDataMap.get(s.ticker);
       const instData = instrumentMap.get(s.ticker);
@@ -723,7 +867,7 @@ export default function CockpitTab({
         s.nearestSR?.level.toFixed(4) ?? '', s.nearestSR?.type ?? '',
         s.distanceToSR < 99 ? s.distanceToSR.toFixed(2) : '',
         s.volumeInjection.label, s.spreadNeto.toFixed(3),
-        s.cockpitScore.toFixed(1), s.actionScore.score, s.actionScore.label
+        s.unifiedScore.toFixed(0), s.actionScore.score, s.actionScore.label
       ].join(',');
     });
     const csv = [header, ...lines].join('\n');
@@ -754,10 +898,10 @@ export default function CockpitTab({
 
   // ─── Computed: El Grito instruments ────────────────────────────────
   const elGritoScores = useMemo(() => {
-    return sortedScores.filter(
-      s => s.verdict === 'SALTO_TACTICO' || s.verdict === 'PUNTO_CARAMELO' || s.actionScore.label === 'GATILLAR YA'
+    return enrichedScores.filter(
+      s => s.verdict === 'SALTO_TACTICO' || s.verdict === 'PUNTO_CARAMELO' || s.actionScore.label === 'GATILLAR YA' || s.isTakeProfit
     );
-  }, [sortedScores]);
+  }, [enrichedScores]);
 
   // ─── Computed: horizon label ───────────────────────────────────────
   const horizonLabel = useMemo(() => {
@@ -777,10 +921,11 @@ export default function CockpitTab({
       atractivo: filteredScores.filter(s => s.verdict === 'ATRACTIVO').length,
       neutral: filteredScores.filter(s => s.verdict === 'NEUTRAL').length,
       evitar: filteredScores.filter(s => s.verdict === 'EVITAR').length,
-      gatillar: filteredScores.filter(s => s.actionScore.label === 'GATILLAR YA').length,
-      atractivoAction: filteredScores.filter(s => s.actionScore.label === 'ATRACTIVO').length,
+      gatillar: enrichedScores.filter(s => s.actionScore.label === 'GATILLAR YA').length,
+      atractivoAction: enrichedScores.filter(s => s.actionScore.label === 'ATRACTIVO').length,
+      take_profit: enrichedScores.filter(s => s.isTakeProfit).length,
     };
-  }, [allScores, filteredScores]);
+  }, [allScores, filteredScores, enrichedScores]);
 
   // ─── MEP & RP from Market Truth ───────────────────────────────────
   const mepValue = marketTruth?.mep?.value ?? null;
@@ -920,6 +1065,17 @@ export default function CockpitTab({
             )}
           </div>
           <div className="w-px h-3 bg-app-border/40" />
+
+          {/* V5.4: TAKE PROFIT count — highest priority */}
+          {localSummary.take_profit > 0 && (
+            <>
+              <div className="flex items-center gap-1.5">
+                <span className="nexus-pill" style={{ color: '#dc2626', background: 'rgba(220,38,38,0.2)' }}>🚨 Take Profit</span>
+                <span className="font-mono font-bold animate-pulse text-sm" style={{ color: '#dc2626', textShadow: '0 0 10px rgba(220,38,38,0.5)' }}>{localSummary.take_profit}</span>
+              </div>
+              <div className="w-px h-3 bg-app-border/40" />
+            </>
+          )}
 
           {/* V5.0: GATILLAR YA count */}
           {localSummary.gatillar > 0 && (
@@ -1087,7 +1243,7 @@ export default function CockpitTab({
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* EL GRITO — Capa 1 Alert Card                                  */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      {elGritoScores.length > 0 && <ElGritoCard scores={displayedScores} />}
+      {elGritoScores.length > 0 && <ElGritoCard scores={enrichedScores} />}
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* TABLA FUSIONADA — V5.1 with mobile responsive                 */}
@@ -1479,15 +1635,15 @@ export default function CockpitTab({
                           {fmtPct(score.spreadNeto, 2)}
                         </div>
 
-                        {/* CockpitScore — QUANT X: hero gauge */}
+                        {/* V5.4: UnifiedScore — base-100 hero gauge (SINGLE SOURCE OF TRUTH) */}
                         <div className="flex justify-center items-center">
                           <div className="nexus-score-gauge relative">
-                            <ScoreRing score={score.cockpitScore} color={vc.color} size={40} />
+                            <ScoreRing score={score.unifiedScore} color={vc.color} size={40} />
                             <span
                               className="absolute inset-0 flex items-center justify-center font-mono font-black text-sm"
                               style={{ color: vc.color }}
                             >
-                              {score.cockpitScore.toFixed(1)}
+                              {score.unifiedScore.toFixed(0)}
                             </span>
                           </div>
                         </div>

@@ -33,11 +33,17 @@ export function daysFromExpiry(expiry: string): number {
     return 0;
   }
 
-  // V2.0.5 FIX: Dynamic date — always use current system date for live trading accuracy
+  // V5.4 FIX: Force Buenos Aires timezone (UTC-3) for both dates.
+  // Server-side new Date() uses UTC, which can add an extra day when
+  // the server is ahead of Argentina local time.
   const now = new Date();
-  now.setHours(0, 0, 0, 0);
+  const bsasOffset = -3 * 60; // UTC-3 in minutes
+  const localOffset = now.getTimezoneOffset(); // local offset in minutes (positive for west of UTC)
+  const diffMs = (localOffset - bsasOffset) * 60 * 1000;
+  const bsasNow = new Date(now.getTime() + diffMs);
+  bsasNow.setHours(0, 0, 0, 0);
   expiryDate.setHours(0, 0, 0, 0);
-  const diff = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  const diff = Math.ceil((expiryDate.getTime() - bsasNow.getTime()) / (1000 * 60 * 60 * 24));
   return Math.max(0, diff);
 }
 
@@ -1646,6 +1652,7 @@ export function calculateCockpitScore(
     upsideCapitalScore,
     velocidadScore,
     cockpitScore,
+    unifiedScore: Math.round(cockpitScore * 10 * 10) / 10,  // V5.4: base-100, 1 decimal
     verdict,
     verdictReason,
     spreadNeto,

@@ -612,6 +612,50 @@ export default function ConfiguracionTab({
           </div>
         </div>
 
+        {/* V5.4: TEST AUDIO — Unblock browser autoplay policy */}
+        <div className="mt-4 pt-3 border-t border-white/5">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-app-text4 font-mono uppercase tracking-wider">
+                🔊 Audio Alertas:
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const ctx = new AudioContext();
+                    if (ctx.state === 'suspended') ctx.resume();
+                    // Play test beep: 880Hz square wave
+                    const osc = ctx.createOscillator();
+                    const gain = ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(880, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+                    osc.connect(gain);
+                    gain.connect(ctx.destination);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.2);
+                  } catch (e) {
+                    alert('Audio no disponible: ' + (e instanceof Error ? e.message : String(e)));
+                  }
+                }}
+                className="px-3 py-1 rounded-lg text-[10px] font-bold font-mono uppercase tracking-wide transition-all hover:scale-105 active:scale-95"
+                style={{
+                  background: 'rgba(46,235,200,0.1)',
+                  color: '#2eebc8',
+                  border: '1px solid rgba(46,235,200,0.2)',
+                }}
+              >
+                TEST AUDIO
+              </button>
+              <span className="text-[9px] text-app-text4 font-mono">
+                (Desbloquea el contexto de audio del navegador)
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Divider */}
         <div className="mt-4 pt-3 border-t border-white/5">
           <div className="flex items-center gap-4 text-[9px] text-app-text4 font-mono uppercase tracking-wider">

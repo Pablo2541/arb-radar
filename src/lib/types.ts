@@ -245,9 +245,10 @@ export interface CockpitScore {
   
   // ── Composite ──
   cockpitScore: number;        // Weighted total (0-10)
+  unifiedScore: number;        // V5.4: Unified base-100 score (cockpitScore × 10) — single source of truth for ALL displays
   
   // ── Verdict ──
-  verdict: 'SALTO_TACTICO' | 'PUNTO_CARAMELO' | 'ATRACTIVO' | 'NEUTRAL' | 'EVITAR';
+  verdict: 'SALTO_TACTICO' | 'PUNTO_CARAMELO' | 'ATRACTIVO' | 'NEUTRAL' | 'EVITAR' | 'TAKE_PROFIT';
   verdictReason: string;
   
   // ── Raw data for display ──
@@ -278,6 +279,16 @@ export interface CockpitScore {
   };
 
   withinHorizon: boolean;      // Within horizon filter (default 45 days — Scalping Extendido)
+
+  // ── V5.4: Portfolio-Aware Take Profit ──
+  isTakeProfit?: boolean;           // True when instrument is in portfolio and shows exit signal
+  takeProfitReason?: string;        // Human-readable exit reason
+  rotationSuggestions?: Array<{     // Top 2 replacement instruments
+    ticker: string;
+    unifiedScore: number;
+    tem: number;
+    spreadNeto: number;
+  }>;
 }
 
 export type TabId = 'mercado' | 'cockpit' | 'curvas' | 'estrategias' | 'cartera' | 'historial' | 'historico' | 'configuracion';

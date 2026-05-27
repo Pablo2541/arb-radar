@@ -654,7 +654,7 @@ function HomeContent() {
       case 'mercado':
         return <MercadoTab instruments={effectiveInstruments} config={config} position={position} momentumMap={momentumMap} priceHistory={priceHistory} onMepRate={handleMepRate} onCclRate={handleCclRate} onDolarUpdate={handleDolarUpdate} liveData={liveData} liveDataMap={liveDataMap} riesgoPaisAuto={riesgoPaisAuto} />;
       case 'cockpit':
-        return <CockpitTab instruments={effectiveInstruments} config={config} position={position} liveDataMap={liveDataMap} isLive={liveData.active} marketOpen={marketOpen} onAlertsCountChange={setPriceAlertsCount} onWatchlistCountChange={setWatchlistCount} />;
+        return <CockpitTab instruments={effectiveInstruments} config={config} position={position} liveDataMap={liveDataMap} isLive={liveData.active} marketOpen={marketOpen} onAlertsCountChange={setPriceAlertsCount} onWatchlistCountChange={setWatchlistCount} onTakeProfitCountChange={() => {}} />;
       // FASE 1: curvas & estrategias cases removed
       case 'cartera':
         return <CarteraTab instruments={effectiveInstruments} config={config} setConfig={updateConfig} position={position} setPosition={updatePosition} transactions={transactions} setTransactions={updateTransactions} externalHistory={externalHistory} setExternalHistory={updateExternalHistory} momentumMap={momentumMap} priceHistory={priceHistory} liveDataMap={liveDataMap} isLive={liveData.active} />;

@@ -757,3 +757,64 @@ Stage Summary:
 - When market opens and prices change, delta calculates normally
 - No frontend changes needed — existing code already handles 0 correctly
 - Lint clean, HTTP 200 confirmed
+
+---
+Task ID: 12
+Agent: Main Agent
+Task: V5.4 Comprehensive Refactor — 4 Pillars (Score Unification, Portfolio Sell Alerts, Audio Fix, Timezone)
+
+Work Log:
+- PILLAR 1 — Score Unification (UI State Desync):
+  - Added `unifiedScore` (base-100) to CockpitScore type in types.ts
+  - `unifiedScore = Math.round(cockpitScore * 10 * 10) / 10` — derived from cockpitScore
+  - Updated ElGritoCard to show unifiedScore.toFixed(0) instead of actionScore.score vs cockpitScore.toFixed(1)
+  - Updated desktop Score column to show unifiedScore (base-100 gauge + number)
+  - Updated CSV export header and values
+  - Updated cockpit-score API sort order to use unifiedScore
+  - Result: T30A7 shows "76" everywhere (El Grito AND table row) — no more desync
+
+- PILLAR 2 — Portfolio-Aware Sell Alerts (Grito de Salida):
+  - Added `isTakeProfit`, `takeProfitReason`, `rotationSuggestions` to CockpitScore type
+  - Added `TAKE_PROFIT` verdict to CockpitScore verdict union
+  - Created `enrichedScores` useMemo that detects exit signals on held position:
+    - Price surge >= +1.5% (yield compression)
+    - Action Score crater + unifiedScore < 40 (SIN SEÑAL/NEUTRAL)
+    - At resistance (distanceToSR < 0.3%, nearestSR type = 'R')
+  - When triggered: overrides verdict to TAKE_PROFIT, builds rotation suggestions (top 2 by unifiedScore)
+  - ElGritoCard: TAKE_PROFIT cards shown FIRST with crimson red styling + "🚨 TAKE PROFIT" badge
+  - Rotation suggestions section: shows top 2 replacement instruments with ticker + score + spread
+  - Summary bar: TAKE PROFIT count shown before GATILLAR count
+
+- PILLAR 3 — Robust Audio Alerts:
+  - Fixed AudioContext autoplay block: added `ctx.resume()` when state === 'suspended'
+  - playAlertBeep now accepts `type: 'entry' | 'exit'` parameter:
+    - 'entry': 880Hz square wave (GATILLAR YA / ATRACTIVO / price alerts)
+    - 'exit': 1200Hz + 1400Hz double sawtooth beep (TAKE PROFIT — distinctive sound)
+  - Expanded trigger conditions beyond just GATILLAR YA:
+    - ATRACTIVO with unifiedScore > 50 triggers entry beep
+    - TAKE_PROFIT triggers exit beep (double beep)
+  - Added `prevTakeProfitRef` for TAKE_PROFIT transition detection
+  - Added TEST AUDIO button in ConfiguracionTab (QUANT X ENGINE section):
+    - Creates fresh AudioContext + plays 880Hz test beep on click
+    - Explicitly unblocks browser autoplay policy via user gesture
+    - Shows error message if audio unavailable
+
+- PILLAR 4 — Local Timezone Enforcement (UTC-3):
+  - Fixed `daysFromExpiry()` in calculations.ts: calculates Buenos Aires local time
+    - Uses `getTimezoneOffset()` to adjust server UTC → UTC-3
+    - Prevents extra day when server timezone is ahead of Argentina
+  - Fixed `daysToExpiry()` in /api/letras/route.ts: same UTC-3 adjustment
+    - Both frontend and backend now show identical day counts
+
+- Updated page.tsx to pass `onTakeProfitCountChange` prop to CockpitTab
+- Added TAKE_PROFIT to VERDICT_CONFIG with crimson styling
+- Added `prevTakeProfitRef` for tracking TAKE_PROFIT transitions
+- Lint: 0 errors
+- Dev server: compiles and serves correctly (HTTP 200)
+- API verified: unifiedScore flows correctly (T15E7=80, T30A7=76, S30O6=63.9)
+
+Stage Summary:
+- 7 files modified: types.ts, calculations.ts, CockpitTab.tsx, ConfiguracionTab.tsx, page.tsx, letras/route.ts, cockpit-score/route.ts
+- ZIP created: Quant-X-V5.4-Comprehensive-Refactor.zip (80 KB)
+- All 4 pillars implemented and verified
+- Lint clean, HTTP 200 confirmed

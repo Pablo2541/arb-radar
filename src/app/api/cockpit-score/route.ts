@@ -241,8 +241,8 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Sort by cockpitScore descending
-    allScores.sort((a: CockpitScore, b: CockpitScore) => b.cockpitScore - a.cockpitScore);
+    // V5.4: Sort by unifiedScore (base-100) descending — single source of truth
+    allScores.sort((a: CockpitScore, b: CockpitScore) => b.unifiedScore - a.unifiedScore);
 
     // Filter by horizon
     const scores = allScores.filter((s: CockpitScore) => s.days <= horizon);

@@ -112,10 +112,17 @@ function inferType(ticker: string): 'LECAP' | 'BONCAP' {
 
 function daysToExpiry(vencimiento: string): number {
   const vto = new Date(vencimiento);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // V5.4 FIX: Force Buenos Aires timezone (UTC-3) to avoid day-count drift.
+  // Server may be in UTC+0 or another TZ, causing instruments to show
+  // one extra day when it's already past midnight in Argentina.
+  const now = new Date();
+  const bsasOffset = -3 * 60; // UTC-3 in minutes
+  const localOffset = now.getTimezoneOffset();
+  const diffMs = (localOffset - bsasOffset) * 60 * 1000;
+  const bsasNow = new Date(now.getTime() + diffMs);
+  bsasNow.setHours(0, 0, 0, 0);
   vto.setHours(0, 0, 0, 0);
-  return Math.max(0, Math.round((vto.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)));
+  return Math.max(0, Math.round((vto.getTime() - bsasNow.getTime()) / (1000 * 60 * 60 * 24)));
 }
 
 async function safeFetch<T>(url: string, timeoutMs = SOURCE_TIMEOUT_MS): Promise<{ ok: boolean; data: T | null; latency_ms: number }> {
