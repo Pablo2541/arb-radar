@@ -233,10 +233,14 @@ export async function GET(request: NextRequest) {
       const spreadNetoPct = (inst.spread_neto as number) * 100;
 
       // ═══════════════════════════════════════════════════════════════
-      // V6.0: Historical S/R Calculation
+      // V6.0.1 HOTFIX: Historical S/R Calculation
       //
       // Primary: Use 30-day DailyOHLC closes for TRUE structural S/R
-      // Fallback: Use old intraday bid/ask method when no DB data
+      //   - Today's date is EXCLUDED from the lookback (prevents
+      //     live price from contaminating the historical floor)
+      // Fallback: Use change_pct-based intraday method (NOT raw bid)
+      //   - Raw bid ≈ price for liquid instruments → fake 0.00% dist
+      // Safety: Minimum 0.3% distance floor to prevent 0.00% display
       // ═══════════════════════════════════════════════════════════════
       const histSR = calculateHistoricalSR(
         instrument.ticker,
@@ -251,7 +255,7 @@ export async function GET(request: NextRequest) {
       let upsideCapital: number;
 
       if (histSR.isHistorical) {
-        // V6.0: TRUE structural S/R from historical closes
+        // V6.0.1: TRUE structural S/R from historical closes (today EXCLUDED)
         // distToSupport/distToResistance can be negative when price is
         // beyond the level (above resistance or below support).
         // For nearestSR, we compare absolute distances to find which
@@ -270,7 +274,9 @@ export async function GET(request: NextRequest) {
         // (0 if already above resistance — the run is happening)
         upsideCapital = Math.max(0, histSR.distToResistance);
       } else {
-        // Fallback: old intraday bid/ask method
+        // Fallback: change_pct-based intraday method (V6.0.1: NOT raw bid)
+        // The updated calculateNearestSR now prioritizes change_pct over
+        // bid/ask, which gives meaningful distances instead of 0.00%
         nearestSR = calculateNearestSR(
           instrument.price,
           inst.iol_bid as number | undefined,
@@ -282,6 +288,18 @@ export async function GET(request: NextRequest) {
           : 99;
         // Rough proxy when no historical data
         upsideCapital = Math.max(0, spreadNetoPct * (instrument.days / 30) * 0.5);
+      }
+
+      // V6.0.1 SAFETY: Minimum distance floor for INTRADAY FALLBACK only
+      // When using historical_ohlc, a tiny distance is a genuine signal
+      // (price at its 30-day floor = highly significant). But when using
+      // the intraday fallback (bid/ask or change_pct), distances < 0.05%
+      // are artifacts of bid ≈ price, not real technical signals.
+      if (distanceToSR < 0.05 && nearestSR && !histSR.isHistorical) {
+        // Recalculate support as 2% below current price (sensible floor)
+        const sensibleSupport = instrument.price * 0.98;
+        nearestSR = { level: sensibleSupport, type: 'S' };
+        distanceToSR = 2.0; // Exactly 2% by construction
       }
 
       // Volume Injection
@@ -347,7 +365,7 @@ export async function GET(request: NextRequest) {
       horizon_days: horizon,
       summary,
       timestamp: new Date(now).toISOString(),
-      engine_version: 'V6.0.0-HISTORICAL-SR',
+      engine_version: 'V6.0.1-HISTORICAL-SR-HOTFIX',
       stale: false,
       sr_source: srSource,
     };

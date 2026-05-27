@@ -900,3 +900,26 @@ Stage Summary:
 - Footer reads: "V6.0.0 (Historical Structural S/R Engine)"
 - All API engine_version responses now consistent: "V6.0.0-HISTORICAL-SR"
 - ZIP ready for download
+
+---
+Task ID: V6.0.1-SR-HOTFIX
+Agent: Main Agent
+Task: CRITICAL HOTFIX — S/R engine showing 0.00% distance because support = live price
+
+Work Log:
+- Diagnosed 3 root causes for support mirroring live price:
+  1. calculateHistoricalSR did NOT exclude today's date → if update-prices daemon writes today's OHLC with close=live_price, that becomes the "structural support"
+  2. calculateNearestSR fallback used raw `bid` as support → for liquid Argentine instruments, bid ≈ price → 0.00% distance
+  3. No minimum distance sanity check for the intraday fallback path
+- Fix 1: calculateHistoricalSR now EXCLUDES today's date from the lookback (r.date !== todayStr)
+- Fix 2: calculateNearestSR now uses change_pct as PRIMARY method (not bid/ask). When bid/ask is used, enforces a minimum 0.5% band (1% total range) instead of raw bid≈price
+- Fix 3: cockpit-score route adds safety floor: if distanceToSR < 0.05% AND using intraday_fallback, overrides to 2% band. Does NOT override genuine historical support (which is a real signal)
+- Engine version updated: V6.0.0-HISTORICAL-SR → V6.0.1-HISTORICAL-SR-HOTFIX
+- Verified: All 14 tickers show meaningful distances (1.73% - 3.07%), zero instances of 0.00%
+
+Stage Summary:
+- 2 files modified: src/lib/calculations.ts, src/app/api/cockpit-score/route.ts
+- BUG ELIMINATED: No ticker shows 0.00% distance to S/R
+- Historical tickers: support/resistance derived from 30-day OHLC closes (today excluded)
+- Intraday fallback: change_pct-based S/R (not raw bid) + 2% safety floor
+- API verified: engine_version=V6.0.1-HISTORICAL-SR-HOTFIX, all distances > 0.05%

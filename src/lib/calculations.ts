@@ -1751,9 +1751,22 @@ export function calculateHistoricalSR(
   ohlcData: HistoricalOHLC[],
   lookbackDays: number = 30,
 ): HistoricalSRResult {
-  // Filter to this ticker only, and to valid close prices
+  // ═══════════════════════════════════════════════════════════════════
+  // V6.0.1 HOTFIX: Exclude today's date from the lookback.
+  //
+  // The update-prices daemon writes today's OHLC with close = live price.
+  // If included, today's close can become the "structural support"
+  // when the price is at a daily low, making support = live price → 0% dist.
+  // Only PAST closes represent true historical floors/ceilings.
+  // ═══════════════════════════════════════════════════════════════════
+  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+  // Filter to this ticker, valid closes, AND NOT today's date
   const tickerData = ohlcData.filter(
-    r => r.ticker === ticker && r.close > 0 && isFinite(r.close),
+    r => r.ticker === ticker
+      && r.close > 0
+      && isFinite(r.close)
+      && r.date !== todayStr,  // ← CRITICAL: exclude today's live price
   );
 
   // Take only the last `lookbackDays` records (already sorted by date ASC)
@@ -1761,7 +1774,7 @@ export function calculateHistoricalSR(
 
   if (relevantData.length === 0 || !currentPrice || currentPrice <= 0) {
     // No historical data — return a fallback with isHistorical=false
-    // Use a 2% band as a rough estimate
+    // Use a 2% band as a rough estimate (NOT live price)
     return {
       support: currentPrice > 0 ? currentPrice * 0.98 : 0,
       resistance: currentPrice > 0 ? currentPrice * 1.02 : 0,
@@ -1775,6 +1788,7 @@ export function calculateHistoricalSR(
   }
 
   // Find structural extremes: absolute min close = Support, absolute max close = Resistance
+  // These come ONLY from past days' closes — completely isolated from live price
   let minClose = Infinity;
   let maxClose = -Infinity;
   for (const day of relevantData) {
@@ -1804,7 +1818,8 @@ export function calculateHistoricalSR(
   if (minClose > SCALE_THRESHOLD) minClose = minClose / 100;
   if (maxClose > SCALE_THRESHOLD) maxClose = maxClose / 100;
 
-  // Calculate distances (% from current price)
+  // Calculate distances (% from current price to historical levels)
+  // currentPrice is NEVER allowed to modify minClose or maxClose.
   const distToSupport = ((currentPrice - minClose) / minClose) * 100;
   const distToResistance = ((maxClose - currentPrice) / currentPrice) * 100;
 
@@ -1862,15 +1877,19 @@ export function calculateHistoricalNearestSR(
 
 /**
  * @deprecated Use calculateHistoricalNearestSR instead — this version uses
- * intraday bid/ask data, NOT true structural S/R from historical closes.
+ * intraday data, NOT true structural S/R from historical closes.
  *
  * Kept as fallback when no DailyOHLC data is available.
  *
- * Old logic:
- *   - Support ≈ price × (1 - spread_half) → bid side floor
- *   - Resistance ≈ price × (1 + spread_half) →  ask side ceiling
- *   - For instruments with change_pct: adjust dynamically
- *   - Fallback: 2% band around current price
+ * V6.0.1 HOTFIX: Raw bid/ask NO LONGER used as support/resistance.
+ * For liquid Argentine instruments, bid ≈ price, which produces fake 0.00%
+ * distance. Now uses change_pct to estimate the day's trading range, which
+ * gives meaningful distances even without historical data.
+ *
+ * Fallback chain:
+ *   1. change_pct → derive S/R from day's price movement
+ *   2. bid/ask spread → expand into a minimum 1% band (NOT raw bid)
+ *   3. Static 2% band around current price
  */
 export function calculateNearestSR(
   price: number,
@@ -1880,11 +1899,34 @@ export function calculateNearestSR(
 ): { level: number; type: 'S' | 'R' } | null {
   if (!price || price <= 0) return null;
 
-  // If we have bid/ask, derive S/R from the spread
+  // ── PRIMARY: estimate S/R from price movement (change_pct) ──
+  // This is the most reliable intraday method because it uses
+  // the actual day's range rather than the tight bid/ask spread.
+  const chg = changePct ?? 0;
+  if (Math.abs(chg) > 0.01) {
+    if (chg > 0) {
+      // Price rising — support is the opening level we bounced from
+      const support = price / (1 + Math.abs(chg) / 100);
+      return { level: support, type: 'S' };
+    } else {
+      // Price falling — resistance is the opening level we dropped from
+      const resistance = price / (1 - Math.abs(chg) / 100);
+      return { level: resistance, type: 'R' };
+    }
+  }
+
+  // ── SECONDARY: bid/ask spread → expand into minimum 1% band ──
+  // V6.0.1: We do NOT use raw bid as support because bid ≈ price
+  // for liquid instruments, producing fake 0.00% distance.
+  // Instead, we use the spread to estimate a minimum band.
   if (bid && bid > 0 && ask && ask > 0) {
+    const spreadHalf = (ask - bid) / 2;
     const midPrice = (bid + ask) / 2;
-    const support = bid; // Bid is the floor (buyers willing to pay)
-    const resistance = ask; // Ask is the ceiling (sellers asking)
+    // Ensure a minimum 0.5% band on each side (1% total range)
+    const minBand = midPrice * 0.005;
+    const halfBand = Math.max(spreadHalf, minBand);
+    const support = midPrice - halfBand;
+    const resistance = midPrice + halfBand;
 
     const distToSupport = Math.abs((price - support) / price) * 100;
     const distToResistance = Math.abs((resistance - price) / price) * 100;
@@ -1896,22 +1938,8 @@ export function calculateNearestSR(
     }
   }
 
-  // Fallback: estimate S/R from price movement
-  // If price is going up (change > 0), support is behind, resistance ahead
-  // If price is going down, support is ahead, resistance behind
-  const chg = changePct ?? 0;
-  if (chg > 0) {
-    // Price rising — nearest is support (the floor we bounced from)
-    const support = price / (1 + Math.abs(chg) / 100);
-    return { level: support, type: 'S' };
-  } else if (chg < 0) {
-    // Price falling — nearest is resistance (the ceiling we dropped from)
-    const resistance = price / (1 - Math.abs(chg) / 100);
-    return { level: resistance, type: 'R' };
-  }
-
-  // No movement — use 1% band
-  return { level: price * 0.99, type: 'S' };
+  // ── TERTIARY: static 2% band around current price ──
+  return { level: price * 0.98, type: 'S' };
 }
 
 /**
