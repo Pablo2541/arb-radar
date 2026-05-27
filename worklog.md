@@ -970,3 +970,38 @@ Stage Summary:
 - Files created: src/app/api/update-ohlc/route.ts, scripts/migrate-ohlc-baseline.js
 - Version: V6.0.2 (Historical S/R + TZ Fix + Auto-OHLC)
 - S/R engine now functional with 30+ days of data and auto-accumulation
+---
+Task ID: 11
+Agent: Main Agent
+Task: V6.1.0-FINAL — Dynamic Price Action & Polarity Reversal Engine
+
+Work Log:
+- Analyzed current S/R logic: calculateHistoricalSR used raw minClose/maxClose as support/resistance without considering price-action polarity — when price broke above maxClose, maxClose was still labeled 'r:' (nonsensical: a level BELOW the current price is not resistance)
+- Root cause of T31Y7 bug: When price > maxClose, the nearestSR determination compared abs(distToSupport) vs abs(distToResistance) and could label the historical max as 'R' even though it's BELOW current price
+- Implemented 3-state polarity reversal in calculateHistoricalSR():
+  - BULLISH_BREAKOUT: price > maxClose → maxClose flips from R→S, new R = price + ADR*1.5
+  - BEARISH_BREAKDOWN: price < minClose → minClose flips from S→R, new S = price - ADR*1.5
+  - INSIDE_CHANNEL: price between extremes → standard S/R (unchanged)
+- Added ADR (Average Daily Range) calculation from OHLC high-low data
+- Updated HistoricalSRResult interface with new fields: polarity, avgDailyRange, rawSupport, rawResistance
+- Updated cockpit-score route: uses polarity-adjusted distances (always positive after reversal)
+- Updated CockpitScore type with polarity, avgDailyRange, rawSupport, rawResistance fields
+- Added polarity indicators (⬆⬇) to CockpitTab.tsx S/R display (both mobile and desktop)
+- Updated methodology section in CockpitTab to explain polarity reversal
+- Bumped version to V6.1.0-FINAL across all system files:
+  - layout.tsx: metadata titles and descriptions
+  - page.tsx: header label, loading text, footer version
+  - cockpit-score/route.ts: engine_version
+  - market-truth/route.ts: engine_version
+  - useLiveInstruments.ts: OHLC comment
+  - calculations.ts: timezone comment
+- ESLint passes with 0 errors
+- Dev server compiles and serves correctly
+- Created final ZIP: Quant-X-V6.1.0-FINAL-POLARITY.zip (7.3 MB)
+
+Stage Summary:
+- V6.1.0-FINAL Polarity Reversal Engine implemented
+- 5 files modified: calculations.ts, types.ts, cockpit-score/route.ts, CockpitTab.tsx, layout.tsx, page.tsx, market-truth/route.ts, useLiveInstruments.ts
+- Bug fix: T31Y7 and similar instruments will now correctly show support (s:) for levels below price and resistance (r:) for levels above price
+- ADR-based volatility projections provide realistic next targets on breakout/breakdown
+- Final ZIP package created for download

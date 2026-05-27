@@ -272,7 +272,7 @@ export function useLiveInstruments(marketOpen: boolean = true): LiveInstrumentsS
 
       setInstruments(mappedInstruments);
 
-      // V6.0.2: Fire-and-forget OHLC update — writes today's live prices
+      // V6.1.0: Fire-and-forget OHLC update — writes today's live prices
       // to DailyOHLC table for the S/R engine. Non-blocking: if it fails,
       // the dashboard still works fine. The /api/update-ohlc endpoint has
       // built-in staleness detection (skips if snapshotCount >= 5).

@@ -1429,6 +1429,13 @@ export default function CockpitTab({
                           {score.nearestSR ? (
                             <span className={`font-mono ${score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
                               {score.nearestSR.type}:{score.nearestSR.level.toFixed(4)}
+                              {/* V6.1.0: Polarity reversal indicator */}
+                              {score.polarity === 'BULLISH_BREAKOUT' && (
+                                <span className="text-[8px] text-[#fbbf24] ml-0.5" title="Bullish Breakout: resistance flipped to support">⬆</span>
+                              )}
+                              {score.polarity === 'BEARISH_BREAKDOWN' && (
+                                <span className="text-[8px] text-[#f87171] ml-0.5" title="Bearish Breakdown: support flipped to resistance">⬇</span>
+                              )}
                               {/* V6.0: Show historical S/R source indicator */}
                               {score.srSource === 'historical_ohlc' && (
                                 <span className="text-[8px] text-[#2eebc8] opacity-60 ml-0.5" title="Structural S/R from 30-day OHLC closes">●</span>
@@ -1580,12 +1587,19 @@ export default function CockpitTab({
                           {volDisplay}
                         </div>
 
-                        {/* V6.0: S/R MAS CERCANO (historical structural) */}
+                        {/* V6.1.0: S/R MAS CERCANO (polarity-aware structural) */}
                         <div className="text-right font-mono text-sm">
                           {score.nearestSR ? (
                             <span className={score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}>
                               <span className="text-[10px] font-bold opacity-70">{score.nearestSR.type}: </span>
                               {score.nearestSR.level.toFixed(4)}
+                              {/* V6.1.0: Polarity reversal indicators */}
+                              {score.polarity === 'BULLISH_BREAKOUT' && (
+                                <span className="text-[8px] text-[#fbbf24] ml-0.5" title="Bullish Breakout: resistance flipped to support">⬆</span>
+                              )}
+                              {score.polarity === 'BEARISH_BREAKDOWN' && (
+                                <span className="text-[8px] text-[#f87171] ml-0.5" title="Bearish Breakdown: support flipped to resistance">⬇</span>
+                              )}
                               {/* V6.0: Green dot = historical structural S/R, no dot = intraday fallback */}
                               {score.srSource === 'historical_ohlc' && (
                                 <span className="text-[7px] text-[#2eebc8] opacity-70 ml-0.5" title="Structural S/R from 30-day OHLC closes">⬤</span>
@@ -1786,10 +1800,10 @@ export default function CockpitTab({
             </span>
           </div>
 
-          {/* V5.0: Action Score Methodology */}
+          {/* V6.1.0: Action Score Methodology + Polarity Reversal */}
           <div className="nexus-method px-4 py-3">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-[10px] font-semibold text-app-text3 uppercase tracking-wider">El Gatillador — Metodología</span>
+              <span className="text-[10px] font-semibold text-app-text3 uppercase tracking-wider">El Gatillador — Metodología V6.1</span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[9px]">
               <div className="bg-app-subtle/30 rounded-lg p-2.5">
@@ -1798,6 +1812,8 @@ export default function CockpitTab({
                   &lt;0.3% → 38pts · &lt;0.5% → 32pts · &lt;1% → 20pts · &lt;2% → 10pts
                   <br />
                   <span className="text-[#f87171]">Alerta visual &lt;0.5%: &quot;a tiro de gatillo&quot;</span>
+                  <br />
+                  <span className="text-[#fbbf24]">⬆ Breakout: R→S flip · ⬇ Breakdown: S→R flip</span>
                 </div>
               </div>
               <div className="bg-app-subtle/30 rounded-lg p-2.5">

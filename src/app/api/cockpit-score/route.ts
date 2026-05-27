@@ -1,13 +1,16 @@
 // ════════════════════════════════════════════════════════════════════════
-// V6.0 — /api/cockpit-score: Unified Scalping Signal
+// V6.1.0-FINAL — /api/cockpit-score: Unified Scalping Signal
 //
 // Computes the CockpitScore for every live LECAP/BONCAP instrument
 // using 5 weighted scalping factors and assigns a verdict.
 //
-// V6.0 BREAKTHROUGH: S/R engine now reads from DailyOHLC table
-// (30-day historical closes) instead of intraday bid/ask.
-// This produces REAL structural support/resistance levels instead
-// of static values like 1.2201 for T30J7.
+// V6.1.0 BREAKTHROUGH: Dynamic Price Action & Polarity Reversal
+//   - When price breaks ABOVE historical max → polarity reversal:
+//     former resistance becomes support, projected ceiling = new resistance
+//   - When price breaks BELOW historical min → polarity reversal:
+//     former support becomes resistance, projected floor = new support
+//   - Inside channel: standard nearest-S/R logic (min distance wins)
+//   - ADR (Average Daily Range) used for volatility-based projections
 //
 // Data sources:
 //   - /api/letras (live instrument data from data912 + ArgentinaDatos)
@@ -233,14 +236,16 @@ export async function GET(request: NextRequest) {
       const spreadNetoPct = (inst.spread_neto as number) * 100;
 
       // ═══════════════════════════════════════════════════════════════
-      // V6.0.2: Historical S/R Calculation
+      // V6.1.0: Historical S/R with DYNAMIC POLARITY REVERSAL
       //
       // Primary: Use 30-day DailyOHLC closes for TRUE structural S/R
       //   - Today's date is EXCLUDED from the lookback (Argentina TZ)
-      //   - V6.0.2 FIX: todayStr uses Argentina timezone (not UTC)
+      //   - BULLISH_BREAKOUT: price > maxClose → maxClose becomes support
+      //   - BEARISH_BREAKDOWN: price < minClose → minClose becomes resistance
+      //   - INSIDE_CHANNEL: standard nearest-S/R logic
+      //   - ADR × 1.5 used for projected targets on breakout/breakdown
       // Fallback: Use change_pct-based intraday method (NOT raw bid)
-      //   - Raw bid ≈ price for liquid instruments → fake 0.00% dist
-      // Safety: Minimum 0.3% distance floor to prevent 0.00% display
+      // Safety: Minimum 0.3% distance floor for intraday fallback only
       // ═══════════════════════════════════════════════════════════════
       const histSR = calculateHistoricalSR(
         instrument.ticker,
@@ -255,24 +260,21 @@ export async function GET(request: NextRequest) {
       let upsideCapital: number;
 
       if (histSR.isHistorical) {
-        // V6.0.1: TRUE structural S/R from historical closes (today EXCLUDED)
-        // distToSupport/distToResistance can be negative when price is
-        // beyond the level (above resistance or below support).
-        // For nearestSR, we compare absolute distances to find which
-        // level is closer, regardless of direction.
-        const absDistToSupport = Math.abs(histSR.distToSupport);
-        const absDistToResistance = Math.abs(histSR.distToResistance);
+        // V6.1.0: After polarity reversal, support is ALWAYS below price
+        // and resistance is ALWAYS above price. Distances are always positive.
+        // We simply compare which effective level is closer.
+        const distToSupport = histSR.distToSupport;
+        const distToResistance = histSR.distToResistance;
 
-        if (absDistToSupport <= absDistToResistance) {
+        if (distToSupport <= distToResistance) {
           nearestSR = { level: histSR.support, type: 'S' };
-          distanceToSR = absDistToSupport;
+          distanceToSR = distToSupport;
         } else {
           nearestSR = { level: histSR.resistance, type: 'R' };
-          distanceToSR = absDistToResistance;
+          distanceToSR = distToResistance;
         }
-        // Upside capital: positive distance from current price to resistance
-        // (0 if already above resistance — the run is happening)
-        upsideCapital = Math.max(0, histSR.distToResistance);
+        // Upside capital: distance from current price to resistance ceiling
+        upsideCapital = distToResistance;
       } else {
         // Fallback: change_pct-based intraday method (V6.0.1: NOT raw bid)
         // The updated calculateNearestSR now prioritizes change_pct over
@@ -335,10 +337,14 @@ export async function GET(request: NextRequest) {
         distanceToSR,
         volumeInjection,
         actionScore,
-        // V6.0: Historical S/R metadata
+        // V6.1.0: Historical S/R metadata with polarity reversal
         srSource: histSR.isHistorical ? 'historical_ohlc' : 'intraday_fallback',
         historicalSupport: histSR.isHistorical ? histSR.support : undefined,
         historicalResistance: histSR.isHistorical ? histSR.resistance : undefined,
+        polarity: histSR.isHistorical ? histSR.polarity : undefined,
+        avgDailyRange: histSR.isHistorical ? histSR.avgDailyRange : undefined,
+        rawSupport: histSR.isHistorical ? histSR.rawSupport : undefined,
+        rawResistance: histSR.isHistorical ? histSR.rawResistance : undefined,
       };
     });
 
@@ -365,7 +371,7 @@ export async function GET(request: NextRequest) {
       horizon_days: horizon,
       summary,
       timestamp: new Date(now).toISOString(),
-      engine_version: 'V6.0.2-HISTORICAL-SR-TZFIX',
+      engine_version: 'V6.1.0-FINAL-POLARITY',
       stale: false,
       sr_source: srSource,
     };

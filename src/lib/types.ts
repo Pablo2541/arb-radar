@@ -283,6 +283,12 @@ export interface CockpitScore {
   historicalSupport?: number;   // Structural support from 30-day OHLC closes
   historicalResistance?: number; // Structural resistance from 30-day OHLC closes
 
+  // ── V6.1.0: Dynamic Price Action & Polarity Reversal ──
+  polarity?: 'INSIDE_CHANNEL' | 'BULLISH_BREAKOUT' | 'BEARISH_BREAKDOWN'; // Price-action polarity state
+  avgDailyRange?: number;       // ADR from historical OHLC (for projected targets)
+  rawSupport?: number;          // Raw historical min close (before polarity adjustment)
+  rawResistance?: number;       // Raw historical max close (before polarity adjustment)
+
   withinHorizon: boolean;      // Within horizon filter (default 45 days — Scalping Extendido)
 
   // ── V5.4: Portfolio-Aware Take Profit ──

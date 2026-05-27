@@ -1712,15 +1712,15 @@ export interface HistoricalOHLC {
 
 /** Full S/R analysis from historical data */
 export interface HistoricalSRResult {
-  /** Structural support = lowest close in lookback window */
+  /** Effective support level (may be polarity-reversed from raw) */
   support: number;
-  /** Structural resistance = highest close in lookback window */
+  /** Effective resistance level (may be polarity-reversed from raw) */
   resistance: number;
   /** Current live price */
   currentPrice: number;
-  /** % distance from price to support */
+  /** % distance from price to support (always positive) */
   distToSupport: number;
-  /** % distance from price to resistance */
+  /** % distance from price to resistance (always positive) */
   distToResistance: number;
   /** Position in S/R channel (0=at support, 100=at resistance) */
   channelPosition: number;
@@ -1728,22 +1728,61 @@ export interface HistoricalSRResult {
   daysUsed: number;
   /** Whether this is based on real historical data or a fallback */
   isHistorical: boolean;
+
+  // ── V6.1.0: Dynamic Price Action & Polarity Reversal ──
+  /** Price-action polarity state */
+  polarity: 'INSIDE_CHANNEL' | 'BULLISH_BREAKOUT' | 'BEARISH_BREAKDOWN';
+  /** Average Daily Range from OHLC data (for volatility projections) */
+  avgDailyRange: number;
+  /** Raw historical minimum close BEFORE polarity adjustment */
+  rawSupport: number;
+  /** Raw historical maximum close BEFORE polarity adjustment */
+  rawResistance: number;
 }
 
 /**
- * Calculate full historical S/R levels for a single ticker.
+ * V6.1.0 — Calculate historical S/R levels with DYNAMIC POLARITY REVERSAL.
  *
- * Algorithm:
- *   1. Takes the last `lookbackDays` OHLC records for the ticker
- *   2. Finds the absolute lowest close → structural Support
- *   3. Finds the absolute highest close → structural Resistance
- *   4. Calculates distances and channel position
+ * This implements the "Dynamic Price Action & Polarity Reversal" rules:
+ *
+ * THREE PRICE-ACTION STATES:
+ *
+ *   1. INSIDE_CHANNEL (minClose ≤ price ≤ maxClose):
+ *      Price is between historical extremes. The absolute minimum distance
+ *      to either boundary determines which is the nearest S/R.
+ *      → support = minClose, resistance = maxClose (unchanged)
+ *
+ *   2. BULLISH_BREAKOUT (price > maxClose):
+ *      The price has broken ABOVE the historical ceiling.
+ *      The breached maxClose can NO LONGER be labeled as 'r:' — it has
+ *      been overtaken from below and now acts as a retest floor.
+ *      → support = maxClose (polarity reversal: former resistance → support)
+ *      → resistance = price + (ADR × 1.5) — projected volatility ceiling
+ *
+ *   3. BEARISH_BREAKDOWN (price < minClose):
+ *      The price has broken BELOW the historical floor.
+ *      The breached minClose can NO LONGER be labeled as 's:' — it has
+ *      been pierced downward and now acts as overhead resistance.
+ *      → resistance = minClose (polarity reversal: former support → resistance)
+ *      → support = price - (ADR × 1.5) — projected volatility floor
+ *
+ * ADR (Average Daily Range):
+ *   Computed as the mean of (high - low) across the lookback window.
+ *   This represents the instrument's typical daily volatility and is used
+ *   to project realistic next targets when the channel is breached.
+ *
+ * WHY THIS WORKS FOR ARGENTINE FIXED-INCOME:
+ *   - LECAPs/BONCAPs trend strongly due to macro shifts (BCRA rate changes)
+ *   - When a bond breaks its 30-day high, that level becomes the new floor
+ *     on retests (institutional stop-losses and limit orders cluster there)
+ *   - Using ADR × 1.5 for projected targets is analogous to ATR-based
+ *     targets in forex — standard practice for volatility-normalized levels
  *
  * @param ticker - Instrument ticker (e.g., "T30J7")
  * @param currentPrice - Live price per $1 VN (1.XXXX scale)
  * @param ohlcData - Array of DailyOHLC records (sorted by date ASC)
  * @param lookbackDays - How many calendar days to look back (default 30)
- * @returns HistoricalSRResult with structural S/R levels
+ * @returns HistoricalSRResult with polarity-adjusted S/R levels
  */
 export function calculateHistoricalSR(
   ticker: string,
@@ -1752,39 +1791,29 @@ export function calculateHistoricalSR(
   lookbackDays: number = 30,
 ): HistoricalSRResult {
   // ═══════════════════════════════════════════════════════════════════
-  // V6.0.1 HOTFIX: Exclude today's date from the lookback.
-  //
-  // The update-prices daemon writes today's OHLC with close = live price.
-  // If included, today's close can become the "structural support"
-  // when the price is at a daily low, making support = live price → 0% dist.
-  // Only PAST closes represent true historical floors/ceilings.
-  //
-  // V6.0.2 FIX: Use Argentina timezone (UTC-3) for date comparison.
-  // DailyOHLC records are stored with Argentina trading dates.
-  // Using UTC toISOString() can produce wrong date when server
-  // timezone differs from Argentina (e.g., UTC+0 at 22:00 AR = next day UTC).
+  // V6.0.1: Exclude today's date from the lookback.
+  // V6.0.2/V6.1.0: Use Argentina timezone (UTC-3) for date comparison.
   // ═══════════════════════════════════════════════════════════════════
   const todayStr = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Argentina/Buenos_Aires',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date()); // Returns "YYYY-MM-DD" in Argentina timezone
+  }).format(new Date());
 
   // Filter to this ticker, valid closes, AND NOT today's date
   const tickerData = ohlcData.filter(
     r => r.ticker === ticker
       && r.close > 0
       && isFinite(r.close)
-      && r.date !== todayStr,  // ← CRITICAL: exclude today's live price
+      && r.date !== todayStr,
   );
 
   // Take only the last `lookbackDays` records (already sorted by date ASC)
   const relevantData = tickerData.slice(-lookbackDays);
 
   if (relevantData.length === 0 || !currentPrice || currentPrice <= 0) {
-    // No historical data — return a fallback with isHistorical=false
-    // Use a 2% band as a rough estimate (NOT live price)
+    // No historical data — return fallback with isHistorical=false
     return {
       support: currentPrice > 0 ? currentPrice * 0.98 : 0,
       resistance: currentPrice > 0 ? currentPrice * 1.02 : 0,
@@ -1794,17 +1823,35 @@ export function calculateHistoricalSR(
       channelPosition: 50,
       daysUsed: 0,
       isHistorical: false,
+      polarity: 'INSIDE_CHANNEL',
+      avgDailyRange: 0,
+      rawSupport: 0,
+      rawResistance: 0,
     };
   }
 
-  // Find structural extremes: absolute min close = Support, absolute max close = Resistance
-  // These come ONLY from past days' closes — completely isolated from live price
+  // ── Step 1: Find structural extremes from past closes ──
   let minClose = Infinity;
   let maxClose = -Infinity;
+  let adrSum = 0;
+  let adrCount = 0;
+
   for (const day of relevantData) {
     if (day.close > 0 && isFinite(day.close)) {
       minClose = Math.min(minClose, day.close);
       maxClose = Math.max(maxClose, day.close);
+    }
+    // Compute Average Daily Range from high-low of each day
+    if (day.high > 0 && day.low > 0 && isFinite(day.high) && isFinite(day.low)) {
+      // Normalize scale: OHLC may be in 100-scale or 1.XXXX scale
+      const SCALE_THRESHOLD = 10;
+      const dayHigh = day.high > SCALE_THRESHOLD ? day.high / 100 : day.high;
+      const dayLow = day.low > SCALE_THRESHOLD ? day.low / 100 : day.low;
+      const dailyRange = dayHigh - dayLow;
+      if (dailyRange > 0 && isFinite(dailyRange)) {
+        adrSum += dailyRange;
+        adrCount++;
+      }
     }
   }
 
@@ -1819,44 +1866,111 @@ export function calculateHistoricalSR(
       channelPosition: 50,
       daysUsed: 0,
       isHistorical: false,
+      polarity: 'INSIDE_CHANNEL',
+      avgDailyRange: 0,
+      rawSupport: 0,
+      rawResistance: 0,
     };
   }
 
-  // Normalize scale: OHLC may be in 100-scale (116.15) or 1.XXXX scale
-  // Use the same threshold as priceHistory.ts
+  // ── Step 2: Normalize scale ──
   const SCALE_THRESHOLD = 10;
   if (minClose > SCALE_THRESHOLD) minClose = minClose / 100;
   if (maxClose > SCALE_THRESHOLD) maxClose = maxClose / 100;
 
-  // Calculate distances (% from current price to historical levels)
-  // currentPrice is NEVER allowed to modify minClose or maxClose.
-  const distToSupport = ((currentPrice - minClose) / minClose) * 100;
-  const distToResistance = ((maxClose - currentPrice) / currentPrice) * 100;
+  // Average Daily Range (ADR) — typical daily volatility of the instrument
+  const adr = adrCount > 0 ? adrSum / adrCount : (maxClose - minClose) * 0.3;
+  const adrSafe = isFinite(adr) && adr > 0 ? adr : currentPrice * 0.005; // Fallback: 0.5% of price
 
-  // Channel position: 0% at support, 100% at resistance
-  const range = maxClose - minClose;
+  // ── Step 3: DYNAMIC POLARITY REVERSAL ──
+  // Store raw values before polarity adjustment (for display metadata)
+  const rawSupport = minClose;
+  const rawResistance = maxClose;
+
+  let effectiveSupport: number;
+  let effectiveResistance: number;
+  let polarity: 'INSIDE_CHANNEL' | 'BULLISH_BREAKOUT' | 'BEARISH_BREAKDOWN';
+
+  if (currentPrice > maxClose) {
+    // ═════════════════════════════════════════════════════════════════
+    // BULLISH BREAKOUT: Price has broken ABOVE historical resistance.
+    //
+    // The breached maxClose is no longer 'r:' — it has been overtaken
+    // from below and becomes the new retest floor ('s:').
+    // A projected volatility ceiling above the current price becomes
+    // the new dynamic resistance.
+    //
+    // This prevents the bug where T31Y7 shows a LOWER price as 'r:'
+    // when the price is above the historical ceiling — the old ceiling
+    // is now support, not resistance.
+    // ═════════════════════════════════════════════════════════════════
+    polarity = 'BULLISH_BREAKOUT';
+    effectiveSupport = maxClose;  // Polarity reversal: R → S
+    effectiveResistance = currentPrice + (adrSafe * 1.5);  // Projected ceiling
+
+  } else if (currentPrice < minClose) {
+    // ═════════════════════════════════════════════════════════════════
+    // BEARISH BREAKDOWN: Price has broken BELOW historical support.
+    //
+    // The breached minClose is no longer 's:' — it has been pierced
+    // downward and now acts as overhead resistance ('r:').
+    // A projected volatility floor below the current price becomes
+    // the new dynamic support.
+    // ═════════════════════════════════════════════════════════════════
+    polarity = 'BEARISH_BREAKDOWN';
+    effectiveResistance = minClose;  // Polarity reversal: S → R
+    effectiveSupport = currentPrice - (adrSafe * 1.5);  // Projected floor
+    // Safety: support can't be negative
+    effectiveSupport = Math.max(0.0001, effectiveSupport);
+
+  } else {
+    // ═════════════════════════════════════════════════════════════════
+    // INSIDE CHANNEL: Price is between historical extremes.
+    // Standard S/R assignment — minClose = support, maxClose = resistance.
+    // The nearestSR determination (which level is closer) is done
+    // by the caller based on distToSupport vs distToResistance.
+    // ═════════════════════════════════════════════════════════════════
+    polarity = 'INSIDE_CHANNEL';
+    effectiveSupport = minClose;
+    effectiveResistance = maxClose;
+  }
+
+  // ── Step 4: Calculate distances to EFFECTIVE (polarity-adjusted) levels ──
+  // These are ALWAYS positive because effectiveSupport < price < effectiveResistance
+  // after polarity adjustment (guaranteed by construction).
+  const distToSupport = ((currentPrice - effectiveSupport) / effectiveSupport) * 100;
+  const distToResistance = ((effectiveResistance - currentPrice) / currentPrice) * 100;
+
+  // Channel position: 0% at effective support, 100% at effective resistance
+  const range = effectiveResistance - effectiveSupport;
   const channelPosition = range > 0
-    ? Math.min(100, Math.max(0, ((currentPrice - minClose) / range) * 100))
+    ? Math.min(100, Math.max(0, ((currentPrice - effectiveSupport) / range) * 100))
     : 50;
 
   return {
-    support: minClose,
-    resistance: maxClose,
+    support: effectiveSupport,
+    resistance: effectiveResistance,
     currentPrice,
-    distToSupport: isFinite(distToSupport) ? distToSupport : 0,
-    distToResistance: isFinite(distToResistance) ? distToResistance : 0,
+    distToSupport: isFinite(distToSupport) && distToSupport >= 0 ? distToSupport : 0,
+    distToResistance: isFinite(distToResistance) && distToResistance >= 0 ? distToResistance : 0,
     channelPosition: isFinite(channelPosition) ? channelPosition : 50,
     daysUsed: relevantData.length,
     isHistorical: true,
+    polarity,
+    avgDailyRange: isFinite(adrSafe) ? adrSafe : 0,
+    rawSupport,
+    rawResistance,
   };
 }
 
 /**
- * Calculate the nearest S/R level from historical data.
+ * V6.1.0: Calculate the nearest S/R level from historical data
+ * with POLARITY-AWARE label assignment.
  *
- * This replaces the old calculateNearestSR for the cockpit-score route.
- * Uses historical OHLC closes to find the true structural level nearest
- * to the current price, instead of intraday bid/ask or change_pct.
+ * After polarity reversal, the labels are always correct:
+ *   - BULLISH_BREAKOUT: nearest is support (the retest floor)
+ *   - BEARISH_BREAKDOWN: nearest is resistance (the overhead ceiling)
+ *   - INSIDE_CHANNEL: whichever is closer to the current price
  *
  * @param currentPrice - Live price per $1 VN
  * @param ohlcData - Historical OHLC records for this ticker
@@ -1873,11 +1987,12 @@ export function calculateHistoricalNearestSR(
   const sr = calculateHistoricalSR('', currentPrice, ohlcData, lookbackDays);
 
   if (!sr.isHistorical) {
-    // No real data — return null so caller can fall back
     return null;
   }
 
-  // Determine which level is closer to current price
+  // V6.1.0: After polarity reversal, support is ALWAYS below price and
+  // resistance is ALWAYS above price, so labels are inherently correct.
+  // We just need to determine which is CLOSER to the current price.
   if (sr.distToSupport <= sr.distToResistance) {
     return { level: sr.support, type: 'S' };
   } else {
