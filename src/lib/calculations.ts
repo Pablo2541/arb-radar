@@ -1682,6 +1682,192 @@ export function calculateCockpitScore(
  * (it's a client-side file), we derive S/R from the current session's
  * price data using statistical methods:
  *   - Support ≈ price × (1 - spread_half)  →  bid side floor
+ * V6.0: Historical Structural S/R Engine.
+ *
+ * Instead of using intraday bid/ask (which just shows today's order book
+ * and produces static values like 1.2201 for T30J7), this engine reads
+ * from the DailyOHLC table — 20 to 30 calendar days of actual market
+ * closes — and derives true structural levels:
+ *
+ *   - Support = absolute lowest closing price across the lookback window
+ *   - Resistance = absolute highest closing price across the lookback window
+ *
+ * These are REAL technical levels that represent where the market has
+ * previously established floors and ceilings — not arbitrary 1% bands
+ * or today's bid/ask spread.
+ *
+ * If no historical data is available, falls back gracefully to the
+ * old intraday-based calculateNearestSR().
+ */
+
+/** Historical OHLC record (from DailyOHLC table) */
+export interface HistoricalOHLC {
+  date: string;
+  ticker: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+}
+
+/** Full S/R analysis from historical data */
+export interface HistoricalSRResult {
+  /** Structural support = lowest close in lookback window */
+  support: number;
+  /** Structural resistance = highest close in lookback window */
+  resistance: number;
+  /** Current live price */
+  currentPrice: number;
+  /** % distance from price to support */
+  distToSupport: number;
+  /** % distance from price to resistance */
+  distToResistance: number;
+  /** Position in S/R channel (0=at support, 100=at resistance) */
+  channelPosition: number;
+  /** Number of trading days used in the calculation */
+  daysUsed: number;
+  /** Whether this is based on real historical data or a fallback */
+  isHistorical: boolean;
+}
+
+/**
+ * Calculate full historical S/R levels for a single ticker.
+ *
+ * Algorithm:
+ *   1. Takes the last `lookbackDays` OHLC records for the ticker
+ *   2. Finds the absolute lowest close → structural Support
+ *   3. Finds the absolute highest close → structural Resistance
+ *   4. Calculates distances and channel position
+ *
+ * @param ticker - Instrument ticker (e.g., "T30J7")
+ * @param currentPrice - Live price per $1 VN (1.XXXX scale)
+ * @param ohlcData - Array of DailyOHLC records (sorted by date ASC)
+ * @param lookbackDays - How many calendar days to look back (default 30)
+ * @returns HistoricalSRResult with structural S/R levels
+ */
+export function calculateHistoricalSR(
+  ticker: string,
+  currentPrice: number,
+  ohlcData: HistoricalOHLC[],
+  lookbackDays: number = 30,
+): HistoricalSRResult {
+  // Filter to this ticker only, and to valid close prices
+  const tickerData = ohlcData.filter(
+    r => r.ticker === ticker && r.close > 0 && isFinite(r.close),
+  );
+
+  // Take only the last `lookbackDays` records (already sorted by date ASC)
+  const relevantData = tickerData.slice(-lookbackDays);
+
+  if (relevantData.length === 0 || !currentPrice || currentPrice <= 0) {
+    // No historical data — return a fallback with isHistorical=false
+    // Use a 2% band as a rough estimate
+    return {
+      support: currentPrice > 0 ? currentPrice * 0.98 : 0,
+      resistance: currentPrice > 0 ? currentPrice * 1.02 : 0,
+      currentPrice: currentPrice || 0,
+      distToSupport: 2.0,
+      distToResistance: 2.0,
+      channelPosition: 50,
+      daysUsed: 0,
+      isHistorical: false,
+    };
+  }
+
+  // Find structural extremes: absolute min close = Support, absolute max close = Resistance
+  let minClose = Infinity;
+  let maxClose = -Infinity;
+  for (const day of relevantData) {
+    if (day.close > 0 && isFinite(day.close)) {
+      minClose = Math.min(minClose, day.close);
+      maxClose = Math.max(maxClose, day.close);
+    }
+  }
+
+  // Safety: if somehow all closes were 0 or invalid
+  if (minClose === Infinity || maxClose === -Infinity) {
+    return {
+      support: currentPrice * 0.98,
+      resistance: currentPrice * 1.02,
+      currentPrice,
+      distToSupport: 2.0,
+      distToResistance: 2.0,
+      channelPosition: 50,
+      daysUsed: 0,
+      isHistorical: false,
+    };
+  }
+
+  // Normalize scale: OHLC may be in 100-scale (116.15) or 1.XXXX scale
+  // Use the same threshold as priceHistory.ts
+  const SCALE_THRESHOLD = 10;
+  if (minClose > SCALE_THRESHOLD) minClose = minClose / 100;
+  if (maxClose > SCALE_THRESHOLD) maxClose = maxClose / 100;
+
+  // Calculate distances (% from current price)
+  const distToSupport = ((currentPrice - minClose) / minClose) * 100;
+  const distToResistance = ((maxClose - currentPrice) / currentPrice) * 100;
+
+  // Channel position: 0% at support, 100% at resistance
+  const range = maxClose - minClose;
+  const channelPosition = range > 0
+    ? Math.min(100, Math.max(0, ((currentPrice - minClose) / range) * 100))
+    : 50;
+
+  return {
+    support: minClose,
+    resistance: maxClose,
+    currentPrice,
+    distToSupport: isFinite(distToSupport) ? distToSupport : 0,
+    distToResistance: isFinite(distToResistance) ? distToResistance : 0,
+    channelPosition: isFinite(channelPosition) ? channelPosition : 50,
+    daysUsed: relevantData.length,
+    isHistorical: true,
+  };
+}
+
+/**
+ * Calculate the nearest S/R level from historical data.
+ *
+ * This replaces the old calculateNearestSR for the cockpit-score route.
+ * Uses historical OHLC closes to find the true structural level nearest
+ * to the current price, instead of intraday bid/ask or change_pct.
+ *
+ * @param currentPrice - Live price per $1 VN
+ * @param ohlcData - Historical OHLC records for this ticker
+ * @param lookbackDays - Calendar days to look back (default 30)
+ * @returns The nearest S/R level and type, or null if no data
+ */
+export function calculateHistoricalNearestSR(
+  currentPrice: number,
+  ohlcData: HistoricalOHLC[],
+  lookbackDays: number = 30,
+): { level: number; type: 'S' | 'R' } | null {
+  if (!currentPrice || currentPrice <= 0) return null;
+
+  const sr = calculateHistoricalSR('', currentPrice, ohlcData, lookbackDays);
+
+  if (!sr.isHistorical) {
+    // No real data — return null so caller can fall back
+    return null;
+  }
+
+  // Determine which level is closer to current price
+  if (sr.distToSupport <= sr.distToResistance) {
+    return { level: sr.support, type: 'S' };
+  } else {
+    return { level: sr.resistance, type: 'R' };
+  }
+}
+
+/**
+ * @deprecated Use calculateHistoricalNearestSR instead — this version uses
+ * intraday bid/ask data, NOT true structural S/R from historical closes.
+ *
+ * Kept as fallback when no DailyOHLC data is available.
+ *
+ * Old logic:
+ *   - Support ≈ price × (1 - spread_half) → bid side floor
  *   - Resistance ≈ price × (1 + spread_half) →  ask side ceiling
  *   - For instruments with change_pct: adjust dynamically
  *   - Fallback: 2% band around current price

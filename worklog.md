@@ -818,3 +818,59 @@ Stage Summary:
 - ZIP created: Quant-X-V5.4-Comprehensive-Refactor.zip (80 KB)
 - All 4 pillars implemented and verified
 - Lint clean, HTTP 200 confirmed
+
+---
+Task ID: 11
+Agent: Main Agent
+Task: V6.0 — Fix broken S/R engine: Replace intraday bid/ask derivation with historical DailyOHLC structural S/R
+
+Work Log:
+- Diagnosed root cause: `calculateNearestSR()` in calculations.ts used intraday bid/ask spread or change_pct to derive S/R levels, producing static values like 1.2201 for T30J7 (just today's order book, NOT structural support/resistance)
+- Identified data source: DailyOHLC table in Prisma SQLite DB has 30-day OHLC records per ticker
+- Also identified: `data/historico_precios.json` has 15-22 days of OHLC data for 16 tickers
+- Added `HistoricalOHLC` interface and `HistoricalSRResult` interface to calculations.ts
+- Implemented `calculateHistoricalSR()` function in calculations.ts:
+  - Takes ticker, currentPrice, OHLC array, and lookbackDays (default 30)
+  - Filters to ticker's records, takes last `lookbackDays` entries
+  - Finds absolute min close → structural Support
+  - Finds absolute max close → structural Resistance
+  - Calculates distToSupport, distToResistance, channelPosition (0-100%)
+  - Handles scale normalization (100-scale → 1.XXXX via SCALE_THRESHOLD=10)
+  - Returns isHistorical flag for fallback detection
+- Implemented `calculateHistoricalNearestSR()` function in calculations.ts:
+  - Wrapper that calls calculateHistoricalSR and returns nearest S/R level
+  - Returns null when no historical data (so caller can fall back)
+- Marked old `calculateNearestSR()` as @deprecated with documentation
+- Rewrote `cockpit-score/route.ts` (V3.3-PRO → V6.0-HISTORICAL-SR):
+  - Added import of HistoricalOHLC type and new functions
+  - Added import of safeDbOp from @/lib/db
+  - Queries DailyOHLC table for ALL available OHLC data (no date filter — ensures capture even with stale data)
+  - Primary: Uses calculateHistoricalSR() for each instrument → TRUE structural S/R from 30-day closes
+  - Fallback: Uses old calculateNearestSR() when no DB data available
+  - Fixed distanceToSR: uses Math.abs() for both distances, prevents negative values when price is above resistance
+  - Fixed upsideCapital: Math.max(0, histSR.distToResistance) — 0 when price already above resistance (the run is happening)
+  - Added srSource field to response: 'historical_ohlc' | 'intraday_fallback' | 'none'
+  - Added sr_source to CockpitScoreResponse type
+- Updated CockpitScore type in types.ts:
+  - Added `srSource?: 'historical_ohlc' | 'intraday_fallback' | 'none'`
+  - Added `historicalSupport?: number` and `historicalResistance?: number`
+- Updated CockpitTab.tsx frontend:
+  - S/R column in El Grito card: green dot (●) indicator when srSource === 'historical_ohlc'
+  - S/R column in desktop grid: green dot (⬤) indicator when srSource === 'historical_ohlc'
+  - Tooltip: "Structural S/R from 30-day OHLC closes"
+- Imported historico_precios.json into DailyOHLC table (324 records, 16 tickers)
+- Verified API response: Engine = V6.0-HISTORICAL-SR, S/R Source = historical_ohlc
+- Verified T30J7: S/R now shows R:1.1825 (structural resistance) instead of old static S:1.2201
+- Verified S12J6: Not in historical data → correctly falls back to intraday S/R
+- TypeScript: 0 new errors in modified files
+- Dev server: compiles and serves correctly (HTTP 200, 52ms response time)
+
+Stage Summary:
+- S/R engine fundamentally fixed: from intraday bid/ask heuristics → 30-day DailyOHLC structural analysis
+- 4 files modified: calculations.ts, cockpit-score/route.ts, types.ts, CockpitTab.tsx
+- New functions: calculateHistoricalSR(), calculateHistoricalNearestSR()
+- New types: HistoricalOHLC, HistoricalSRResult
+- Old calculateNearestSR() retained as @deprecated fallback
+- 324 OHLC records imported into DailyOHLC table
+- Green dot indicator shows when historical S/R is active vs intraday fallback
+- T30J7 now shows true structural support (1.1090) and resistance (1.1825) instead of static 1.2201

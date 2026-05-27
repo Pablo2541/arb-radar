@@ -1429,6 +1429,10 @@ export default function CockpitTab({
                           {score.nearestSR ? (
                             <span className={`font-mono ${score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
                               {score.nearestSR.type}:{score.nearestSR.level.toFixed(4)}
+                              {/* V6.0: Show historical S/R source indicator */}
+                              {score.srSource === 'historical_ohlc' && (
+                                <span className="text-[8px] text-[#2eebc8] opacity-60 ml-0.5" title="Structural S/R from 30-day OHLC closes">●</span>
+                              )}
                             </span>
                           ) : (
                             <span className="font-mono text-app-text4">—</span>
@@ -1576,12 +1580,16 @@ export default function CockpitTab({
                           {volDisplay}
                         </div>
 
-                        {/* V5.0: S/R MAS CERCANO */}
+                        {/* V6.0: S/R MAS CERCANO (historical structural) */}
                         <div className="text-right font-mono text-sm">
                           {score.nearestSR ? (
                             <span className={score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}>
                               <span className="text-[10px] font-bold opacity-70">{score.nearestSR.type}: </span>
                               {score.nearestSR.level.toFixed(4)}
+                              {/* V6.0: Green dot = historical structural S/R, no dot = intraday fallback */}
+                              {score.srSource === 'historical_ohlc' && (
+                                <span className="text-[7px] text-[#2eebc8] opacity-70 ml-0.5" title="Structural S/R from 30-day OHLC closes">⬤</span>
+                              )}
                             </span>
                           ) : (
                             <span className="text-app-text4">—</span>

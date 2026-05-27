@@ -1,19 +1,33 @@
 // ════════════════════════════════════════════════════════════════════════
-// V3.3-PRO Phase 2 — /api/cockpit-score: Unified Scalping Signal
+// V6.0 — /api/cockpit-score: Unified Scalping Signal
 //
 // Computes the CockpitScore for every live LECAP/BONCAP instrument
 // using 5 weighted scalping factors and assigns a verdict.
 //
+// V6.0 BREAKTHROUGH: S/R engine now reads from DailyOHLC table
+// (30-day historical closes) instead of intraday bid/ask.
+// This produces REAL structural support/resistance levels instead
+// of static values like 1.2201 for T30J7.
+//
 // Data sources:
 //   - /api/letras (live instrument data from data912 + ArgentinaDatos)
-//   - /api/market-truth (MEP/RP consensus for context)
+//   - DailyOHLC table (historical closes for true S/R calculation)
 //
 // BLINDAJE: La comisión del 0.15% NO se toca.
 // ════════════════════════════════════════════════════════════════════════
 
 import { NextRequest, NextResponse } from 'next/server';
 import type { CockpitScore } from '@/lib/types';
-import { calculateCockpitScore, calculateNearestSR, calculateVolumeInjection, calculateActionScore } from '@/lib/calculations';
+import {
+  calculateCockpitScore,
+  calculateHistoricalNearestSR,
+  calculateHistoricalSR,
+  calculateNearestSR,
+  calculateVolumeInjection,
+  calculateActionScore,
+} from '@/lib/calculations';
+import type { HistoricalOHLC } from '@/lib/calculations';
+import { safeDbOp } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +42,7 @@ interface CockpitCache {
 let cachedCockpit: CockpitCache | null = null;
 const CACHE_TTL_MS = 50_000; // 50s — fresh enough for scalping
 const LETRAS_TIMEOUT_MS = 2_000; // 2s max — never block the UI longer
+const SR_LOOKBACK_DAYS = 30; // 30 calendar days for structural S/R
 
 // ── Response Types ─────────────────────────────────────────────────
 interface CockpitScoreResponse {
@@ -47,10 +62,10 @@ interface CockpitScoreResponse {
   engine_version: string;
   stale?: boolean;
   stale_reason?: string;
+  sr_source?: 'historical_ohlc' | 'intraday_fallback' | 'none';
 }
 
 // ── Config Defaults ────────────────────────────────────────────────
-// These match the DEFAULT_CONFIG from sampleData
 const DEFAULT_CONFIG = {
   caucion1d: 17.0,
   caucion7d: 19.2,
@@ -69,9 +84,7 @@ export async function GET(request: NextRequest) {
   const horizon = Math.max(1, Math.min(365, parseInt(searchParams.get('horizon') || '45', 10) || 45));
 
   // Return cache if fresh — cache stores ALL scores unfiltered
-  // Client-side filters by horizon, so cached data works for any horizon
   if (cachedCockpit && (now - cachedCockpit.timestamp) < CACHE_TTL_MS) {
-    // Re-derive filtered scores from cached allScores for backward compat
     const scores = horizon >= 365
       ? cachedCockpit.allScores
       : cachedCockpit.allScores.filter(s => s.days <= horizon);
@@ -85,14 +98,12 @@ export async function GET(request: NextRequest) {
 
   try {
     // ── Fetch live instrument data from /api/letras ──
-    // SWR: 2s timeout — if slow, return stale cache rather than block
     let letrasRes: Response;
     try {
       letrasRes = await fetch(new URL('/api/letras', request.url).toString(), {
         signal: AbortSignal.timeout(LETRAS_TIMEOUT_MS),
       });
     } catch (fetchErr) {
-      // Timeout or network error — return stale cache if available
       if (cachedCockpit) {
         console.warn('[cockpit-score] /api/letras timeout/fail — returning stale cache');
         const scores = horizon >= 365
@@ -107,7 +118,6 @@ export async function GET(request: NextRequest) {
         };
         return NextResponse.json(staleResponse);
       }
-      // No cache at all — return error
       return NextResponse.json(
         { error: true, message: 'Live data unavailable and no cache', detail: fetchErr instanceof Error ? fetchErr.message : 'timeout' },
         { status: 502 },
@@ -115,7 +125,6 @@ export async function GET(request: NextRequest) {
     }
 
     if (!letrasRes.ok) {
-      // API returned error — return stale cache if available
       if (cachedCockpit) {
         console.warn('[cockpit-score] /api/letras error — returning stale cache');
         const scores = horizon >= 365
@@ -143,16 +152,64 @@ export async function GET(request: NextRequest) {
     // Build config from live caución data if available
     const config = { ...DEFAULT_CONFIG };
     if (caucionProxy.tna_promedio > 0) {
-      // Use the proxy TNA for all caución tramos as a rough approximation
-      // The letras API only provides a single proxy, so we use it for all tramos
       config.caucion7d = caucionProxy.tna_promedio;
       config.caucion30d = caucionProxy.tna_promedio;
-      config.caucion1d = caucionProxy.tna_promedio + 0.5; // 1d is typically slightly higher
+      config.caucion1d = caucionProxy.tna_promedio + 0.5;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // V6.0: Fetch historical OHLC data from DailyOHLC table
+    //
+    // This is the CRITICAL change — instead of deriving S/R from
+    // intraday bid/ask (which just shows today's order book and
+    // produces static values), we now read 30 days of actual market
+    // closes and find the true structural floor/ceiling.
+    // ═══════════════════════════════════════════════════════════════════
+    let historicalOHLC: HistoricalOHLC[] = [];
+    let srSource: 'historical_ohlc' | 'intraday_fallback' | 'none' = 'none';
+
+    try {
+      // Fetch ALL available OHLC data — the calculateHistoricalSR
+      // function will take only the last SR_LOOKBACK_DAYS records
+      // per ticker. Using no date filter ensures we always capture
+      // whatever historical data exists, even if the update daemon
+      // hasn't run recently.
+      const ohlcRows = await safeDbOp((db) =>
+        db.dailyOHLC.findMany({
+          orderBy: [{ ticker: 'asc' }, { date: 'asc' }],
+          select: {
+            date: true,
+            ticker: true,
+            open: true,
+            high: true,
+            low: true,
+            close: true,
+          },
+        })
+      );
+
+      if (ohlcRows && Array.isArray(ohlcRows) && ohlcRows.length > 0) {
+        historicalOHLC = ohlcRows.map((r: Record<string, unknown>) => ({
+          date: r.date as string,
+          ticker: r.ticker as string,
+          open: (r.open as number) || 0,
+          high: (r.high as number) || 0,
+          low: (r.low as number) || 0,
+          close: (r.close as number) || 0,
+        }));
+        srSource = 'historical_ohlc';
+        console.log(`[cockpit-score] V6.0 S/R: Loaded ${historicalOHLC.length} OHLC records for ${SR_LOOKBACK_DAYS}-day structural analysis`);
+      } else {
+        console.warn('[cockpit-score] V6.0 S/R: No DailyOHLC data found — falling back to intraday S/R');
+        srSource = 'intraday_fallback';
+      }
+    } catch (dbErr) {
+      console.warn('[cockpit-score] V6.0 S/R: DB query failed — falling back to intraday S/R:', dbErr instanceof Error ? dbErr.message : String(dbErr));
+      srSource = 'intraday_fallback';
     }
 
     // ── Compute CockpitScore for each instrument ──
     const allScores: CockpitScore[] = liveInstruments.map((inst: Record<string, unknown>) => {
-      // Convert LiveInstrument → Instrument-like object for calculateCockpitScore
       const instrument = {
         ticker: inst.ticker as string,
         type: (inst.type as string) === 'BONCAP' ? 'BONCAP' as const : 'LECAP' as const,
@@ -160,26 +217,90 @@ export async function GET(request: NextRequest) {
         days: inst.days_to_expiry as number,
         price: inst.last_price as number,
         change: inst.change_pct as number,
-        tna: (inst.tna as number) * 100,  // convert from decimal to %
-        tem: (inst.tem as number) * 100,   // convert from decimal to %
-        tir: (inst.tir as number) * 100,   // convert from decimal to %
+        tna: (inst.tna as number) * 100,
+        tem: (inst.tem as number) * 100,
+        tir: (inst.tir as number) * 100,
         gananciaDirecta: (inst.ganancia_directa as number) * 100,
         vsPlazoFijo: '',
         iolMarketPressure: inst.iol_market_pressure as number | undefined,
       };
 
-      // deltaTIR: from live data, convert from decimal to %
       const deltaTIR = inst.delta_tir != null
         ? (inst.delta_tir as number) * 100
         : null;
 
-      // iolMarketPressure: if available from the instrument
       const iolMarketPressure = instrument.iolMarketPressure ?? null;
-
-      // upsideCapital: estimate from spread_neto * days / 30 as rough proxy
-      // In a full implementation, this would come from S/R data
       const spreadNetoPct = (inst.spread_neto as number) * 100;
-      const upsideCapital = Math.max(0, spreadNetoPct * (instrument.days / 30) * 0.5);
+
+      // ═══════════════════════════════════════════════════════════════
+      // V6.0: Historical S/R Calculation
+      //
+      // Primary: Use 30-day DailyOHLC closes for TRUE structural S/R
+      // Fallback: Use old intraday bid/ask method when no DB data
+      // ═══════════════════════════════════════════════════════════════
+      const histSR = calculateHistoricalSR(
+        instrument.ticker,
+        instrument.price,
+        historicalOHLC,
+        SR_LOOKBACK_DAYS,
+      );
+
+      // Determine nearest S/R level and distance
+      let nearestSR: { level: number; type: 'S' | 'R' } | null;
+      let distanceToSR: number;
+      let upsideCapital: number;
+
+      if (histSR.isHistorical) {
+        // V6.0: TRUE structural S/R from historical closes
+        // distToSupport/distToResistance can be negative when price is
+        // beyond the level (above resistance or below support).
+        // For nearestSR, we compare absolute distances to find which
+        // level is closer, regardless of direction.
+        const absDistToSupport = Math.abs(histSR.distToSupport);
+        const absDistToResistance = Math.abs(histSR.distToResistance);
+
+        if (absDistToSupport <= absDistToResistance) {
+          nearestSR = { level: histSR.support, type: 'S' };
+          distanceToSR = absDistToSupport;
+        } else {
+          nearestSR = { level: histSR.resistance, type: 'R' };
+          distanceToSR = absDistToResistance;
+        }
+        // Upside capital: positive distance from current price to resistance
+        // (0 if already above resistance — the run is happening)
+        upsideCapital = Math.max(0, histSR.distToResistance);
+      } else {
+        // Fallback: old intraday bid/ask method
+        nearestSR = calculateNearestSR(
+          instrument.price,
+          inst.iol_bid as number | undefined,
+          inst.iol_ask as number | undefined,
+          inst.change_pct as number | undefined,
+        );
+        distanceToSR = nearestSR
+          ? Math.abs((instrument.price - nearestSR.level) / instrument.price) * 100
+          : 99;
+        // Rough proxy when no historical data
+        upsideCapital = Math.max(0, spreadNetoPct * (instrument.days / 30) * 0.5);
+      }
+
+      // Volume Injection
+      const volumeInjection = calculateVolumeInjection(
+        (inst.iol_volume as number) || 0,
+        (inst.volume as number) || 0,
+        inst.change_pct as number | undefined,
+      );
+
+      // Action Score — now uses historical S/R distance when available
+      const actionScore = calculateActionScore(
+        distanceToSR,
+        nearestSR?.type ?? null,
+        volumeInjection.label,
+        volumeInjection.ratio,
+        iolMarketPressure,
+        spreadNetoPct,
+        deltaTIR,
+      );
 
       return {
         ...calculateCockpitScore(
@@ -192,52 +313,14 @@ export async function GET(request: NextRequest) {
         ),
         volume: (inst.volume as number) || 0,
         iolVolume: (inst.iol_volume as number) || 0,
-        // V5.0 SCANNER: Price Action columns — enriched by calculateNearestSR + calculateVolumeInjection + calculateActionScore
-        nearestSR: calculateNearestSR(
-          instrument.price,
-          inst.iol_bid as number | undefined,
-          inst.iol_ask as number | undefined,
-          inst.change_pct as number | undefined,
-        ),
-        distanceToSR: (() => {
-          const sr = calculateNearestSR(
-            instrument.price,
-            inst.iol_bid as number | undefined,
-            inst.iol_ask as number | undefined,
-            inst.change_pct as number | undefined,
-          );
-          if (!sr) return 99;
-          return Math.abs((instrument.price - sr.level) / instrument.price) * 100;
-        })(),
-        volumeInjection: calculateVolumeInjection(
-          (inst.iol_volume as number) || 0,
-          (inst.volume as number) || 0,
-          inst.change_pct as number | undefined,
-        ),
-        actionScore: (() => {
-          const sr = calculateNearestSR(
-            instrument.price,
-            inst.iol_bid as number | undefined,
-            inst.iol_ask as number | undefined,
-            inst.change_pct as number | undefined,
-          );
-          const distSR = sr ? Math.abs((instrument.price - sr.level) / instrument.price) * 100 : 99;
-          const volInj = calculateVolumeInjection(
-            (inst.iol_volume as number) || 0,
-            (inst.volume as number) || 0,
-            inst.change_pct as number | undefined,
-          );
-          const spreadNetoPct = (inst.spread_neto as number) * 100;
-          return calculateActionScore(
-            distSR,
-            sr?.type ?? null,
-            volInj.label,
-            volInj.ratio,
-            iolMarketPressure,
-            spreadNetoPct,
-            deltaTIR,
-          );
-        })(),
+        nearestSR,
+        distanceToSR,
+        volumeInjection,
+        actionScore,
+        // V6.0: Historical S/R metadata
+        srSource: histSR.isHistorical ? 'historical_ohlc' : 'intraday_fallback',
+        historicalSupport: histSR.isHistorical ? histSR.support : undefined,
+        historicalResistance: histSR.isHistorical ? histSR.resistance : undefined,
       };
     });
 
@@ -264,8 +347,9 @@ export async function GET(request: NextRequest) {
       horizon_days: horizon,
       summary,
       timestamp: new Date(now).toISOString(),
-      engine_version: 'V3.4.2-PRO',
+      engine_version: 'V6.0-HISTORICAL-SR',
       stale: false,
+      sr_source: srSource,
     };
 
     // Cache it (store ALL scores, not filtered)
@@ -274,7 +358,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response);
   } catch (error) {
     console.error('[cockpit-score] Error:', error);
-    // Last resort: return stale cache if available
     if (cachedCockpit) {
       const scores = horizon >= 365
         ? cachedCockpit.allScores

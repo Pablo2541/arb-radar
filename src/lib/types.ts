@@ -278,6 +278,11 @@ export interface CockpitScore {
     reason: string;            // Human-readable reason
   };
 
+  // ── V6.0: Historical S/R metadata ──
+  srSource?: 'historical_ohlc' | 'intraday_fallback' | 'none'; // Where S/R data came from
+  historicalSupport?: number;   // Structural support from 30-day OHLC closes
+  historicalResistance?: number; // Structural resistance from 30-day OHLC closes
+
   withinHorizon: boolean;      // Within horizon filter (default 45 days — Scalping Extendido)
 
   // ── V5.4: Portfolio-Aware Take Profit ──
