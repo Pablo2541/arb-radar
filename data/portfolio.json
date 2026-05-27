@@ -1,5 +1,5 @@
 {
-  "_comment": "ARB//RADAR V4.0 — Archivo de Cartera Local. El Radar SOLO LEE este archivo. Usted lo edita manualmente.",
+  "_comment": "ARB//RADAR V6.0.0 — Historical Structural S/R Engine — Archivo de Cartera Local. El Radar SOLO LEE este archivo. Usted lo edita manualmente.",
   "_instructions": [
     "CAMPO OBLIGATORIO: capitalDisponible = su capital líquido en pesos",
     "CAMPO OBLIGATORIO: position = su posición actual (o null si está en caja)",

@@ -874,3 +874,29 @@ Stage Summary:
 - 324 OHLC records imported into DailyOHLC table
 - Green dot indicator shows when historical S/R is active vs intraday fallback
 - T30J7 now shows true structural support (1.1090) and resistance (1.1825) instead of static 1.2201
+
+---
+Task ID: V6.0-Version-Cleanup
+Agent: Main Agent
+Task: Global version string cleanup — unify all user-visible version labels to V6.0/V6.0.0
+
+Work Log:
+- Searched entire codebase for all version strings using Grep (V[0-9]+\.[0-9]+ pattern)
+- Identified 6 files with user-visible version strings needing update
+- Updated layout.tsx: title "ARB//RADAR V5.0 — SCANNER" → "Quant-X Dashboard V6.0" (browser tab + OG + Twitter card)
+- Updated page.tsx: Loading text "Cargando V5.0 SCANNER..." → "Cargando V6.0..."
+- Updated page.tsx: Header label "V5.0 — SCANNER" → "V6.0 — HISTORICAL S/R"
+- Updated page.tsx: Footer label "V4.0 BLINDADO" → "V6.0.0 (Historical Structural S/R Engine)"
+- Updated market-truth/route.ts: engine_version "V4.0.2-RAVA" → "V6.0.0-HISTORICAL-SR" (2 locations)
+- Updated cockpit-score/route.ts: engine_version "V6.0-HISTORICAL-SR" → "V6.0.0-HISTORICAL-SR" (standardized)
+- Updated portfolio.json: _comment "V4.0" → "V6.0.0 — Historical Structural S/R Engine"
+- Left internal code comments (// V5.2: ..., /* V1.6 — ... */) unchanged — these are changelog annotations, not version labels
+- Created ZIP: Quant-X-V6.0.0-Historical-SR.zip (470 KB, excludes node_modules, .next, skills/, old ZIPs, images)
+
+Stage Summary:
+- 6 files modified: layout.tsx, page.tsx, market-truth/route.ts, cockpit-score/route.ts, portfolio.json, worklog.md
+- Browser tab now reads: "Quant-X Dashboard V6.0"
+- Header reads: "V6.0 — HISTORICAL S/R"
+- Footer reads: "V6.0.0 (Historical Structural S/R Engine)"
+- All API engine_version responses now consistent: "V6.0.0-HISTORICAL-SR"
+- ZIP ready for download

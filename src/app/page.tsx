@@ -641,7 +641,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V5.0 SCANNER...
+            Cargando V6.0...
           </p>
         </div>
       </div>
@@ -719,7 +719,7 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V5.0 — SCANNER</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V6.0 — HISTORICAL S/R</span>
             {/* V4.0: FILE indicator — replaces DB sync dot */}
             <div className="flex items-center gap-1 hidden sm:flex" title={fileIndicator.title}>
               <div
@@ -1277,7 +1277,7 @@ function HomeContent() {
           <span className="version-pulse-dot" />
           <span className="font-semibold tracking-wide">ARB//RADAR</span>
           <span className="text-app-border/60">·</span>
-          <span>V4.0 BLINDADO</span>
+          <span>V6.0.0 (Historical Structural S/R Engine)</span>
           <span className="text-app-border/60">·</span>
           <span>{effectiveInstruments.length} inst.</span>
           {dolarLastUpdateTime && (

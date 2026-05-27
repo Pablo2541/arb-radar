@@ -347,7 +347,7 @@ export async function GET(request: NextRequest) {
       horizon_days: horizon,
       summary,
       timestamp: new Date(now).toISOString(),
-      engine_version: 'V6.0-HISTORICAL-SR',
+      engine_version: 'V6.0.0-HISTORICAL-SR',
       stale: false,
       sr_source: srSource,
     };
