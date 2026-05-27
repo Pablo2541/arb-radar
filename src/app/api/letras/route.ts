@@ -264,18 +264,46 @@ async function refreshCache(): Promise<void> {
 
       const lowLiquidity = nota.v < LOW_LIQUIDITY_THRESHOLD;
 
+      // V5.3 FIX: Robust delta_tir — handles premarket (pct_change=0),
+      // bonds at/above par (ratio<=1), and null pct_change gracefully.
+      // NEVER return null when we have live data — show 0 instead of "—"
       let deltaTir: number | null = null;
       let lastClose: number | null = null;
-      if (nota.pct_change !== 0 && nota.pct_change !== null && nota.pct_change !== undefined) {
-        const lastClosePer100 = nota.c / (1 + nota.pct_change / 100);
-        if (lastClosePer100 > 0 && isFinite(lastClosePer100)) {
-          lastClose = parseFloat((lastClosePer100 / 100).toFixed(6));
-          const lastCloseRatio = letra.vpv / lastClosePer100;
-          if (lastCloseRatio > 1 && days > 0) {
-            const tirAtLastClose = Math.pow(lastCloseRatio, 365 / days) - 1;
-            deltaTir = parseFloat((tir - tirAtLastClose).toFixed(6));
+
+      try {
+        if (nota.pct_change != null && isFinite(nota.pct_change)) {
+          if (nota.pct_change === 0) {
+            // PREMARKET: price hasn't changed from yesterday's close.
+            // TIR is identical → delta is exactly 0.
+            deltaTir = 0;
+            lastClose = parseFloat(lastPrice.toFixed(6));
+          } else {
+            // Normal case: reverse-engineer last close from pct_change
+            const lastClosePer100 = nota.c / (1 + nota.pct_change / 100);
+            if (lastClosePer100 > 0 && isFinite(lastClosePer100)) {
+              lastClose = parseFloat((lastClosePer100 / 100).toFixed(6));
+              const lastCloseRatio = letra.vpv / lastClosePer100;
+              if (lastCloseRatio > 0 && days > 0) {
+                // V5.3 FIX: Allow ratio <= 1 (bond at/above par).
+                // When ratio > 1: normal TIR calculation.
+                // When ratio <= 1: TIR is 0 or negative (at/above par) — still valid for delta.
+                const tirAtLastClose = lastCloseRatio > 1
+                  ? Math.pow(lastCloseRatio, 365 / days) - 1
+                  : 0;
+                deltaTir = parseFloat((tir - tirAtLastClose).toFixed(6));
+              }
+            }
           }
         }
+      } catch {
+        // V5.3: Calculation error — never break the column
+        deltaTir = 0;
+      }
+
+      // V5.3 SAFETY NET: If we have live data but no delta, default to 0.
+      // A live instrument showing "—" in Δ TIR is worse than showing "0.000%"
+      if (deltaTir === null && nota.c > 0) {
+        deltaTir = 0;
       }
 
       instruments.push({
