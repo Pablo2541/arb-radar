@@ -1918,7 +1918,7 @@ kbd {
   animation: cockpitRowFlash 1.5s ease-out;
 }
 
-/* ── 13. NX ALERT FLASH — alert trigger flash ── */
+/* ── 13. NX ALERT FLASH — alert trigger flash (legacy 2s) ── */
 @keyframes nxAlertFlash {
   0%, 100% { background: transparent; }
   25% { background: rgba(251, 191, 36, 0.15); }
@@ -1927,6 +1927,72 @@ kbd {
 }
 .nx-alert-flash {
   animation: nxAlertFlash 2s ease-out;
+}
+
+/* ── 13b. V6.2.0: NX SCREAM FLASH — 4-second gold/green glow for alert-triggering rows ── */
+@keyframes nxScreamFlash {
+  0% {
+    background: rgba(251, 191, 36, 0.25);
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.3), inset 0 0 12px rgba(251, 191, 36, 0.1);
+    border-left-color: rgba(251, 191, 36, 0.8);
+  }
+  15% {
+    background: rgba(46, 235, 200, 0.15);
+    box-shadow: 0 0 16px rgba(46, 235, 200, 0.25), inset 0 0 8px rgba(46, 235, 200, 0.08);
+  }
+  30% {
+    background: rgba(251, 191, 36, 0.12);
+    box-shadow: 0 0 12px rgba(251, 191, 36, 0.15);
+  }
+  50% {
+    background: rgba(46, 235, 200, 0.08);
+    box-shadow: 0 0 8px rgba(46, 235, 200, 0.1);
+  }
+  75% {
+    background: rgba(251, 191, 36, 0.04);
+    box-shadow: none;
+  }
+  100% {
+    background: transparent;
+    box-shadow: none;
+  }
+}
+.nx-scream-flash {
+  animation: nxScreamFlash 4s ease-out forwards !important;
+  z-index: 2;
+  position: relative;
+}
+
+/* ── 13c. V6.2.0: SCREAM CONSOLE — Recent Screams event tracker ── */
+.scream-console {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.06) 0%, rgba(21, 29, 46, 0.95) 15%, rgba(21, 29, 46, 0.95) 85%, rgba(46, 235, 200, 0.04) 100%);
+  border: 1px solid rgba(251, 191, 36, 0.15);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  position: relative;
+}
+.scream-console::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.6), rgba(46, 235, 200, 0.3));
+  border-radius: 3px 0 0 3px;
+}
+@keyframes screamTextSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.scream-text-enter {
+  animation: screamTextSlideIn 0.4s ease-out forwards;
 }
 
 /* ── 14. NX CTX SEP — context section separator ── */

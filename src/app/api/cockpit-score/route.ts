@@ -1,16 +1,13 @@
 // ════════════════════════════════════════════════════════════════════════
-// V6.1.0-FINAL — /api/cockpit-score: Unified Scalping Signal
+// V6.2.0 — /api/cockpit-score: Unified Scalping Signal
 //
 // Computes the CockpitScore for every live LECAP/BONCAP instrument
 // using 5 weighted scalping factors and assigns a verdict.
 //
-// V6.1.0 BREAKTHROUGH: Dynamic Price Action & Polarity Reversal
-//   - When price breaks ABOVE historical max → polarity reversal:
-//     former resistance becomes support, projected ceiling = new resistance
-//   - When price breaks BELOW historical min → polarity reversal:
-//     former support becomes resistance, projected floor = new support
-//   - Inside channel: standard nearest-S/R logic (min distance wins)
-//   - ADR (Average Daily Range) used for volatility-based projections
+// V6.2.0 BREAKTHROUGH: Row Flash Effect + Scream Log Console
+//   - When an instrument triggers an audio alert, its row flashes 4s gold/green glow
+//   - "Recent Screams" log console beneath EL GRITO banner shows last triggered event
+//   - Verdict state changes (PUNTO_CARAMELO, SALTO_TACTICO) trigger visual flash
 //
 // Data sources:
 //   - /api/letras (live instrument data from data912 + ArgentinaDatos)
@@ -371,7 +368,7 @@ export async function GET(request: NextRequest) {
       horizon_days: horizon,
       summary,
       timestamp: new Date(now).toISOString(),
-      engine_version: 'V6.1.0-FINAL-POLARITY',
+      engine_version: 'V6.2.0-SCREAM',
       stale: false,
       sr_source: srSource,
     };

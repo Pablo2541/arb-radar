@@ -1,7 +1,7 @@
 'use client';
 
 // ════════════════════════════════════════════════════════════════════════
-// V6.0 NEXUS TERMINAL — CockpitTab: PREMIUM QUANTITATIVE TERMINAL
+// V6.2.0 NEXUS TERMINAL — CockpitTab: PREMIUM QUANTITATIVE TERMINAL
 //
 // Unified cockpit with 4 new Price Action columns:
 //   1. S/R Mas Cercano — nearest support/resistance level
@@ -9,6 +9,8 @@
 //   3. Inyeccion de Volumen — volume acceleration (X2, X3, X5, EXPLOSIVO)
 //   4. SCORE — El Gatillador (GATILLAR YA / ATRACTIVO / NEUTRAL / SIN SENAL)
 //
+// V6.2.0: Row Flash Effect (4s gold/green glow) + Recent Screams Log Console
+// V6.1.0: Dynamic Polarity Reversal + ADR projection + auto-OHLC polling
 // V6.0: NEXUS TERMINAL aesthetic — scanline overlay, nexus-row, neon-price, nexus badges
 // V5.2: Market heatmap + keyboard shortcuts panel + enhanced action score badges
 // V5.1: Mobile responsive card layout + visual enhancements
@@ -529,6 +531,12 @@ export default function CockpitTab({
   const [triggeredAlerts, setTriggeredAlerts] = useState<Set<string>>(new Set());
   const prevTriggeredRef = useRef<Set<string>>(new Set()); // ref to break infinite loop
 
+  // ─── V6.2.0: Row Flash + Recent Screams state ──────────────────────
+  const [screamingRows, setScreamingRows] = useState<Set<string>>(new Set());
+  const [latestScream, setLatestScream] = useState<string | null>(null);
+  const [screamKey, setScreamKey] = useState(0); // forces re-render for animation restart
+  const screamTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
   // Notify parent of alert count
   useEffect(() => {
     onAlertsCountChange?.(alertCount);
@@ -793,9 +801,42 @@ export default function CockpitTab({
     }
   }, [enrichedScores, onTakeProfitCountChange]);
 
-  // ─── V5.4: Sound alert for GATILLAR YA, ATRACTIVO, TAKE_PROFIT + Price alerts ──
+  // ─── V6.2.0: Trigger row flash for a specific ticker (4s glow) ──
+  const triggerRowFlash = useCallback((ticker: string) => {
+    setScreamingRows(prev => {
+      const next = new Set(prev);
+      next.add(ticker);
+      return next;
+    });
+    // Clear existing timer for this ticker if any
+    const existing = screamTimersRef.current.get(ticker);
+    if (existing) clearTimeout(existing);
+    // Auto-remove after 4 seconds (matches CSS animation duration)
+    const timer = setTimeout(() => {
+      setScreamingRows(prev => {
+        const next = new Set(prev);
+        next.delete(ticker);
+        return next;
+      });
+      screamTimersRef.current.delete(ticker);
+    }, 4000);
+    screamTimersRef.current.set(ticker, timer);
+  }, []);
+
+  // ─── V6.2.0: Update the Recent Screams log console ──
+  const updateScreamLog = useCallback((ticker: string, event: string, score: number) => {
+    const now = new Date();
+    const ts = now.toLocaleTimeString('es-AR', { hour12: false, timeZone: 'America/Argentina/Buenos_Aires' });
+    setLatestScream(`[${ts}] 🔔 ${ticker} entered ${event} (Score ${score})`);
+    setScreamKey(k => k + 1); // force animation restart
+  }, []);
+
+  // ─── V5.4 + V6.2.0: Sound alert + Row Flash + Scream Log ──────────
   useEffect(() => {
     if (!soundEnabled || enrichedScores.length === 0) return;
+
+    // Build a lookup map for enriched scores by ticker
+    const scoreMap = new Map(enrichedScores.map(s => [s.ticker, s]));
 
     // V5.4: Detect NEW GATILLAR YA and ATRACTIVO (unifiedScore > 50)
     const currentAlerts = new Set(
@@ -807,6 +848,10 @@ export default function CockpitTab({
       for (const ticker of currentAlerts) {
         if (!prevGatillarRef.current.has(ticker)) {
           playAlertBeep('entry');
+          // V6.2.0: Flash the row + update scream log
+          triggerRowFlash(ticker);
+          const s = scoreMap.get(ticker);
+          if (s) updateScreamLog(ticker, s.actionScore.label, s.unifiedScore);
           break;
         }
       }
@@ -821,6 +866,10 @@ export default function CockpitTab({
       for (const ticker of currentTakeProfit) {
         if (!prevTakeProfitRef.current.has(ticker)) {
           playAlertBeep('exit');
+          // V6.2.0: Flash the row + update scream log
+          triggerRowFlash(ticker);
+          const s = scoreMap.get(ticker);
+          if (s) updateScreamLog(ticker, 'TAKE PROFIT', s.unifiedScore);
           break;
         }
       }
@@ -841,6 +890,9 @@ export default function CockpitTab({
         newTriggered.add(score.ticker);
         if (!prevTriggeredRef.current.has(score.ticker)) {
           playAlertBeep('entry');
+          // V6.2.0: Flash the row + update scream log
+          triggerRowFlash(score.ticker);
+          updateScreamLog(score.ticker, `PRICE ${alert.direction} ${alert.price.toFixed(4)}`, score.unifiedScore);
         }
       }
     }
@@ -849,7 +901,42 @@ export default function CockpitTab({
       if (prev.size === newTriggered.size && [...prev].every(t => newTriggered.has(t))) return prev;
       return newTriggered;
     });
-  }, [enrichedScores, soundEnabled, playAlertBeep, alerts, liveDataMap, instrumentMap]);
+  }, [enrichedScores, soundEnabled, playAlertBeep, alerts, liveDataMap, instrumentMap, triggerRowFlash, updateScreamLog]);
+
+  // ─── V6.2.0: Verdict state change detection (Punto Caramelo / Salto Táctico) ──
+  // Triggers row flash + scream log for verdict transitions, REGARDLESS of sound.
+  // This ensures visual feedback even when sound is off.
+  const prevVerdictRef = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    if (enrichedScores.length === 0) return;
+
+    const currentVerdicts = new Map<string, string>();
+    for (const s of enrichedScores) {
+      currentVerdicts.set(s.ticker, s.verdict);
+    }
+
+    // Check for NEW entries into PUNTO_CARAMELO, SALTO_TACTICO, or TAKE_PROFIT
+    for (const [ticker, verdict] of currentVerdicts) {
+      const prev = prevVerdictRef.current.get(ticker);
+      if (prev && prev !== verdict) {
+        const isNotable = verdict === 'PUNTO_CARAMELO' || verdict === 'SALTO_TACTICO' || verdict === 'TAKE_PROFIT';
+        if (isNotable && !screamingRows.has(ticker)) {
+          triggerRowFlash(ticker);
+          const s = enrichedScores.find(sc => sc.ticker === ticker);
+          if (s) updateScreamLog(ticker, verdict, s.unifiedScore);
+          // Also play sound if enabled (for verdict changes not caught by the sound useEffect)
+          if (soundEnabled && verdict === 'TAKE_PROFIT') {
+            playAlertBeep('exit');
+          } else if (soundEnabled) {
+            playAlertBeep('entry');
+          }
+        }
+      }
+    }
+
+    prevVerdictRef.current = currentVerdicts;
+  }, [enrichedScores, soundEnabled, screamingRows, triggerRowFlash, updateScreamLog, playAlertBeep]);
 
   // ─── V5.1: CSV Export ─────────────────────────────────────────────
   const handleExportCSV = useCallback(() => {
@@ -1246,6 +1333,25 @@ export default function CockpitTab({
       {elGritoScores.length > 0 && <ElGritoCard scores={enrichedScores} />}
 
       {/* ═══════════════════════════════════════════════════════════ */}
+      {/* V6.2.0: RECENT SCREAMS LOG CONSOLE — Event Tracker            */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {latestScream && (
+        <div className="scream-console px-4 py-2 animate-fadeInUp">
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-[#fbbf24] shrink-0">SCREAM LOG</span>
+            <span className="w-px h-3 bg-[#fbbf24]/20 shrink-0" />
+            <span
+              key={screamKey}
+              className="scream-text-enter font-mono text-[11px] text-[#fbbf24] truncate"
+              style={{ textShadow: '0 0 6px rgba(251,191,36,0.3)' }}
+            >
+              {latestScream}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
       {/* TABLA FUSIONADA — V5.1 with mobile responsive                 */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {displayedScores.length === 0 ? (
@@ -1331,7 +1437,7 @@ export default function CockpitTab({
                     key={`${score.ticker}-${score.type}`}
                     id={`cockpit-row-${score.ticker}`}
                     className={`
-                      nexus-row ${isGatillar ? 'nexus-row-gatillar' : ''} ${isAtractivoAction ? 'nexus-row-atractivo' : ''} animate-row-in ${getStaggerClass(idx)} ${triggeredAlerts.has(score.ticker) ? 'nx-alert-flash' : ''}
+                      nexus-row ${isGatillar ? 'nexus-row-gatillar' : ''} ${isAtractivoAction ? 'nexus-row-atractivo' : ''} animate-row-in ${getStaggerClass(idx)} ${triggeredAlerts.has(score.ticker) ? 'nx-alert-flash' : ''} ${screamingRows.has(score.ticker) ? 'nx-scream-flash' : ''}
                     `}
                     style={{
                       ...(idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 96px' } : {}),

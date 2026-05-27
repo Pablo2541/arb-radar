@@ -13,24 +13,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Quant-X Dashboard V6.1.0-FINAL",
-  description: "Dynamic Polarity Reversal Engine · Price Action Scanner · El Gatillador Cuantitativo · Dashboard de scalping de LECAPs y BONCAPs con datos en tiempo real. V6.1.0-FINAL",
+  title: "Quant-X Dashboard V6.2.0",
+  description: "Row Flash + Scream Log · Polarity Reversal · Price Action Scanner · El Gatillador Cuantitativo · Dashboard de scalping de LECAPs y BONCAPs con datos en tiempo real. V6.2.0",
   keywords: ["arbitraje", "LECAP", "BONCAP", "Argentina", "tasas", "curvas", "dólar MEP", "CCL", "spread caución", "duration modified"],
   authors: [{ name: "ARB Radar" }],
   icons: {
     icon: "/logo.svg",
   },
   openGraph: {
-    title: "Quant-X Dashboard V6.1.0-FINAL",
-    description: "Dynamic Polarity Reversal Engine · Price Action Scanner · El Gatillador Cuantitativo — Dashboard de scalping argentino — V6.1.0-FINAL",
+    title: "Quant-X Dashboard V6.2.0",
+    description: "Row Flash + Scream Log · Polarity Reversal · Price Action Scanner · El Gatillador Cuantitativo — Dashboard de scalping argentino — V6.2.0",
     url: "https://arbradar.com",
     siteName: "ARB Radar",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Quant-X Dashboard V6.1.0-FINAL",
-    description: "Dynamic Polarity Reversal Engine · Price Action Scanner · El Gatillador Cuantitativo — Dashboard de scalping argentino — V6.1.0-FINAL",
+    title: "Quant-X Dashboard V6.2.0",
+    description: "Row Flash + Scream Log · Polarity Reversal · Price Action Scanner · El Gatillador Cuantitativo — Dashboard de scalping argentino — V6.2.0",
   },
 };
 
