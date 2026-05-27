@@ -1,7 +1,7 @@
 'use client';
 
 // ════════════════════════════════════════════════════════════════════════
-// V6.2.0 NEXUS TERMINAL — CockpitTab: PREMIUM QUANTITATIVE TERMINAL
+// V6.2.0-FINAL NEXUS TERMINAL — CockpitTab: PREMIUM QUANTITATIVE TERMINAL
 //
 // Unified cockpit with 4 new Price Action columns:
 //   1. S/R Mas Cercano — nearest support/resistance level
@@ -1589,12 +1589,12 @@ export default function CockpitTab({
                             Presión{' '}
                             <span className={`font-mono ${
                               score.presionPuntas !== null
-                                ? score.presionPuntas > 1.3 ? 'text-[#2eebc8]'
-                                  : score.presionPuntas < 0.7 ? 'text-[#f87171]'
+                                ? score.presionPuntas > 20 ? 'text-[#2eebc8]'
+                                  : score.presionPuntas < -20 ? 'text-[#f87171]'
                                   : 'text-app-text3'
                                 : 'text-app-text4'
                             }`}>
-                              {score.presionPuntas !== null ? score.presionPuntas.toFixed(2) : '—'}
+                              {score.presionPuntas !== null ? `${score.presionPuntas >= 0 ? '+' : ''}${score.presionPuntas.toFixed(2)}%` : '—'}
                             </span>
                           </span>
                           <span className="text-[10px] text-app-text4">
@@ -1817,12 +1817,12 @@ export default function CockpitTab({
                             Presión{' '}
                             <span className={`font-mono ${
                               score.presionPuntas !== null
-                                ? score.presionPuntas > 1.3 ? 'text-[#2eebc8]'
-                                  : score.presionPuntas < 0.7 ? 'text-[#f87171]'
+                                ? score.presionPuntas > 20 ? 'text-[#2eebc8]'
+                                  : score.presionPuntas < -20 ? 'text-[#f87171]'
                                   : 'text-app-text3'
                                 : 'text-app-text4'
                             }`}>
-                              {score.presionPuntas !== null ? score.presionPuntas.toFixed(2) : '—'}
+                              {score.presionPuntas !== null ? `${score.presionPuntas >= 0 ? '+' : ''}${score.presionPuntas.toFixed(2)}%` : '—'}
                             </span>
                           </span>
 

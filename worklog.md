@@ -1033,3 +1033,62 @@ Stage Summary:
 - Bug fix: T31Y7 and similar instruments will now correctly show support (s:) for levels below price and resistance (r:) for levels above price
 - ADR-based volatility projections provide realistic next targets on breakout/breakdown
 - Final ZIP package created for download
+
+---
+Task ID: V6.2.0-FINAL
+Agent: Main Agent
+Task: Fix historical L2X / Presión bug + Row Flash + Scream Log + Pressure Fallback
+
+Work Log:
+- Diagnosed root cause: L2X icon always grey + Presión column flat at 0.00% because system expected full 5-level IOL Order Book data which returns empty for Argentine fixed-income
+- Added q_bid/q_ask fields to LiveInstrument type in src/lib/types.ts (data912 Level 1 punta quantities)
+- Mapped data912 nota.q_bid/nota.q_ask into /api/letras instrument output
+- Implemented Level 1 Punta-Based Pressure Fallback in /api/cockpit-score/route.ts:
+  - When IOL iol_market_pressure is null/0, uses data912 q_bid/q_ask with formula: Pressure % = ((Bid_Vol - Ask_Vol) / (Bid_Vol + Ask_Vol)) * 100
+  - When IOL data IS available, converts ratio to percentage: ((ratio - 1) / (ratio + 1)) * 100
+  - Backward-compatible ratio conversion for calculateActionScore
+- Updated calculateCockpitScore in calculations.ts with new puntaPressurePct parameter:
+  - Maps percentage [-100%, +100%] to score [0, 10] (0% = 5.0 neutral)
+  - presionPuntas now stores percentage value instead of raw ratio
+- Activated L2X icon in page.tsx:
+  - Turns teal/green "L2X" when ANY cockpit score has non-null presionPuntas (data912 bid/ask flowing)
+  - Purple "L2" when IOL Level 2 is online (full depth book available)
+  - Grey "L2✗" when no data, orange "L2⚠" when IOL credentials fail
+- Updated Presión display in CockpitTab.tsx:
+  - Shows percentage format: +92.28%, -42.13%, etc.
+  - Color coding: green (>+20%), red (<-20%), neutral (between)
+  - Both mobile card and desktop context row updated
+- Row Flash Effect (4s gold/green glow) for audio alert triggers
+- Recent Screams Log Console beneath EL GRITO banner
+- Version bumped to V6.2.0-FINAL across all files
+- Lint check passes clean
+- Verified pressure data flowing: instruments show real values (+99.37%, -40.56%, etc.)
+- Created ZIP package: Quant-X-V6.2.0-FINAL.zip (8.1MB)
+
+Stage Summary:
+- Historical L2X / Presión bug FIXED — pressure now calculated from data912 q_bid/q_ask when IOL L2 unavailable
+- L2X icon turns GREEN (teal "L2X") when data912 bid/ask volumes are flowing
+- Presión column shows real percentage values with color coding
+- Row Flash Effect + Scream Log Console from V6.2.0 retained
+- V6.1.0 polarity reversal and S/R engine code completely untouched
+- Final deployment package: /home/z/my-project/Quant-X-V6.2.0-FINAL.zip
+
+## Current Project Status (V6.2.0-FINAL)
+
+### Completed Phases
+- **FASE 1-3**: Layout cleanup, bug fixes, Price Action Scanner ✅
+- **V5.1-V5.2**: Mobile responsive, Watchlist, Price Alerts, Heatmap, Score Ring ✅
+- **V6.0**: NEXUS TERMINAL aesthetic, 30-day OHLC S/R engine ✅
+- **V6.1.0**: Dynamic Polarity Reversal + ADR projection + auto-OHLC ✅
+- **V6.2.0-FINAL**: Row Flash + Scream Log + Pressure Fallback (L2X fix) ✅
+
+### Unresolved Issues / Risks
+- ATR/True Range architecture documented for V7.0 (deferred, NOT implemented)
+- 4-Pillar Refactor pending: Score unification Base-100, Portfolio sell alerts, Timezone enforcement
+- MERCADO CERRADO banner, Dynamic polling, ConfigTab redesign still pending
+
+### Priority Recommendations for Next Phase
+- V7.0: Implement ATR/True Range in calculations.ts using DailyOHLC data
+- Score Unification: Merge cockpitScore and actionScore into unified Base-100 scale
+- Portfolio sell alerts: Auto-notify when held position triggers TAKE_PROFIT
+- Timezone enforcement: All server-side timestamps in America/Argentina/Buenos_Aires

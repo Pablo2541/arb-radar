@@ -102,6 +102,8 @@ interface LiveInstrument {
   iol_ask_depth?: number;
   iol_market_pressure?: number;
   iol_status?: 'online' | 'offline' | 'no_data';
+  q_bid?: number;              // V6.2.0: Bid volume from data912 (Level 1 punta quantity)
+  q_ask?: number;              // V6.2.0: Ask volume from data912 (Level 1 punta quantity)
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -327,6 +329,8 @@ async function refreshCache(): Promise<void> {
         tem_emision: letra.tem, fecha_vencimiento: letra.fechaVencimiento,
         updated_at: updatedAt, source: nota._source,
         delta_tir: deltaTir, last_close: lastClose,
+        q_bid: nota.q_bid || 0,
+        q_ask: nota.q_ask || 0,
       });
     }
 

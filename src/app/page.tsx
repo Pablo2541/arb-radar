@@ -166,6 +166,7 @@ function HomeContent() {
   const mounted = useRadarStore(s => s.mounted);
   const currentTime = useRadarStore(s => s.currentTime);
   const iolLevel2Online = useRadarStore(s => s.iolLevel2Online);
+  const cockpitScores = useRadarStore(s => s.cockpitScores);
   const iolCredentialsExist = useRadarStore(s => s.iolCredentialsExist);
   const iolConnectionFailed = useRadarStore(s => s.iolConnectionFailed);
   const riesgoPaisAuto = useRadarStore(s => s.riesgoPaisAuto);
@@ -641,7 +642,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V6.2.0...
+            Cargando V6.2.0-FINAL...
           </p>
         </div>
       </div>
@@ -719,7 +720,7 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V6.2.0 — SCREAM ENGINE</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V6.2.0-FINAL — PRESSURE FALLBACK</span>
             {/* V4.0: FILE indicator — replaces DB sync dot */}
             <div className="flex items-center gap-1 hidden sm:flex" title={fileIndicator.title}>
               <div
@@ -732,11 +733,14 @@ function HomeContent() {
             </div>
             {/* IOL Level 2 indicator — 3-state LED */}
             {(() => {
+              // V6.2.0: L2X turns GREEN when ANY valid bid/ask volume data exists
+              // Either from IOL Level 2 enrichment OR from data912 q_bid/q_ask
+              const hasPressureData = cockpitScores.some(s => s.presionPuntas !== null);
+              const isOnline = iolLevel2Online || hasPressureData;
               // 3-state LED logic:
               // Online: credentials present AND API succeeds → "L2" purple pulsing
               // No credentials: .env vars empty → "L2✗" gray
               // Connection failed: credentials exist but API errors → "L2⚠" orange
-              const isOnline = iolLevel2Online;
               const noCreds = !iolCredentialsExist && !iolConnectionFailed;
               const connFailed = iolCredentialsExist && iolConnectionFailed;
 
@@ -744,10 +748,15 @@ function HomeContent() {
               let label: string;
               let title: string;
 
-              if (isOnline) {
+              if (isOnline && iolLevel2Online) {
                 dotColor = '#a78bfa'; // purple
                 label = 'L2';
                 title = 'IOL Nivel 2: ONLINE — Volumen validado';
+              } else if (isOnline && hasPressureData) {
+                // V6.2.0: L2X mode — data912 Level 1 punta pressure fallback
+                dotColor = '#2eebc8'; // teal/green
+                label = 'L2X';
+                title = 'Presión de Punta: ONLINE (data912 L1) — Volumen bid/ask disponible';
               } else if (noCreds) {
                 dotColor = '#6b7280'; // gray
                 label = 'L2✗';
@@ -766,7 +775,7 @@ function HomeContent() {
                 <div className="flex items-center gap-1 hidden sm:flex" title={title}>
                   <div
                     className={`w-2 h-2 rounded-full ${isOnline ? 'iol-dot-online' : connFailed ? 'iol-dot-error' : ''}`}
-                    style={{ backgroundColor: dotColor }}
+                    style={{ backgroundColor: dotColor, animation: isOnline ? 'pulse 2s infinite' : 'none' }}
                   />
                   <span className="text-[7px] font-mono uppercase tracking-wider font-bold" style={{ color: dotColor }}>
                     {label}
@@ -1277,7 +1286,7 @@ function HomeContent() {
           <span className="version-pulse-dot" />
           <span className="font-semibold tracking-wide">ARB//RADAR</span>
           <span className="text-app-border/60">·</span>
-          <span>V6.2.0 (Scream Engine + Polarity Reversal + ADR Projection)</span>
+          <span>V6.2.0 (Pressure Fallback + Scream Engine + Polarity Reversal + ADR Projection)</span>
           <span className="text-app-border/60">·</span>
           <span>{effectiveInstruments.length} inst.</span>
           {dolarLastUpdateTime && (

@@ -1565,6 +1565,7 @@ export function calculateCockpitScore(
   config: Config,
   deltaTIR: number | null,
   iolMarketPressure: number | null,
+  puntaPressurePct: number | null,
   upsideCapital: number,
   days: number,
 ): CockpitScore {
@@ -1583,13 +1584,13 @@ export function calculateCockpitScore(
     ? Math.max(0, Math.min(10, (deltaTIR + 0.1) / 0.25 * 10))
     : 3.0;
 
-  // ── 3. Presión de Punta Score (20%) ────────────────────────
-  // If iolMarketPressure is available:
-  //   Map: pressure from [0.5, 1.5] → [0, 10]
-  //   (pressure > 1.3 → 10, > 1.0 → 7, > 0.7 → 5, < 0.7 → 2)
+  // V6.2.0: Presión de Punta Score (20%) — puntaPressurePct based
+  // If puntaPressurePct is available (from IOL L2 or data912 L1 fallback):
+  //   Map: pressure from [-100%, +100%] → [0, 10]
+  //   +100% (all bid) → 10, 0% (balanced) → 5, -100% (all ask) → 0
   // If not available: score = 5.0 (neutral, no penalty but no reward)
-  const presionPuntasScore = iolMarketPressure !== null
-    ? Math.max(0, Math.min(10, (iolMarketPressure - 0.5) / 1.0 * 10))
+  const presionPuntasScore = puntaPressurePct !== null
+    ? Math.max(0, Math.min(10, (puntaPressurePct + 100) / 200 * 10))
     : 5.0;
 
   // ── 4. Upside Capital Score (20%) ──────────────────────────
@@ -1657,7 +1658,7 @@ export function calculateCockpitScore(
     verdictReason,
     spreadNeto,
     deltaTIR,
-    presionPuntas: iolMarketPressure,
+    presionPuntas: puntaPressurePct,
     upsideCapital: effectiveUpsideCapital,
     days,
     withinHorizon,

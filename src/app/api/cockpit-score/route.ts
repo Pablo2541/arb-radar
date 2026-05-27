@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-// V6.2.0 — /api/cockpit-score: Unified Scalping Signal
+// V6.2.0-FINAL — /api/cockpit-score: Unified Scalping Signal
 //
 // Computes the CockpitScore for every live LECAP/BONCAP instrument
 // using 5 weighted scalping factors and assigns a verdict.
@@ -232,6 +232,33 @@ export async function GET(request: NextRequest) {
       const iolMarketPressure = instrument.iolMarketPressure ?? null;
       const spreadNetoPct = (inst.spread_neto as number) * 100;
 
+      // V6.2.0: Level 1 Punta-Based Pressure Fallback
+      // If IOL multi-level depth is null/0, use data912 q_bid/q_ask for punta pressure
+      const qBid = (inst.q_bid as number) || 0;
+      const qAsk = (inst.q_ask as number) || 0;
+      let puntaPressurePct: number | null = null;
+
+      if (iolMarketPressure !== null && iolMarketPressure > 0) {
+        // IOL Level 2 data available — convert ratio to percentage
+        // ratio > 1 = buying pressure, < 1 = selling pressure
+        // Map: ratio 0.5 → -33%, 1.0 → 0%, 1.5 → +20%, 2.0 → +33%
+        puntaPressurePct = ((iolMarketPressure - 1) / (iolMarketPressure + 1)) * 100;
+      } else if (qBid > 0 || qAsk > 0) {
+        // FALLBACK: Level 1 punta pressure from data912 bid/ask volumes
+        // Pressure % = ((Bid_Volume - Ask_Volume) / (Bid_Volume + Ask_Volume)) * 100
+        const totalVol = qBid + qAsk;
+        puntaPressurePct = totalVol > 0 ? ((qBid - qAsk) / totalVol) * 100 : null;
+      }
+
+      // V6.2.0: Unified pressure for Action Score (ratio format for backward compat)
+      // If puntaPressurePct is available, convert back to ratio for calculateActionScore
+      // ratio = (100 + puntaPressurePct) / (100 - puntaPressurePct)
+      const pressureForActionScore: number | null = iolMarketPressure !== null && iolMarketPressure > 0
+        ? iolMarketPressure
+        : puntaPressurePct !== null
+          ? (100 + puntaPressurePct) / (100 - puntaPressurePct)
+          : null;
+
       // ═══════════════════════════════════════════════════════════════
       // V6.1.0: Historical S/R with DYNAMIC POLARITY REVERSAL
       //
@@ -309,12 +336,13 @@ export async function GET(request: NextRequest) {
       );
 
       // Action Score — now uses historical S/R distance when available
+      // V6.2.0: Use unified pressure (iolMarketPressure or puntaPressurePct→ratio)
       const actionScore = calculateActionScore(
         distanceToSR,
         nearestSR?.type ?? null,
         volumeInjection.label,
         volumeInjection.ratio,
-        iolMarketPressure,
+        pressureForActionScore,
         spreadNetoPct,
         deltaTIR,
       );
@@ -325,6 +353,7 @@ export async function GET(request: NextRequest) {
           config,
           deltaTIR,
           iolMarketPressure,
+          puntaPressurePct,
           upsideCapital,
           instrument.days,
         ),
@@ -368,7 +397,7 @@ export async function GET(request: NextRequest) {
       horizon_days: horizon,
       summary,
       timestamp: new Date(now).toISOString(),
-      engine_version: 'V6.2.0-SCREAM',
+      engine_version: 'V6.2.0-FINAL',
       stale: false,
       sr_source: srSource,
     };

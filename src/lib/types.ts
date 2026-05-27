@@ -374,6 +374,8 @@ export interface LiveInstrument {
   iol_ask_depth?: number;           // Total quantity across all venta puntas
   iol_market_pressure?: number;     // bid_depth / ask_depth ratio
   iol_status?: 'online' | 'offline' | 'no_data'; // IOL data availability
+  q_bid?: number;              // V6.2.0: Bid volume from data912 (Level 1 punta quantity)
+  q_ask?: number;              // V6.2.0: Ask volume from data912 (Level 1 punta quantity)
 }
 
 /** Full /api/letras response (V2.0.1 with multi-source) */
