@@ -271,6 +271,14 @@ export function useLiveInstruments(marketOpen: boolean = true): LiveInstrumentsS
       // the backend's async Phase 2 update.
 
       setInstruments(mappedInstruments);
+
+      // V6.0.2: Fire-and-forget OHLC update — writes today's live prices
+      // to DailyOHLC table for the S/R engine. Non-blocking: if it fails,
+      // the dashboard still works fine. The /api/update-ohlc endpoint has
+      // built-in staleness detection (skips if snapshotCount >= 5).
+      if (data.instruments.length > 0) {
+        fetch('/api/update-ohlc', { signal: AbortSignal.timeout(3000) }).catch(() => {});
+      }
     } catch (err) {
       // SWR: If we have existing data, mark as stale but DON'T clear it
       if (hasDataRef.current) {

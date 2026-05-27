@@ -828,8 +828,19 @@ async function writeHistoricalData(
   instruments: LiveInstrument[],
   caucionProxy: { tnaPromedio: number; temCaucion: number },
 ): Promise<void> {
+  // V6.0.2 FIX: All date strings in this function now use Argentina timezone
+  // instead of UTC. Previously `toISOString()` could produce the wrong calendar
+  // date after 21:00 Argentina time (UTC-3), causing DailyOHLC rows to be
+  // written against the following day's key.
   const now = new Date();
-  const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+  // V6.0.2 FIX: Use Argentina timezone for daily OHLC date.
+  // toISOString() uses UTC which can be wrong after 21:00 Argentina time.
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now); // Returns "YYYY-MM-DD" in Argentina timezone
   let snapshotCount = 0;
   let ohlcCount = 0;
 

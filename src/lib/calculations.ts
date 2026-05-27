@@ -1758,8 +1758,18 @@ export function calculateHistoricalSR(
   // If included, today's close can become the "structural support"
   // when the price is at a daily low, making support = live price → 0% dist.
   // Only PAST closes represent true historical floors/ceilings.
+  //
+  // V6.0.2 FIX: Use Argentina timezone (UTC-3) for date comparison.
+  // DailyOHLC records are stored with Argentina trading dates.
+  // Using UTC toISOString() can produce wrong date when server
+  // timezone differs from Argentina (e.g., UTC+0 at 22:00 AR = next day UTC).
   // ═══════════════════════════════════════════════════════════════════
-  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const todayStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Argentina/Buenos_Aires',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date()); // Returns "YYYY-MM-DD" in Argentina timezone
 
   // Filter to this ticker, valid closes, AND NOT today's date
   const tickerData = ohlcData.filter(

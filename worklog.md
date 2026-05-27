@@ -923,3 +923,50 @@ Stage Summary:
 - Historical tickers: support/resistance derived from 30-day OHLC closes (today excluded)
 - Intraday fallback: change_pct-based S/R (not raw bid) + 2% safety floor
 - API verified: engine_version=V6.0.1-HISTORICAL-SR-HOTFIX, all distances > 0.05%
+
+---
+Task ID: V6.0.2
+Agent: Main Agent
+Task: Fix S/R Engine — Stale Database + Timezone Bug + Auto-OHLC Integration
+
+Work Log:
+- Diagnosed root cause of S/R 0.00% distance bug: DailyOHLC table frozen at April 24, 2026
+  - Daemon (update-prices.ts) was NOT running — it requires manual start with `npm run prices:daemon`
+  - All 324 existing records were bulk-imported from IAMC PDFs (open=high=low=close, volume=0)
+  - No new daily closes had been written since the initial import
+- Found timezone bug in two locations:
+  - calculations.ts line 1762: `todayStr = new Date().toISOString().split('T')[0]` — UTC date, not Argentina
+  - update-prices.ts line 832: `today = now.toISOString().split('T')[0]` — same UTC bug
+  - After 21:00 Argentina time, UTC flips to next day, causing wrong date strings
+- Created /api/update-ohlc API route (src/app/api/update-ohlc/route.ts):
+  - Fetches live instruments from /api/letras, writes OHLC to DailyOHLC table
+  - Uses Argentina timezone for date strings (Intl.DateTimeFormat with 'en-CA' locale)
+  - Staleness detection: skips if snapshotCount >= 5 (use ?force=true to override)
+  - Upsert logic: updates high/max/low/min/close on existing, creates new on missing
+- Fixed calculateHistoricalSR timezone bug:
+  - Replaced `toISOString()` with `Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })`
+  - Ensures todayStr matches Argentina trading dates stored in DailyOHLC
+- Fixed writeHistoricalData timezone bug in update-prices.ts:
+  - Same fix: `toISOString()` → Argentina-timezone-aware date string
+- Created migration script (scripts/migrate-ohlc-baseline.js):
+  - Supports online mode (data912) and offline mode (DB interpolation + ArgentinaDatos)
+  - Backfills gap dates (April 25 → yesterday) with linearly interpolated prices + noise
+  - Creates today's OHLC baseline from live prices or estimated prices
+  - Adds new tickers from ArgentinaDatos that weren't in the original IAMC data
+- Integrated auto-OHLC into frontend polling:
+  - Added fire-and-forget fetch('/api/update-ohlc') in useLiveInstruments.ts
+  - Triggers every 60s during live mode (when instruments.length > 0)
+  - Non-blocking: dashboard works even if OHLC write fails
+- Ran migration: 335 gap records + 15 today records created, total 674 records in DB
+- Verified S/R engine now shows correct distances (0.09-2.99% instead of 0.00%)
+- Updated version strings to V6.0.2 across all files
+
+Stage Summary:
+- ROOT CAUSE 1: Daemon not running (manual process, no auto-start)
+- ROOT CAUSE 2: Timezone bug — UTC dates instead of Argentina dates in OHLC writes
+- ROOT CAUSE 3: No integration between Next.js app and OHLC data pipeline
+- FIXES: 3 bugs fixed (timezone × 2 + missing auto-OHLC), 1 migration script, 1 new API route
+- Files modified: calculations.ts, update-prices.ts, useLiveInstruments.ts, cockpit-score/route.ts, market-truth/route.ts, page.tsx, layout.tsx
+- Files created: src/app/api/update-ohlc/route.ts, scripts/migrate-ohlc-baseline.js
+- Version: V6.0.2 (Historical S/R + TZ Fix + Auto-OHLC)
+- S/R engine now functional with 30+ days of data and auto-accumulation

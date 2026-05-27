@@ -233,11 +233,11 @@ export async function GET(request: NextRequest) {
       const spreadNetoPct = (inst.spread_neto as number) * 100;
 
       // ═══════════════════════════════════════════════════════════════
-      // V6.0.1 HOTFIX: Historical S/R Calculation
+      // V6.0.2: Historical S/R Calculation
       //
       // Primary: Use 30-day DailyOHLC closes for TRUE structural S/R
-      //   - Today's date is EXCLUDED from the lookback (prevents
-      //     live price from contaminating the historical floor)
+      //   - Today's date is EXCLUDED from the lookback (Argentina TZ)
+      //   - V6.0.2 FIX: todayStr uses Argentina timezone (not UTC)
       // Fallback: Use change_pct-based intraday method (NOT raw bid)
       //   - Raw bid ≈ price for liquid instruments → fake 0.00% dist
       // Safety: Minimum 0.3% distance floor to prevent 0.00% display
@@ -365,7 +365,7 @@ export async function GET(request: NextRequest) {
       horizon_days: horizon,
       summary,
       timestamp: new Date(now).toISOString(),
-      engine_version: 'V6.0.1-HISTORICAL-SR-HOTFIX',
+      engine_version: 'V6.0.2-HISTORICAL-SR-TZFIX',
       stale: false,
       sr_source: srSource,
     };
