@@ -1178,3 +1178,48 @@ Stage Summary:
 - Desbalance Order Book Top-5: presión basada en primeras 5 líneas BID vs ASK con labels de desbalance
 - En el mercado actual, 12/13 instrumentos son anestesiados (ATR < 0.30%) — señal real del mercado
 - PENDIENTE: FASE 2 (Métricas de Velocidad y Flujo) + FASE 3 (Correlación de Curvas)
+
+---
+Task ID: V7.0-FASE2
+Agent: Main Agent
+Task: Ejecución Pura — Dashboard Reengineering (3 directives)
+
+Work Log:
+- Read entire codebase: CockpitTab.tsx (~2000 lines), calculations.ts (~2350 lines), types.ts, cockpit-score API route
+- Analyzed user's 3 directives: (1) Visual noise hiding, (2) Adaptive take profit trigger, (3) Pure execution module
+- Added `AdaptiveTakeProfitResult` interface to types.ts with triggerType, suggestedAction, suggestedDestination
+- Added `calculateAdaptiveTakeProfit()` function to calculations.ts:
+  - Trigger 1: sessionGainPct >= +1.00% (price surge, yield compression)
+  - Trigger 2: top5PressureRatio < 0.8 OR bookImbalanceLabel === 'DESBALANCE VENTA' OR top5PressurePct < -20%
+  - Combined trigger: Both conditions → VENDER, single → TOMAR_GANANCIA
+  - Suggested destination: CAUCIÓN (Preservar Capital Líquido)
+- Complete rewrite of CockpitTab.tsx for "Ejecución Pura" philosophy:
+  1. OCULTAMIENTO DE RUIDO VISUAL:
+     - Anestesiado instruments filtered OUT of main display by default (showAnestesiados toggle)
+     - Table reduced from 11 columns to 6: #, Instrumento, Precio, TEM, Score, ACCIÓN
+     - Removed: S/R Cercano, Dist%, Inyección, Spread, VOL, micro-score bars, context rows
+     - Removed ZZZ badge display (no longer needed since hidden by default)
+     - Removed methodology card (replaced with minimal footer weights line)
+     - Mobile cards simplified: 2 rows instead of 4
+  2. TRIGGER CRÍTICO DE SALIDA:
+     - enrichedScores now uses calculateAdaptiveTakeProfit with +1.00% threshold (was +1.5%)
+     - BID pressure ceding detection added
+     - Added sessionGainPct and bidPressureCeding fields to enriched scores
+  3. MÓDULO DE EJECUCIÓN PURA:
+     - New EjecucionPuraCard component at top of content area
+     - Shows ONLY when take-profit trigger active AND no alternative buy-imbalanced instruments
+     - Clean direct message: "ACCIÓN: VENDER / TOMAR GANANCIA | {TICKER} | Destino sugerido: CAUCIÓN"
+     - Shows trigger type (COMBINED/PRICE_SURGE/BID_PRESSURE_CEDING)
+     - Shows session gain % badge and reason text
+- Header renamed: "COCKPIT TÁCTICO" → "EJECUCIÓN PURA"
+- Subtitle: "El backend analiza, la pantalla ordena la acción"
+- ESLint passes with 0 errors
+- API /api/cockpit-score confirmed working with correct anestesiado flags
+
+Stage Summary:
+- 3 files modified: types.ts, calculations.ts, CockpitTab.tsx
+- Full "Ejecución Pura" dashboard reengineering complete
+- Anestesiados hidden by default (12 of 13 instruments in current data)
+- Adaptive Take Profit with +1.00% threshold and BID pressure ceding detection
+- EjecuciónPuraCard shows clean action directives when no alternatives exist
+- Minimalist 6-column table replacing 11-column data-heavy view

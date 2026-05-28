@@ -299,6 +299,10 @@ export interface CockpitScore {
   top5PressureRatio?: number | null; // Ratio top5 bid / top5 ask
   bookImbalanceLabel?: 'DESBALANCE EXTREMO' | 'DESBALANCE COMPRA' | 'BALANCEADO' | 'DESBALANCE VENTA' | 'SIN DATOS'; // Etiqueta legible del desbalance
 
+  // ── V7.0-FASE2: Adaptive Take Profit Trigger ──
+  bidPressureCeding?: boolean;       // True si la presión compradora Top-5 está cediendo
+  sessionGainPct?: number;           // Ganancia directa en precio en la jornada (%)
+
   withinHorizon: boolean;      // Within horizon filter (default 45 days — Scalping Extendido)
 
   // ── V5.4: Portfolio-Aware Take Profit ──
@@ -310,6 +314,17 @@ export interface CockpitScore {
     tem: number;
     spreadNeto: number;
   }>;
+}
+
+// ── V7.0-FASE2: Adaptive Take Profit Result ──
+export interface AdaptiveTakeProfitResult {
+  triggered: boolean;
+  reason: string;
+  triggerType: 'PRICE_SURGE' | 'BID_PRESSURE_CEDING' | 'COMBINED' | 'NONE';
+  sessionGainPct: number;
+  bidPressureCeding: boolean;
+  suggestedAction: 'VENDER' | 'TOMAR_GANANCIA' | 'MANTENER';
+  suggestedDestination: string;
 }
 
 export type TabId = 'mercado' | 'cockpit' | 'curvas' | 'estrategias' | 'cartera' | 'historial' | 'historico' | 'configuracion';

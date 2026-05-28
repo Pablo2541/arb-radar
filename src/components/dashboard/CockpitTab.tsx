@@ -1,29 +1,25 @@
 'use client';
 
 // ════════════════════════════════════════════════════════════════════════
-// V6.2.0-FINAL NEXUS TERMINAL — CockpitTab: PREMIUM QUANTITATIVE TERMINAL
+// V7.0-FASE2 — EJECUCIÓN PURA: CockpitTab
 //
-// Unified cockpit with 4 new Price Action columns:
-//   1. S/R Mas Cercano — nearest support/resistance level
-//   2. Distancia a S/R (%) — % distance with <0.5% visual alert
-//   3. Inyeccion de Volumen — volume acceleration (X2, X3, X5, EXPLOSIVO)
-//   4. SCORE — El Gatillador (GATILLAR YA / ATRACTIVO / NEUTRAL / SIN SENAL)
+// Filosofía: "El backend analiza, la pantalla ordena la acción."
+//   - Instrumentos anestesiados OCULTOS de la vista principal
+//   - Columnas secundarias ELIMINADAS (S/R, Dist%, Inyección, Spread)
+//   - Tabla minimalista: #, Instrumento, Precio, TEM, Score, ACCIÓN
+//   - MÓDULO DE EJECUCIÓN PURA: tarjeta central de alta prioridad
+//   - Trigger Crítico de Salida: Take Profit Adaptativo (+1% / BID cede)
 //
-// V6.2.0: Row Flash Effect (4s gold/green glow) + Recent Screams Log Console
-// V6.1.0: Dynamic Polarity Reversal + ADR projection + auto-OHLC polling
-// V6.0: NEXUS TERMINAL aesthetic — scanline overlay, nexus-row, neon-price, nexus badges
-// V5.2: Market heatmap + keyboard shortcuts panel + enhanced action score badges
-// V5.1: Mobile responsive card layout + visual enhancements
-//
-// BLINDAJE: La comision del 0.15% NO se toca. price x 1.0015 = IMMUTABLE.
+// BLINDAJE: La comisión del 0.15% NO se toca. price x 1.0015 = IMMUTABLE.
 // ════════════════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { Instrument, Config, Position, CockpitScore, LiveInstrument } from '@/lib/types';
+import type { Instrument, Config, Position, CockpitScore, LiveInstrument, AdaptiveTakeProfitResult } from '@/lib/types';
 import { useRadarStore } from '@/lib/store';
-import { Search, Bell, BellOff, Download, Keyboard, Star, BellRing, X } from 'lucide-react';
+import { Search, Bell, BellOff, Download, Keyboard, Star, BellRing, X, Eye, EyeOff, TrendingUp, Shield, ArrowRight } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
+import { calculateAdaptiveTakeProfit } from '@/lib/calculations';
 
 // ─── Props ────────────────────────────────────────────────────────────
 interface CockpitTabProps {
@@ -38,7 +34,7 @@ interface CockpitTabProps {
   onTakeProfitCountChange?: (count: number) => void;
 }
 
-// ─── V5.2: Watchlist Hook ─────────────────────────────────────────────
+// ─── Watchlist Hook ─────────────────────────────────────────────────
 function useWatchlist() {
   const [watchlist, setWatchlist] = useState<string[]>(() => {
     if (typeof window === 'undefined') return [];
@@ -63,7 +59,7 @@ function useWatchlist() {
   return { watchlist, toggleWatchlist, isWatched };
 }
 
-// ─── V5.2: Price Alerts Hook ──────────────────────────────────────────
+// ─── Price Alerts Hook ──────────────────────────────────────────────
 interface PriceAlert {
   direction: '>' | '<';
   price: number;
@@ -116,30 +112,12 @@ const VERDICT_CONFIG: Record<string, { label: string; color: string; bg: string 
   EVITAR: { label: 'EVITAR', color: '#6b7280', bg: 'rgba(107,114,128,0.06)' },
 };
 
-// ─── V5.0: Action Score Config ────────────────────────────────────────
+// ─── Action Score Config ─────────────────────────────────────────────
 const ACTION_SCORE_CONFIG: Record<string, { label: string; color: string; bg: string; glow: string }> = {
   'GATILLAR YA': { label: '🔥 GATILLAR YA', color: '#f87171', bg: 'rgba(248,113,113,0.18)', glow: '0 0 12px rgba(248,113,113,0.4)' },
   'ATRACTIVO': { label: '✓ ATRACTIVO', color: '#2eebc8', bg: 'rgba(46,235,200,0.12)', glow: '0 0 8px rgba(46,235,200,0.2)' },
   'NEUTRAL': { label: 'NEUTRAL', color: '#94a3b8', bg: 'rgba(148,163,184,0.06)', glow: 'none' },
   'SIN SEÑAL': { label: 'SIN SEÑAL', color: '#6b7280', bg: 'rgba(107,114,128,0.04)', glow: 'none' },
-};
-
-// ─── V5.0: Volume Injection Label Config ──────────────────────────────
-const VOL_INJECTION_CONFIG: Record<string, { color: string; bg: string; pulse: boolean }> = {
-  EXPLOSIVO: { color: '#f87171', bg: 'rgba(248,113,113,0.18)', pulse: true },
-  X5: { color: '#fb923c', bg: 'rgba(251,146,60,0.14)', pulse: true },
-  X3: { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)', pulse: false },
-  X2: { color: '#a78bfa', bg: 'rgba(167,139,250,0.10)', pulse: false },
-  NORMAL: { color: '#94a3b8', bg: 'rgba(148,163,184,0.06)', pulse: false },
-};
-
-// ─── Micro-Score Bar Colors ──────────────────────────────────────────
-const MICRO_BAR_COLORS: Record<string, string> = {
-  spreadNeto: '#2eebc8',   // teal
-  deltaTIR: '#f472b6',     // pink
-  presion: '#a78bfa',      // purple
-  upside: '#fbbf24',       // gold
-  velocidad: '#6b7280',    // gray
 };
 
 // ─── Horizon Options ──────────────────────────────────────────────────
@@ -174,181 +152,7 @@ function getStaggerClass(index: number): string {
   return `stagger-${n}`;
 }
 
-// ─── Micro-Score Bar Component ────────────────────────────────────────
-function MicroScoreBar({ value, max = 10, color }: { value: number; max?: number; color: string }) {
-  const scale = Math.min(value / max, 1);
-  return (
-    <div className="micro-score-bar-track" style={{ height: '2px' }}>
-      <div
-        className="micro-score-bar-fill"
-        style={{
-          backgroundColor: color,
-          transform: `scaleX(${scale})`,
-          transformOrigin: 'left center',
-          willChange: 'transform',
-        }}
-      />
-    </div>
-  );
-}
-
-// ─── V5.2: Price Alert Popover Component ──────────────────────────────
-function PriceAlertPopover({
-  ticker,
-  currentPrice,
-  alert,
-  onSetAlert,
-  onRemoveAlert,
-  onClearAll,
-  alertCount,
-}: {
-  ticker: string;
-  currentPrice: number;
-  alert: PriceAlert | null;
-  onSetAlert: (ticker: string, direction: '>' | '<', price: number) => void;
-  onRemoveAlert: (ticker: string) => void;
-  onClearAll: () => void;
-  alertCount: number;
-}) {
-  const [inputPrice, setInputPrice] = useState(() => (alert ? alert.price.toFixed(4) : currentPrice > 0 ? currentPrice.toFixed(4) : ''));
-  const [direction, setDirection] = useState<'>' | '<'>(() => alert?.direction ?? '>');
-
-  const handleSet = () => {
-    const p = parseFloat(inputPrice);
-    if (!isNaN(p) && p > 0) {
-      onSetAlert(ticker, direction, p);
-    }
-  };
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          className={`flex items-center justify-center w-5 h-5 rounded transition-all duration-150 shrink-0 ${
-            alert
-              ? 'text-[#fbbf24] bg-[#fbbf24]/10 hover:bg-[#fbbf24]/20'
-              : 'text-app-text4 hover:text-app-text3 hover:bg-app-hover'
-          }`}
-          title={alert ? `Alerta: ${alert.direction} ${alert.price.toFixed(4)}` : 'Configurar alerta de precio'}
-        >
-          {alert ? <BellRing className="w-3 h-3" /> : <Bell className="w-3 h-3" />}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        className="w-64 p-3 rounded-xl border border-app-border/60 bg-app-bg/95 backdrop-blur-xl shadow-xl z-50"
-        side="left"
-        align="center"
-      >
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-semibold text-app-text uppercase tracking-wider">
-              🔔 Alerta de Precio
-            </span>
-            <span className="font-mono text-[10px] font-bold text-app-accent-text">{ticker}</span>
-          </div>
-          <div className="text-[9px] text-app-text4">
-            Alertar cuando precio
-          </div>
-          <div className="flex items-center gap-1.5">
-            <select
-              value={direction}
-              onChange={e => setDirection(e.target.value as '>' | '<')}
-              className="h-7 px-1.5 rounded-lg bg-app-subtle/60 border border-app-border/60 text-[10px] font-mono text-app-text focus:outline-none focus:ring-1 focus:ring-[#2eebc8]/40"
-            >
-              <option value=">">&gt; mayor que</option>
-              <option value="<">&lt; menor que</option>
-            </select>
-            <Input
-              type="number"
-              step="0.0001"
-              value={inputPrice}
-              onChange={e => setInputPrice(e.target.value)}
-              className="h-7 text-[10px] font-mono bg-app-subtle/60 border-app-border/60 focus:border-[#2eebc8]/30 focus:ring-[#2eebc8]/40"
-              placeholder="Precio"
-            />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={handleSet}
-              className="flex-1 h-7 rounded-lg bg-[#2eebc8]/15 border border-[#2eebc8]/30 text-[9px] font-bold text-[#2eebc8] hover:bg-[#2eebc8]/25 transition-all"
-            >
-              {alert ? 'Actualizar' : 'Activar'}
-            </button>
-            {alert && (
-              <button
-                onClick={() => onRemoveAlert(ticker)}
-                className="h-7 px-2 rounded-lg bg-[#f87171]/10 border border-[#f87171]/30 text-[9px] font-bold text-[#f87171] hover:bg-[#f87171]/20 transition-all"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-          {alertCount > 0 && (
-            <div className="flex items-center justify-between pt-1.5 border-t border-app-border/30">
-              <span className="text-[8px] text-app-text4">
-                🔔 {alertCount} alerta{alertCount !== 1 ? 's' : ''} activa{alertCount !== 1 ? 's' : ''}
-              </span>
-              <button
-                onClick={onClearAll}
-                className="text-[8px] text-[#f87171] hover:text-[#f87171]/80 font-medium transition-colors"
-              >
-                Limpiar todo
-              </button>
-            </div>
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-// ─── V5.2: Market Heatmap Mini-Visualization ──────────────────────────
-function MarketHeatmapStrip({ scores, onBlockClick }: { scores: CockpitScore[]; onBlockClick: (ticker: string) => void }) {
-  if (scores.length === 0) return null;
-
-  const getBlockColor = (s: CockpitScore): string => {
-    if (s.actionScore.label === 'GATILLAR YA') return '#2eebc8';
-    if (s.actionScore.label === 'ATRACTIVO') return '#fbbf24';
-    if (s.distanceToSR < 0.5 && s.distanceToSR < 99) return '#f87171';
-    return '#6b7280';
-  };
-
-  return (
-    <div className="cockpit-heatmap animate-fadeInUp">
-      <div className="flex items-center gap-[2px] overflow-x-auto scrollbar-hide py-1">
-        {scores.map(s => (
-          <button
-            key={`${s.ticker}-${s.type}`}
-            className="nx-hmap-block"
-            style={{ backgroundColor: getBlockColor(s) }}
-            title={`${s.ticker} — ${s.actionScore.label}${s.distanceToSR < 0.5 && s.distanceToSR < 99 ? ' · Cerca S/R' : ''}`}
-            onClick={() => onBlockClick(s.ticker)}
-          />
-        ))}
-      </div>
-      <div className="flex items-center gap-3 mt-1 text-[8px] text-app-text4">
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: '#2eebc8' }} />
-          🔥 Gatillar
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: '#fbbf24' }} />
-          ✓ Atractivo
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: '#6b7280' }} />
-          ● Neutral
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block w-2 h-2 rounded-sm" style={{ backgroundColor: '#f87171' }} />
-          Cerca S/R
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ─── V5.2: Score Ring SVG Component ───────────────────────────────────
+// ─── Score Ring SVG Component ─────────────────────────────────────────
 function ScoreRing({ score, color, size = 22 }: { score: number; color: string; size?: number }) {
   const radius = (size - 4) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -357,26 +161,10 @@ function ScoreRing({ score, color, size = 22 }: { score: number; color: string; 
 
   return (
     <svg width={size} height={size} className="score-ring shrink-0" style={{ '--ring-color': color } as React.CSSProperties}>
-      {/* Background track */}
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--app-subtle)" strokeWidth={2} />
       <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke="var(--app-subtle)"
-        strokeWidth={2}
-      />
-      {/* Filled arc */}
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke={color}
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeDasharray={circumference}
-        strokeDashoffset={dashOffset}
+        cx={size / 2} cy={size / 2} r={radius} fill="none" stroke={color} strokeWidth={2}
+        strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={dashOffset}
         transform={`rotate(-90 ${size / 2} ${size / 2})`}
         style={{ transition: 'stroke-dashoffset 0.6s ease-out' }}
       />
@@ -384,16 +172,195 @@ function ScoreRing({ score, color, size = 22 }: { score: number; color: string; 
   );
 }
 
-// ─── El Grito Alert Card ──────────────────────────────────────────────
+// ─── Price Alert Popover Component ────────────────────────────────────
+function PriceAlertPopover({
+  ticker, currentPrice, alert, onSetAlert, onRemoveAlert, onClearAll, alertCount,
+}: {
+  ticker: string; currentPrice: number; alert: PriceAlert | null;
+  onSetAlert: (ticker: string, direction: '>' | '<', price: number) => void;
+  onRemoveAlert: (ticker: string) => void; onClearAll: () => void; alertCount: number;
+}) {
+  const [inputPrice, setInputPrice] = useState(() => (alert ? alert.price.toFixed(4) : currentPrice > 0 ? currentPrice.toFixed(4) : ''));
+  const [direction, setDirection] = useState<'>' | '<'>(() => alert?.direction ?? '>');
+
+  const handleSet = () => {
+    const p = parseFloat(inputPrice);
+    if (!isNaN(p) && p > 0) onSetAlert(ticker, direction, p);
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          className={`flex items-center justify-center w-5 h-5 rounded transition-all duration-150 shrink-0 ${
+            alert ? 'text-[#fbbf24] bg-[#fbbf24]/10 hover:bg-[#fbbf24]/20' : 'text-app-text4 hover:text-app-text3 hover:bg-app-hover'
+          }`}
+          title={alert ? `Alerta: ${alert.direction} ${alert.price.toFixed(4)}` : 'Configurar alerta de precio'}
+        >
+          {alert ? <BellRing className="w-3 h-3" /> : <Bell className="w-3 h-3" />}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-3 rounded-xl border border-app-border/60 bg-app-bg/95 backdrop-blur-xl shadow-xl z-50" side="left" align="center">
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-semibold text-app-text uppercase tracking-wider">🔔 Alerta</span>
+            <span className="font-mono text-[10px] font-bold text-app-accent-text">{ticker}</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <select value={direction} onChange={e => setDirection(e.target.value as '>' | '<')}
+              className="h-7 px-1.5 rounded-lg bg-app-subtle/60 border border-app-border/60 text-[10px] font-mono text-app-text focus:outline-none focus:ring-1 focus:ring-[#2eebc8]/40">
+              <option value=">">&gt; mayor</option>
+              <option value="<">&lt; menor</option>
+            </select>
+            <Input type="number" step="0.0001" value={inputPrice} onChange={e => setInputPrice(e.target.value)}
+              className="h-7 text-[10px] font-mono bg-app-subtle/60 border-app-border/60 focus:border-[#2eebc8]/30 focus:ring-[#2eebc8]/40" placeholder="Precio" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button onClick={handleSet}
+              className="flex-1 h-7 rounded-lg bg-[#2eebc8]/15 border border-[#2eebc8]/30 text-[9px] font-bold text-[#2eebc8] hover:bg-[#2eebc8]/25 transition-all">
+              {alert ? 'Actualizar' : 'Activar'}
+            </button>
+            {alert && (
+              <button onClick={() => onRemoveAlert(ticker)}
+                className="h-7 px-2 rounded-lg bg-[#f87171]/10 border border-[#f87171]/30 text-[9px] font-bold text-[#f87171] hover:bg-[#f87171]/20 transition-all">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          {alertCount > 0 && (
+            <div className="flex items-center justify-between pt-1.5 border-t border-app-border/30">
+              <span className="text-[8px] text-app-text4">🔔 {alertCount} activa{alertCount !== 1 ? 's' : ''}</span>
+              <button onClick={onClearAll} className="text-[8px] text-[#f87171] hover:text-[#f87171]/80 font-medium transition-colors">Limpiar todo</button>
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// V7.0-FASE2: MÓDULO DE EJECUCIÓN PURA — Alerta Central
+//
+// Se muestra SOLO cuando:
+//   1. Se activa el trigger de toma de ganancias para una posición en cartera
+//   2. Y el ranking NO detecta ningún otro activo con desbalance real de compra
+//      (el resto sigue anestesiado o sin señal)
+//
+// Muestra un cartel limpio y directo con la acción a tomar.
+// ════════════════════════════════════════════════════════════════════════
+function EjecucionPuraCard({
+  takeProfitResult,
+  ticker,
+  noAlternativeBuyImbalance,
+}: {
+  takeProfitResult: AdaptiveTakeProfitResult;
+  ticker: string;
+  noAlternativeBuyImbalance: boolean;
+}) {
+  if (!takeProfitResult.triggered || !noAlternativeBuyImbalance) return null;
+
+  const isSell = takeProfitResult.suggestedAction === 'VENDER';
+  const actionColor = isSell ? '#dc2626' : '#f87171';
+  const actionBg = isSell ? 'rgba(220,38,38,0.15)' : 'rgba(248,113,113,0.12)';
+
+  return (
+    <div
+      className="animate-fadeInUp rounded-2xl overflow-hidden"
+      style={{
+        background: 'linear-gradient(135deg, rgba(220,38,38,0.08) 0%, rgba(21,29,46,0.95) 50%, rgba(46,235,200,0.03) 100%)',
+        border: `2px solid ${actionColor}50`,
+        boxShadow: `0 0 40px ${actionColor}20, 0 0 80px ${actionColor}10, inset 0 1px 0 rgba(255,255,255,0.05)`,
+      }}
+    >
+      {/* Top accent bar */}
+      <div className="h-1" style={{ background: `linear-gradient(90deg, ${actionColor}, transparent, ${actionColor})` }} />
+
+      <div className="px-6 py-5 sm:px-8 sm:py-6">
+        {/* Header row */}
+        <div className="flex items-center gap-3 mb-4">
+          <div
+            className="flex items-center justify-center w-10 h-10 rounded-xl animate-pulse"
+            style={{ background: actionBg, boxShadow: `0 0 20px ${actionColor}30` }}
+          >
+            <Shield className="w-5 h-5" style={{ color: actionColor }} />
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: actionColor }}>
+              Módulo de Ejecución Pura
+            </div>
+            <div className="text-[9px] text-app-text4">
+              Trigger {takeProfitResult.triggerType === 'COMBINED' ? 'COMBINADO' : takeProfitResult.triggerType === 'PRICE_SURGE' ? 'PRECIO' : 'PRESIÓN'}
+            </div>
+          </div>
+        </div>
+
+        {/* Main action line */}
+        <div
+          className="rounded-xl px-5 py-4 mb-4"
+          style={{
+            background: `linear-gradient(135deg, ${actionBg}, rgba(21,29,46,0.6))`,
+            border: `1px solid ${actionColor}30`,
+          }}
+        >
+          <div className="flex items-center gap-3 flex-wrap">
+            <span
+              className="text-2xl sm:text-3xl font-black uppercase tracking-tight"
+              style={{ color: actionColor, textShadow: `0 0 20px ${actionColor}40` }}
+            >
+              ACCIÓN: {takeProfitResult.suggestedAction === 'VENDER' ? 'VENDER' : 'TOMAR GANANCIA'}
+            </span>
+            <div className="w-px h-8 bg-app-border/30 hidden sm:block" />
+            <span className="font-mono text-xl sm:text-2xl font-bold text-app-text">
+              {ticker}
+            </span>
+            {takeProfitResult.sessionGainPct > 0 && (
+              <span
+                className="font-mono text-lg font-bold px-2 py-0.5 rounded-lg"
+                style={{ color: '#2eebc8', background: 'rgba(46,235,200,0.12)' }}
+              >
+                +{takeProfitResult.sessionGainPct.toFixed(2)}%
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Destination suggestion */}
+        <div className="flex items-center gap-2 mb-3">
+          <ArrowRight className="w-4 h-4 text-[#2eebc8] shrink-0" />
+          <span className="text-sm">
+            <span className="text-app-text4">Destino sugerido: </span>
+            <span className="font-bold text-[#2eebc8]">{takeProfitResult.suggestedDestination}</span>
+          </span>
+        </div>
+
+        {/* Reason */}
+        <div className="text-[11px] text-app-text3 leading-relaxed">
+          {takeProfitResult.reason}
+        </div>
+
+        {/* Context: no alternatives */}
+        <div
+          className="mt-3 px-3 py-2 rounded-lg text-[10px]"
+          style={{ background: 'rgba(107,114,128,0.08)', borderLeft: '3px solid rgba(107,114,128,0.3)' }}
+        >
+          <span className="text-app-text4">Contexto: </span>
+          <span className="text-app-text3">No se detectan otros activos con desbalance real de compra. El resto del ranking está anestesiado o sin señal.</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── El Grito Alert Card (Simplified) ─────────────────────────────────
 function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
   if (scores.length === 0) return null;
 
+  const takeProfitScores = scores.filter(s => s.isTakeProfit);
+  const gatillarScores = scores.filter(s => s.actionScore.label === 'GATILLAR YA');
   const saltoScores = scores.filter(s => s.verdict === 'SALTO_TACTICO');
   const carameloScores = scores.filter(s => s.verdict === 'PUNTO_CARAMELO');
-  const gatillarScores = scores.filter(s => s.actionScore.label === 'GATILLAR YA');
-  const takeProfitScores = scores.filter(s => s.isTakeProfit);
-  // V5.4: TAKE_PROFIT cards shown FIRST (highest priority), then GATILLAR, SALTO, CARAMELO
-  const topScores = [...takeProfitScores, ...gatillarScores, ...saltoScores, ...carameloScores].slice(0, 6);
+  const topScores = [...takeProfitScores, ...gatillarScores, ...saltoScores, ...carameloScores].slice(0, 4);
 
   if (topScores.length === 0) return null;
 
@@ -401,51 +368,41 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
     <div
       className="nexus-grito p-0 animate-fadeInUp"
       style={{
-        willChange: 'transform',
-        contain: 'layout style',
-        transform: 'translateZ(0)',
+        willChange: 'transform', contain: 'layout style', transform: 'translateZ(0)',
         boxShadow: takeProfitScores.length > 0 ? '0 0 40px rgba(220,38,38,0.25)' : gatillarScores.length > 0 ? '0 0 30px rgba(248,113,113,0.15)' : '0 0 15px rgba(244,114,182,0.1)',
       }}
     >
       <div className="relative z-10 rounded-2xl p-4 sm:p-5" style={{ background: 'rgba(21,29,46,0.95)' }}>
         <div className="flex items-center gap-2 mb-3">
           <span className="text-lg">🚨</span>
-          <span className="text-sm font-semibold tracking-wide" style={{ color: '#f87171' }}>
-            EL GRITO
-          </span>
-          <span className="text-[10px] text-app-text4 uppercase tracking-wider">— Capa 1 Alert</span>
+          <span className="text-sm font-semibold tracking-wide" style={{ color: '#f87171' }}>EL GRITO</span>
           {takeProfitScores.length > 0 && (
-            <span className="ml-2 px-2 py-0.5 rounded-lg text-[9px] font-bold animate-pulse" style={{ color: '#fff', background: 'rgba(220,38,38,0.6)', boxShadow: '0 0 12px rgba(220,38,38,0.5)' }}>
+            <span className="ml-2 px-2 py-0.5 rounded-lg text-[9px] font-bold animate-pulse"
+              style={{ color: '#fff', background: 'rgba(220,38,38,0.6)', boxShadow: '0 0 12px rgba(220,38,38,0.5)' }}>
               🚨 TAKE PROFIT
             </span>
           )}
           {gatillarScores.length > 0 && (
-            <span className="ml-2 px-2 py-0.5 rounded-lg text-[9px] font-bold animate-pulse" style={{ color: '#f87171', background: 'rgba(248,113,113,0.2)', boxShadow: '0 0 12px rgba(248,113,113,0.3)' }}>
-              🔥 {gatillarScores.length} GATILLAR
+            <span className="ml-2 px-2 py-0.5 rounded-lg text-[9px] font-bold animate-pulse"
+              style={{ color: '#f87171', background: 'rgba(248,113,113,0.2)', boxShadow: '0 0 12px rgba(248,113,113,0.3)' }}>
+              🔥 {gatillarScores.length}
             </span>
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
           {topScores.map((s, index) => {
-            const isGatillar = s.actionScore.label === 'GATILLAR YA';
             const isTakeProfit = !!s.isTakeProfit;
-            // V5.4: TAKE_PROFIT uses crimson, GATILLAR uses red, rest uses VERDICT_CONFIG
+            const isGatillar = s.actionScore.label === 'GATILLAR YA';
             const vc = isTakeProfit
               ? { label: '🚨 TAKE PROFIT', color: '#dc2626', bg: 'rgba(220,38,38,0.15)' }
               : isGatillar
                 ? { label: '🔥 GATILLAR YA', color: '#f87171', bg: 'rgba(248,113,113,0.15)' }
                 : VERDICT_CONFIG[s.verdict];
             return (
-              <div
-                key={`${s.ticker}-${index}`}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border animate-fadeInUp ${getStaggerClass(index)} ${isTakeProfit ? 'border-red-600' : ''}`}
-                style={{
-                  borderColor: isTakeProfit ? 'rgba(220,38,38,0.6)' : `${vc.color}33`,
-                  background: vc.bg,
-                  boxShadow: isTakeProfit ? '0 0 20px rgba(220,38,38,0.35), 0 0 40px rgba(220,38,38,0.15)' : isGatillar ? '0 0 16px rgba(248,113,113,0.25)' : 'none',
-                }}
-              >
+              <div key={`${s.ticker}-${index}`}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border animate-fadeInUp ${getStaggerClass(index)}`}
+                style={{ borderColor: `${vc.color}33`, background: vc.bg, boxShadow: isTakeProfit ? '0 0 20px rgba(220,38,38,0.35)' : isGatillar ? '0 0 16px rgba(248,113,113,0.25)' : 'none' }}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="font-mono font-bold text-xs text-app-text truncate">{s.ticker}</span>
@@ -458,7 +415,6 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  {/* V5.4: ALWAYS show unifiedScore (base-100) — single source of truth */}
                   <div className="font-mono font-bold text-lg" style={{ color: vc.color }}>
                     {s.unifiedScore.toFixed(0)}
                   </div>
@@ -468,7 +424,7 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
           })}
         </div>
 
-        {/* V5.4: TAKE PROFIT rotation suggestions */}
+        {/* Rotation suggestions for TAKE PROFIT */}
         {takeProfitScores.length > 0 && takeProfitScores[0].rotationSuggestions && takeProfitScores[0].rotationSuggestions.length > 0 && (
           <div className="mt-3 p-2 rounded-lg" style={{ background: 'rgba(46,235,200,0.05)', border: '1px solid rgba(46,235,200,0.15)' }}>
             <div className="text-[10px] font-semibold mb-1" style={{ color: '#2eebc8' }}>↻ ROTACIÓN SUGERIDA</div>
@@ -477,27 +433,11 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
                 <div key={sug.ticker} className="flex items-center gap-1.5 px-2 py-1 rounded-md" style={{ background: 'rgba(46,235,200,0.08)' }}>
                   <span className="font-mono font-bold text-[11px]" style={{ color: '#2eebc8' }}>{sug.ticker}</span>
                   <span className="font-mono text-[9px] text-app-text4">Score {sug.unifiedScore.toFixed(0)}</span>
-                  <span className="font-mono text-[9px] text-app-text4">Spread +{sug.spreadNeto.toFixed(2)}%</span>
                 </div>
               ))}
             </div>
           </div>
         )}
-
-        <div className="mt-2 text-[10px] text-app-text4">
-          {takeProfitScores.length > 0 && (
-            <span>🚨 Take Profit: <span className="font-mono font-bold" style={{ color: '#dc2626' }}>{takeProfitScores.length}</span></span>
-          )}
-          {gatillarScores.length > 0 && (
-            <> · 🔥 Gatillar: <span className="font-mono font-bold" style={{ color: '#f87171' }}>{gatillarScores.length}</span></>
-          )}
-          {saltoScores.length > 0 && (
-            <> · ⚡ Salto: <span className="font-mono font-bold" style={{ color: '#f87171' }}>{saltoScores.length}</span></>
-          )}
-          {carameloScores.length > 0 && (
-            <> · 🍬 Caramelo: <span className="font-mono font-bold" style={{ color: '#fbbf24' }}>{carameloScores.length}</span></>
-          )}
-        </div>
       </div>
     </div>
   );
@@ -507,15 +447,8 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
 // Main Component
 // ════════════════════════════════════════════════════════════════════════
 export default function CockpitTab({
-  instruments,
-  config,
-  position,
-  liveDataMap,
-  isLive,
-  marketOpen,
-  onAlertsCountChange,
-  onWatchlistCountChange,
-  onTakeProfitCountChange,
+  instruments, config, position, liveDataMap, isLive, marketOpen,
+  onAlertsCountChange, onWatchlistCountChange, onTakeProfitCountChange,
 }: CockpitTabProps) {
   // ─── Store ────────────────────────────────────────────────────────
   const cockpitScores = useRadarStore(s => s.cockpitScores);
@@ -524,79 +457,69 @@ export default function CockpitTab({
   const setCockpitScoresLoading = useRadarStore(s => s.setCockpitScoresLoading);
   const marketTruth = useRadarStore(s => s.marketTruth);
 
-  // ─── V5.2: Watchlist & Price Alerts ────────────────────────────────
+  // ─── Watchlist & Price Alerts ────────────────────────────────────
   const { watchlist, toggleWatchlist, isWatched } = useWatchlist();
   const { alerts, setAlert, removeAlert, clearAllAlerts, getAlert, alertCount } = usePriceAlerts();
   const [watchlistFilterActive, setWatchlistFilterActive] = useState(false);
   const [triggeredAlerts, setTriggeredAlerts] = useState<Set<string>>(new Set());
-  const prevTriggeredRef = useRef<Set<string>>(new Set()); // ref to break infinite loop
+  const prevTriggeredRef = useRef<Set<string>>(new Set());
 
-  // ─── V6.2.0: Row Flash + Recent Screams state ──────────────────────
+  // ─── Row Flash + Recent Screams state ────────────────────────────
   const [screamingRows, setScreamingRows] = useState<Set<string>>(new Set());
   const [latestScream, setLatestScream] = useState<string | null>(null);
-  const [screamKey, setScreamKey] = useState(0); // forces re-render for animation restart
+  const [screamKey, setScreamKey] = useState(0);
   const screamTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  // Notify parent of alert count
-  useEffect(() => {
-    onAlertsCountChange?.(alertCount);
-  }, [alertCount, onAlertsCountChange]);
+  // ─── V7.0-FASE2: Show anestesiados toggle ────────────────────────
+  const [showAnestesiados, setShowAnestesiados] = useState(false);
 
-  // Notify parent of watchlist count
-  useEffect(() => {
-    onWatchlistCountChange?.(watchlist.length);
-  }, [watchlist.length, onWatchlistCountChange]);
+  // ─── V7.0-FASE2: Adaptive Take Profit result for held position ──
+  const [adaptiveTakeProfit, setAdaptiveTakeProfit] = useState<AdaptiveTakeProfitResult | null>(null);
+
+  // Notify parent
+  useEffect(() => { onAlertsCountChange?.(alertCount); }, [alertCount, onAlertsCountChange]);
+  useEffect(() => { onWatchlistCountChange?.(watchlist.length); }, [watchlist.length, onWatchlistCountChange]);
 
   // ─── Local State ──────────────────────────────────────────────────
   const [horizon, setHorizon] = useState<number>(() => {
     if (typeof window === 'undefined') return 45;
     try {
       const saved = localStorage.getItem('arbradar_cockpit_horizon');
-      if (saved) {
-        const parsed = parseInt(saved, 10);
-        if ([20, 30, 45, 60, 90, 9999].includes(parsed)) return parsed;
-      }
+      if (saved) { const parsed = parseInt(saved, 10); if ([20, 30, 45, 60, 90, 9999].includes(parsed)) return parsed; }
     } catch { /* silent */ }
     return 45;
   });
 
   const handleHorizonChange = useCallback((value: number) => {
     setHorizon(value);
-    try {
-      localStorage.setItem('arbradar_cockpit_horizon', String(value));
-    } catch { /* silent */ }
+    try { localStorage.setItem('arbradar_cockpit_horizon', String(value)); } catch { /* silent */ }
   }, []);
 
-  // ─── All scores from API (unfiltered) ─────────────────────────────
+  // ─── All scores from API ──────────────────────────────────────────
   const [allScores, setAllScores] = useState<CockpitScore[]>([]);
   const [apiSummary, setApiSummary] = useState<{
-    total: number;
-    within_horizon: number;
-    salto_tactico: number;
-    punto_caramelo: number;
-    atractivo: number;
-    neutral: number;
-    evitar: number;
+    total: number; within_horizon: number; salto_tactico: number;
+    punto_caramelo: number; atractivo: number; neutral: number; evitar: number;
   } | null>(null);
   const [engineVersion, setEngineVersion] = useState('');
   const [isStale, setIsStale] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const hasDataRef = useRef(false);
 
-  // ─── V5.1: Search/Filter state ──────────────────────────────────
+  // ─── Search/Filter state ──────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('');
 
-  // ─── V5.2: Keyboard Shortcuts panel state ──────────────────────
+  // ─── Keyboard Shortcuts panel state ───────────────────────────────
   const [shortcutsExpanded, setShortcutsExpanded] = useState(false);
 
-  // ─── V5.1: Sound Alert state ────────────────────────────────────
+  // ─── Sound Alert state ────────────────────────────────────────────
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     try { return localStorage.getItem('arbradar_cockpit_sound') === 'true'; } catch { return false; }
   });
   const audioCtxRef = useRef<AudioContext | null>(null);
   const prevGatillarRef = useRef<Set<string>>(new Set());
-  const prevTakeProfitRef = useRef<Set<string>>(new Set());  // V5.4: Track TAKE_PROFIT transitions
+  const prevTakeProfitRef = useRef<Set<string>>(new Set());
 
   const toggleSound = useCallback(() => {
     setSoundEnabled(prev => {
@@ -606,51 +529,26 @@ export default function CockpitTab({
     });
   }, []);
 
-  // Play beep when new GATILLAR YA or TAKE_PROFIT appears
-  // V5.4: Robust audio — handles browser autoplay policy by resuming suspended AudioContext
+  // ─── Play alert beep ──────────────────────────────────────────────
   const playAlertBeep = useCallback((type: 'entry' | 'exit' = 'entry') => {
     try {
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new AudioContext();
-      }
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
       const ctx = audioCtxRef.current;
-      // V5.4 FIX: Resume AudioContext if suspended by browser autoplay policy
-      if (ctx.state === 'suspended') {
-        ctx.resume();
-      }
+      if (ctx.state === 'suspended') ctx.resume();
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       if (type === 'exit') {
-        // TAKE PROFIT alert: higher frequency, double beep
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(1200, ctx.currentTime);
-        gain.gain.setValueAtTime(0.18, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.15);
-        // Second beep
-        const osc2 = ctx.createOscillator();
-        const gain2 = ctx.createGain();
-        osc2.type = 'sawtooth';
-        osc2.frequency.setValueAtTime(1400, ctx.currentTime + 0.18);
-        gain2.gain.setValueAtTime(0.18, ctx.currentTime + 0.18);
-        gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.33);
-        osc2.connect(gain2);
-        gain2.connect(ctx.destination);
-        osc2.start(ctx.currentTime + 0.18);
-        osc2.stop(ctx.currentTime + 0.33);
+        osc.type = 'sawtooth'; osc.frequency.setValueAtTime(1200, ctx.currentTime);
+        gain.gain.setValueAtTime(0.18, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+        osc.connect(gain); gain.connect(ctx.destination); osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.15);
+        const osc2 = ctx.createOscillator(); const gain2 = ctx.createGain();
+        osc2.type = 'sawtooth'; osc2.frequency.setValueAtTime(1400, ctx.currentTime + 0.18);
+        gain2.gain.setValueAtTime(0.18, ctx.currentTime + 0.18); gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.33);
+        osc2.connect(gain2); gain2.connect(ctx.destination); osc2.start(ctx.currentTime + 0.18); osc2.stop(ctx.currentTime + 0.33);
       } else {
-        // Entry alert: clean beep (GATILLAR YA / ATRACTIVO)
-        osc.type = 'square';
-        osc.frequency.setValueAtTime(880, ctx.currentTime);
-        gain.gain.setValueAtTime(0.15, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.2);
+        osc.type = 'square'; osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime); gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+        osc.connect(gain); gain.connect(ctx.destination); osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.2);
       }
     } catch { /* silent */ }
   }, []);
@@ -661,16 +559,9 @@ export default function CockpitTab({
     if (!hasData) setCockpitScoresLoading(true);
     try {
       const res = await fetch('/api/cockpit-score?horizon=365');
-      if (!res.ok) {
-        if (hasDataRef.current) setIsStale(true);
-        return;
-      }
+      if (!res.ok) { if (hasDataRef.current) setIsStale(true); return; }
       const data = await res.json();
-      if (data.error) {
-        if (hasDataRef.current) setIsStale(true);
-        return;
-      }
-
+      if (data.error) { if (hasDataRef.current) setIsStale(true); return; }
       const raw: CockpitScore[] = data.all_scores ?? data.scores ?? [];
       setAllScores(raw);
       hasDataRef.current = raw.length > 0;
@@ -690,9 +581,7 @@ export default function CockpitTab({
   useEffect(() => {
     fetchScores();
     intervalRef.current = setInterval(fetchScores, cockpitPollInterval);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, [fetchScores, cockpitPollInterval]);
 
   // ─── Client-side horizon filtering ────────────────────────────────
@@ -701,24 +590,27 @@ export default function CockpitTab({
     return allScores.filter(s => s.days <= horizon);
   }, [allScores, horizon]);
 
-  // ─── V5.0: Sort by ACTION SCORE first, then cockpitScore ──────────
+  // ─── Sort by ACTION SCORE first, then cockpitScore ────────────────
   const sortedScores = useMemo(() => {
     return [...filteredScores].sort((a, b) => {
-      // Primary sort: Action Score (GATILLAR YA > ATRACTIVO > NEUTRAL > SIN SEÑAL)
       const actionOrder: Record<string, number> = { 'GATILLAR YA': 4, 'ATRACTIVO': 3, 'NEUTRAL': 2, 'SIN SEÑAL': 1 };
       const aAction = actionOrder[a.actionScore.label] ?? 0;
       const bAction = actionOrder[b.actionScore.label] ?? 0;
       if (aAction !== bAction) return bAction - aAction;
-      // Secondary sort: actionScore.score descending
       if (a.actionScore.score !== b.actionScore.score) return b.actionScore.score - a.actionScore.score;
-      // Tertiary: cockpitScore descending
       return b.cockpitScore - a.cockpitScore;
     });
   }, [filteredScores]);
 
-  // ─── V5.1: Search filter + V5.2: Watchlist filter on sorted scores ──
+  // ─── V7.0-FASE2: Filter out anestesiados (unless toggle is on) ────
+  const activeScoresOnly = useMemo(() => {
+    if (showAnestesiados) return sortedScores;
+    return sortedScores.filter(s => !s.anestesiado);
+  }, [sortedScores, showAnestesiados]);
+
+  // ─── Search filter + Watchlist filter ─────────────────────────────
   const displayedScores = useMemo(() => {
-    let result = sortedScores;
+    let result = activeScoresOnly;
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(s => s.ticker.toLowerCase().includes(q));
@@ -727,20 +619,22 @@ export default function CockpitTab({
       result = result.filter(s => isWatched(s.ticker));
     }
     return result;
-  }, [sortedScores, searchQuery, watchlistFilterActive, isWatched]);
+  }, [activeScoresOnly, searchQuery, watchlistFilterActive, isWatched]);
 
-  // ─── Instrument lookup Map ─────────────────────────────────────────
+  // ─── Instrument lookup Map ────────────────────────────────────────
   const instrumentMap = useMemo(() => {
     const map = new Map<string, Instrument>();
-    for (const inst of instruments) {
-      map.set(inst.ticker, inst);
-    }
+    for (const inst of instruments) map.set(inst.ticker, inst);
     return map;
   }, [instruments]);
 
-  // ─── V5.4: Portfolio-Aware Take Profit Detection ──────────────────
-  // Enriches sortedScores with TAKE_PROFIT verdict for held positions
-  // showing exit signals (price surge, yield compression, S/R resistance hit)
+  // ═══════════════════════════════════════════════════════════════════
+  // V7.0-FASE2: ENRICHED SCORES with Adaptive Take Profit
+  //
+  // Take Profit se activa con:
+  //   1. Ganancia directa en precio ≥ +1.00% en la jornada
+  //   2. Presión compradora Top-5 cede (ratio < 0.8 o DESBALANCE VENTA)
+  // ═══════════════════════════════════════════════════════════════════
   const enrichedScores = useMemo(() => {
     if (!position) return sortedScores;
 
@@ -748,37 +642,44 @@ export default function CockpitTab({
     const heldScore = sortedScores.find(s => s.ticker === heldTicker);
     if (!heldScore) return sortedScores;
 
-    // Get live price change for the held instrument
     const liveData = liveDataMap.get(heldTicker);
     const instData = instrumentMap.get(heldTicker);
     const changePct = liveData?.change_pct ?? instData?.change ?? 0;
 
-    // TAKE PROFIT conditions:
-    // 1. Price surge >= +1.5% (yield compression, overbought)
-    // 2. Action Score plummets (SIN SEÑAL or NEUTRAL) AND unifiedScore < 40
-    // 3. Near resistance (distanceToSR < 0.3% and nearestSR type = 'R')
-    const isPriceSurge = changePct >= 1.5;
+    // ── V7.0-FASE2: Use the new Adaptive Take Profit algorithm ──
+    const tpResult = calculateAdaptiveTakeProfit({
+      sessionGainPct: changePct,
+      top5PressureRatio: heldScore.top5PressureRatio ?? null,
+      top5PressurePct: heldScore.top5PressurePct ?? null,
+      bookImbalanceLabel: heldScore.bookImbalanceLabel ?? 'SIN DATOS',
+      anestesiado: heldScore.anestesiado ?? false,
+      unifiedScore: heldScore.unifiedScore,
+      actionLabel: heldScore.actionScore.label,
+      ticker: heldTicker,
+    });
+
+    // Store result for EjecuciónPuraCard
+    // (We set it outside the useMemo via useEffect below)
+
+    // Legacy conditions preserved for El Grito card compatibility
     const isScoreCrater = (heldScore.actionScore.label === 'SIN SEÑAL' || heldScore.actionScore.label === 'NEUTRAL') && heldScore.unifiedScore < 40;
     const isAtResistance = heldScore.nearestSR?.type === 'R' && heldScore.distanceToSR < 0.3;
 
-    if (!isPriceSurge && !isScoreCrater && !isAtResistance) return sortedScores;
+    // Combined trigger: new adaptive OR legacy conditions
+    const isTakeProfit = tpResult.triggered || isScoreCrater || isAtResistance;
 
-    // Build rotation suggestions: top 2 instruments by unifiedScore (excluding held)
+    if (!isTakeProfit) return sortedScores;
+
+    // Build rotation suggestions: top 2 active instruments by unifiedScore (excluding held + excluding anestesiados)
     const candidates = sortedScores
-      .filter(s => s.ticker !== heldTicker && s.unifiedScore >= 40)
+      .filter(s => s.ticker !== heldTicker && !s.anestesiado && s.unifiedScore >= 40)
       .sort((a, b) => b.unifiedScore - a.unifiedScore)
       .slice(0, 2)
-      .map(s => ({
-        ticker: s.ticker,
-        unifiedScore: s.unifiedScore,
-        tem: s.spreadNeto, // spread neto as a proxy for attractiveness
-        spreadNeto: s.spreadNeto,
-      }));
+      .map(s => ({ ticker: s.ticker, unifiedScore: s.unifiedScore, tem: s.spreadNeto, spreadNeto: s.spreadNeto }));
 
-    let reason = '';
-    if (isPriceSurge) reason = `🚨 TAKE PROFIT: ${heldTicker} subió +${changePct.toFixed(2)}% — rendimiento comprimido, sobrecomprado.`;
-    else if (isAtResistance) reason = `🚨 TAKE PROFIT: ${heldTicker} en resistencia R2/R3 (dist ${heldScore.distanceToSR.toFixed(2)}%) — riesgo de reversión.`;
-    else if (isScoreCrater) reason = `🚨 TAKE PROFIT: ${heldTicker} Score colapsó a ${heldScore.unifiedScore} — salida recomendada.`;
+    let reason = tpResult.triggered ? tpResult.reason : '';
+    if (!reason && isAtResistance) reason = `🚨 TAKE PROFIT: ${heldTicker} en resistencia R2/R3 (dist ${heldScore.distanceToSR.toFixed(2)}%) — riesgo de reversión.`;
+    if (!reason && isScoreCrater) reason = `🚨 TAKE PROFIT: ${heldTicker} Score colapsó a ${heldScore.unifiedScore} — salida recomendada.`;
 
     return sortedScores.map(s => {
       if (s.ticker !== heldTicker) return s;
@@ -789,9 +690,47 @@ export default function CockpitTab({
         isTakeProfit: true,
         takeProfitReason: reason,
         rotationSuggestions: candidates,
+        sessionGainPct: changePct,
+        bidPressureCeding: tpResult.bidPressureCeding,
       };
     });
   }, [sortedScores, position, liveDataMap, instrumentMap]);
+
+  // Store adaptive take profit result for EjecuciónPuraCard
+  useEffect(() => {
+    if (!position) { setAdaptiveTakeProfit(null); return; }
+    const heldScore = sortedScores.find(s => s.ticker === position.ticker);
+    if (!heldScore) { setAdaptiveTakeProfit(null); return; }
+    const liveData = liveDataMap.get(position.ticker);
+    const instData = instrumentMap.get(position.ticker);
+    const changePct = liveData?.change_pct ?? instData?.change ?? 0;
+
+    const result = calculateAdaptiveTakeProfit({
+      sessionGainPct: changePct,
+      top5PressureRatio: heldScore.top5PressureRatio ?? null,
+      top5PressurePct: heldScore.top5PressurePct ?? null,
+      bookImbalanceLabel: heldScore.bookImbalanceLabel ?? 'SIN DATOS',
+      anestesiado: heldScore.anestesiado ?? false,
+      unifiedScore: heldScore.unifiedScore,
+      actionLabel: heldScore.actionScore.label,
+      ticker: position.ticker,
+    });
+    setAdaptiveTakeProfit(result);
+  }, [sortedScores, position, liveDataMap, instrumentMap]);
+
+  // ─── Check if there are NO alternative buy-imbalanced instruments ──
+  const noAlternativeBuyImbalance = useMemo(() => {
+    // No other instrument has real buy imbalance (GATILLAR YA, ATRACTIVO with score > 50, or DESBALANCE COMPRA/EXTREMO)
+    const hasActiveBuyer = enrichedScores.some(s => {
+      if (position && s.ticker === position.ticker) return false; // Exclude held position
+      if (s.anestesiado) return false;
+      if (s.actionScore.label === 'GATILLAR YA') return true;
+      if (s.actionScore.label === 'ATRACTIVO' && s.unifiedScore > 50) return true;
+      if (s.bookImbalanceLabel === 'DESBALANCE COMPRA' || s.bookImbalanceLabel === 'DESBALANCE EXTREMO') return true;
+      return false;
+    });
+    return !hasActiveBuyer;
+  }, [enrichedScores, position]);
 
   // Report take-profit count to parent
   useEffect(() => {
@@ -801,54 +740,38 @@ export default function CockpitTab({
     }
   }, [enrichedScores, onTakeProfitCountChange]);
 
-  // ─── V6.2.0: Trigger row flash for a specific ticker (4s glow) ──
+  // ─── Trigger row flash ────────────────────────────────────────────
   const triggerRowFlash = useCallback((ticker: string) => {
-    setScreamingRows(prev => {
-      const next = new Set(prev);
-      next.add(ticker);
-      return next;
-    });
-    // Clear existing timer for this ticker if any
+    setScreamingRows(prev => { const next = new Set(prev); next.add(ticker); return next; });
     const existing = screamTimersRef.current.get(ticker);
     if (existing) clearTimeout(existing);
-    // Auto-remove after 4 seconds (matches CSS animation duration)
     const timer = setTimeout(() => {
-      setScreamingRows(prev => {
-        const next = new Set(prev);
-        next.delete(ticker);
-        return next;
-      });
+      setScreamingRows(prev => { const next = new Set(prev); next.delete(ticker); return next; });
       screamTimersRef.current.delete(ticker);
     }, 4000);
     screamTimersRef.current.set(ticker, timer);
   }, []);
 
-  // ─── V6.2.0: Update the Recent Screams log console ──
+  // ─── Update scream log ────────────────────────────────────────────
   const updateScreamLog = useCallback((ticker: string, event: string, score: number) => {
     const now = new Date();
     const ts = now.toLocaleTimeString('es-AR', { hour12: false, timeZone: 'America/Argentina/Buenos_Aires' });
-    setLatestScream(`[${ts}] 🔔 ${ticker} entered ${event} (Score ${score})`);
-    setScreamKey(k => k + 1); // force animation restart
+    setLatestScream(`[${ts}] 🔔 ${ticker} → ${event} (Score ${score})`);
+    setScreamKey(k => k + 1);
   }, []);
 
-  // ─── V5.4 + V6.2.0: Sound alert + Row Flash + Scream Log ──────────
+  // ─── Sound alert + Row Flash + Scream Log ─────────────────────────
   useEffect(() => {
     if (!soundEnabled || enrichedScores.length === 0) return;
-
-    // Build a lookup map for enriched scores by ticker
     const scoreMap = new Map(enrichedScores.map(s => [s.ticker, s]));
 
-    // V5.4: Detect NEW GATILLAR YA and ATRACTIVO (unifiedScore > 50)
     const currentAlerts = new Set(
-      enrichedScores
-        .filter(s => s.actionScore.label === 'GATILLAR YA' || (s.actionScore.label === 'ATRACTIVO' && s.unifiedScore > 50))
-        .map(s => s.ticker)
+      enrichedScores.filter(s => s.actionScore.label === 'GATILLAR YA' || (s.actionScore.label === 'ATRACTIVO' && s.unifiedScore > 50)).map(s => s.ticker)
     );
     if (prevGatillarRef.current.size > 0) {
       for (const ticker of currentAlerts) {
         if (!prevGatillarRef.current.has(ticker)) {
           playAlertBeep('entry');
-          // V6.2.0: Flash the row + update scream log
           triggerRowFlash(ticker);
           const s = scoreMap.get(ticker);
           if (s) updateScreamLog(ticker, s.actionScore.label, s.unifiedScore);
@@ -858,15 +781,11 @@ export default function CockpitTab({
     }
     prevGatillarRef.current = currentAlerts;
 
-    // V5.4: Detect TAKE_PROFIT (portfolio sell signal)
-    const currentTakeProfit = new Set(
-      enrichedScores.filter(s => s.isTakeProfit).map(s => s.ticker)
-    );
+    const currentTakeProfit = new Set(enrichedScores.filter(s => s.isTakeProfit).map(s => s.ticker));
     if (prevTakeProfitRef.current.size > 0) {
       for (const ticker of currentTakeProfit) {
         if (!prevTakeProfitRef.current.has(ticker)) {
           playAlertBeep('exit');
-          // V6.2.0: Flash the row + update scream log
           triggerRowFlash(ticker);
           const s = scoreMap.get(ticker);
           if (s) updateScreamLog(ticker, 'TAKE PROFIT', s.unifiedScore);
@@ -876,7 +795,7 @@ export default function CockpitTab({
     }
     prevTakeProfitRef.current = currentTakeProfit;
 
-    // V5.2: Check price alert thresholds
+    // Price alert thresholds
     const newTriggered = new Set<string>();
     for (const score of enrichedScores) {
       const alert = alerts[score.ticker];
@@ -890,7 +809,6 @@ export default function CockpitTab({
         newTriggered.add(score.ticker);
         if (!prevTriggeredRef.current.has(score.ticker)) {
           playAlertBeep('entry');
-          // V6.2.0: Flash the row + update scream log
           triggerRowFlash(score.ticker);
           updateScreamLog(score.ticker, `PRICE ${alert.direction} ${alert.price.toFixed(4)}`, score.unifiedScore);
         }
@@ -903,20 +821,14 @@ export default function CockpitTab({
     });
   }, [enrichedScores, soundEnabled, playAlertBeep, alerts, liveDataMap, instrumentMap, triggerRowFlash, updateScreamLog]);
 
-  // ─── V6.2.0: Verdict state change detection (Punto Caramelo / Salto Táctico) ──
-  // Triggers row flash + scream log for verdict transitions, REGARDLESS of sound.
-  // This ensures visual feedback even when sound is off.
+  // ─── Verdict state change detection ───────────────────────────────
   const prevVerdictRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (enrichedScores.length === 0) return;
-
     const currentVerdicts = new Map<string, string>();
-    for (const s of enrichedScores) {
-      currentVerdicts.set(s.ticker, s.verdict);
-    }
+    for (const s of enrichedScores) currentVerdicts.set(s.ticker, s.verdict);
 
-    // Check for NEW entries into PUNTO_CARAMELO, SALTO_TACTICO, or TAKE_PROFIT
     for (const [ticker, verdict] of currentVerdicts) {
       const prev = prevVerdictRef.current.get(ticker);
       if (prev && prev !== verdict) {
@@ -925,65 +837,38 @@ export default function CockpitTab({
           triggerRowFlash(ticker);
           const s = enrichedScores.find(sc => sc.ticker === ticker);
           if (s) updateScreamLog(ticker, verdict, s.unifiedScore);
-          // Also play sound if enabled (for verdict changes not caught by the sound useEffect)
-          if (soundEnabled && verdict === 'TAKE_PROFIT') {
-            playAlertBeep('exit');
-          } else if (soundEnabled) {
-            playAlertBeep('entry');
-          }
+          if (soundEnabled && verdict === 'TAKE_PROFIT') playAlertBeep('exit');
+          else if (soundEnabled) playAlertBeep('entry');
         }
       }
     }
-
     prevVerdictRef.current = currentVerdicts;
   }, [enrichedScores, soundEnabled, screamingRows, triggerRowFlash, updateScreamLog, playAlertBeep]);
 
-  // ─── V5.1: CSV Export ─────────────────────────────────────────────
+  // ─── CSV Export ────────────────────────────────────────────────────
   const handleExportCSV = useCallback(() => {
     const rows = displayedScores;
     if (rows.length === 0) return;
-    const header = 'Ticker,Type,Price,TEM,Volume,SR_Cercano,SR_Type,Distancia%,Inyeccion,Spread,UnifiedScore,ActionScore,ActionLabel';
+    const header = 'Ticker,Type,Price,TEM,UnifiedScore,ActionScore,ActionLabel,Anestesiado';
     const lines = rows.map(s => {
       const liveData = liveDataMap.get(s.ticker);
       const instData = instrumentMap.get(s.ticker);
       const price = liveData?.last_price ?? instData?.price ?? 0;
       const tem = instData?.tem ?? 0;
-      const vol = s.iolVolume || s.volume || instData?.iolVolume || liveData?.iol_volume || instData?.data912Volume || liveData?.volume || 0;
-      return [
-        s.ticker, s.type, price.toFixed(4), tem.toFixed(2), vol,
-        s.nearestSR?.level.toFixed(4) ?? '', s.nearestSR?.type ?? '',
-        s.distanceToSR < 99 ? s.distanceToSR.toFixed(2) : '',
-        s.volumeInjection.label, s.spreadNeto.toFixed(3),
-        s.unifiedScore.toFixed(0), s.actionScore.score, s.actionScore.label
-      ].join(',');
+      return [s.ticker, s.type, price.toFixed(4), tem.toFixed(2), s.unifiedScore.toFixed(0), s.actionScore.score, s.actionScore.label, s.anestesiado ? 'Y' : 'N'].join(',');
     });
     const csv = [header, ...lines].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const date = new Date().toISOString().slice(0, 10);
-    a.href = url;
-    a.download = `arb-radar-cockpit-${date}.csv`;
-    a.click();
+    a.href = url; a.download = `arb-radar-cockpit-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
     URL.revokeObjectURL(url);
   }, [displayedScores, liveDataMap, instrumentMap]);
 
-  // ─── V5.2: Heatmap click → scroll to instrument ──────────────────
-  const handleHeatmapClick = useCallback((ticker: string) => {
-    const el = document.getElementById(`cockpit-row-${ticker}`);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      el.classList.add('cockpit-row-flash');
-      setTimeout(() => el.classList.remove('cockpit-row-flash'), 1500);
-    }
-  }, []);
-
   // ─── Sync filtered scores to store ────────────────────────────────
-  useEffect(() => {
-    setCockpitScores(sortedScores);
-  }, [sortedScores, setCockpitScores]);
+  useEffect(() => { setCockpitScores(sortedScores); }, [sortedScores, setCockpitScores]);
 
-  // ─── Computed: El Grito instruments ────────────────────────────────
+  // ─── El Grito instruments ─────────────────────────────────────────
   const elGritoScores = useMemo(() => {
     return enrichedScores.filter(
       s => !s.anestesiado && (s.verdict === 'SALTO_TACTICO' || s.verdict === 'PUNTO_CARAMELO' || s.actionScore.label === 'GATILLAR YA' || s.isTakeProfit)
@@ -1003,23 +888,18 @@ export default function CockpitTab({
     return {
       total: allCount,
       within_horizon: filteredCount,
-      salto_tactico: filteredScores.filter(s => s.verdict === 'SALTO_TACTICO').length,
-      punto_caramelo: filteredScores.filter(s => s.verdict === 'PUNTO_CARAMELO').length,
-      atractivo: filteredScores.filter(s => s.verdict === 'ATRACTIVO').length,
-      neutral: filteredScores.filter(s => s.verdict === 'NEUTRAL').length,
-      evitar: filteredScores.filter(s => s.verdict === 'EVITAR').length,
-      gatillar: enrichedScores.filter(s => s.actionScore.label === 'GATILLAR YA').length,
-      atractivoAction: enrichedScores.filter(s => s.actionScore.label === 'ATRACTIVO').length,
-      take_profit: enrichedScores.filter(s => s.isTakeProfit).length,
+      activos: enrichedScores.filter(s => !s.anestesiado).length,
       anestesiado: enrichedScores.filter(s => s.anestesiado).length,
+      gatillar: enrichedScores.filter(s => !s.anestesiado && s.actionScore.label === 'GATILLAR YA').length,
+      atractivoAction: enrichedScores.filter(s => !s.anestesiado && s.actionScore.label === 'ATRACTIVO').length,
+      take_profit: enrichedScores.filter(s => s.isTakeProfit).length,
     };
   }, [allScores, filteredScores, enrichedScores]);
 
-  // ─── MEP & RP from Market Truth ───────────────────────────────────
+  // ─── MEP & RP ─────────────────────────────────────────────────────
   const mepValue = marketTruth?.mep?.value ?? null;
   const mepConfidence = marketTruth?.mep?.confidence ?? null;
   const rpValue = marketTruth?.riesgo_pais?.value ?? null;
-  const rpConfidence = marketTruth?.riesgo_pais?.confidence ?? null;
 
   function confidenceBadge(level: string | null): { color: string; bg: string } {
     if (!level) return { color: '#6b7280', bg: 'rgba(107,114,128,0.08)' };
@@ -1033,60 +913,48 @@ export default function CockpitTab({
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // RENDER
+  // RENDER — EJECUCIÓN PURA
   // ═══════════════════════════════════════════════════════════════════
   return (
     <div className="space-y-5">
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* HEADER                                                       */}
+      {/* HEADER — EJECUCIÓN PURA                                      */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="nexus-banner relative p-5 sm:p-6">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h2 className="text-xl font-bold text-app-text neon-price mb-1">
-              ◈ COCKPIT TÁCTICO — QUANT X
+              ◈ EJECUCIÓN PURA — QUANT X
             </h2>
             <p className="text-sm text-app-text3">
-              Quantitative Scanner · S/R + Volume + Pressure → Trigger Engine · Horizonte: {horizonLabel}
+              El backend analiza, la pantalla ordena la acción · Horizonte: {horizonLabel}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {/* V5.2: Watchlist counter badge */}
             {watchlist.length > 0 && (
               <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-[#fbbf24]/10 border border-[#fbbf24]/20 text-[9px] text-[#fbbf24] font-medium">
-                <Star className="w-2.5 h-2.5 fill-[#fbbf24]" />
-                {watchlist.length}
+                <Star className="w-2.5 h-2.5 fill-[#fbbf24]" />{watchlist.length}
               </span>
             )}
-            {/* V5.2: Price alerts counter badge */}
             {alertCount > 0 && (
               <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-[#f87171]/10 border border-[#f87171]/20 text-[9px] text-[#f87171] font-medium">
-                <BellRing className="w-2.5 h-2.5" />
-                {alertCount}
+                <BellRing className="w-2.5 h-2.5" />{alertCount}
               </span>
             )}
-            {/* V5.1: Sound alert toggle */}
-            <button
-              onClick={toggleSound}
+            <button onClick={toggleSound}
               className={`flex items-center gap-1 px-2 py-1 rounded-lg border transition-all duration-150 ${
-                soundEnabled
-                  ? 'bg-[#f87171]/10 border-[#f87171]/30 text-[#f87171]'
-                  : 'bg-app-subtle/40 border-app-border/40 text-app-text4 hover:text-app-text3'
+                soundEnabled ? 'bg-[#f87171]/10 border-[#f87171]/30 text-[#f87171]' : 'bg-app-subtle/40 border-app-border/40 text-app-text4 hover:text-app-text3'
               }`}
-              title={soundEnabled ? 'Desactivar alerta sonora GATILLAR YA' : 'Activar alerta sonora GATILLAR YA'}
-            >
+              title={soundEnabled ? 'Desactivar alerta sonora' : 'Activar alerta sonora'}>
               {soundEnabled ? <Bell className="w-3.5 h-3.5" /> : <BellOff className="w-3.5 h-3.5" />}
               <span className="text-[9px] font-medium hidden sm:inline">{soundEnabled ? 'ON' : 'OFF'}</span>
             </button>
             {isLive && (
               <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-app-accent-dim text-[10px] text-[#2eebc8]">
-                <span className="live-dot" />
-                LIVE
+                <span className="live-dot" />LIVE
               </span>
             )}
-            {engineVersion && (
-              <span className="text-[9px] text-app-text4 font-mono">{engineVersion}</span>
-            )}
+            {engineVersion && <span className="text-[9px] text-app-text4 font-mono">{engineVersion}</span>}
           </div>
         </div>
         <div className="gradient-line-animated mt-3" />
@@ -1094,67 +962,47 @@ export default function CockpitTab({
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* STALE DATA WARNING                                            */}
+      {/* V7.0-FASE2: MÓDULO DE EJECUCIÓN PURA                         */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {adaptiveTakeProfit && position && (
+        <EjecucionPuraCard
+          takeProfitResult={adaptiveTakeProfit}
+          ticker={position.ticker}
+          noAlternativeBuyImbalance={noAlternativeBuyImbalance}
+        />
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* STALE / MARKET CLOSED WARNINGS                                */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {isStale && (
         <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#fb923c]/8 border border-[#fb923c]/25 text-[10px] text-[#fb923c] animate-fadeInUp" style={{ boxShadow: '0 0 15px rgba(251,146,60,0.1)' }}>
           <span className="text-xs">⏳</span>
           <span className="font-medium uppercase tracking-wider">Datos en caché</span>
-          <span className="text-[9px] text-[#fb923c]/70">— Las APIs externas no responden, mostrando último valor disponible</span>
+          <span className="text-[9px] text-[#fb923c]/70">— APIs no responden</span>
         </div>
       )}
-
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/* MARKET CLOSED WARNING (Cockpit-specific)                      */}
-      {/* ═══════════════════════════════════════════════════════════ */}
       {!marketOpen && isLive && (
         <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#fb923c]/6 border border-[#fb923c]/20 text-[10px] text-[#fb923c] animate-fadeInUp">
           <span className="text-xs">🏦</span>
           <span className="font-medium uppercase tracking-wider">Mercado cerrado</span>
-          <span className="text-[9px] text-[#fb923c]/70">— Datos de la última rueda · Polling reducido a 5 min</span>
+          <span className="text-[9px] text-[#fb923c]/70">— Polling reducido</span>
         </div>
       )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* V5.2: KEYBOARD SHORTCUTS INFO PANEL                           */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="animate-fadeInUp">
-        <button
-          onClick={() => setShortcutsExpanded(prev => !prev)}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-app-subtle/40 border border-app-border/40 text-[10px] font-medium text-app-text3 hover:text-app-text2 hover:bg-app-hover transition-all"
-        >
-          <Keyboard className="w-3 h-3" />
-          ⌨ Shortcuts
-          <span className="text-[8px] text-app-text4">{shortcutsExpanded ? '▲' : '▼'}</span>
-        </button>
-        {shortcutsExpanded && (
-          <div className="mt-1.5 flex items-center gap-3 flex-wrap px-3 py-2 rounded-lg bg-app-subtle/20 border border-app-border/20 text-[9px] text-app-text3 animate-fadeInUp">
-            <span className="flex items-center gap-1"><kbd>1-5</kbd> Tabs</span>
-            <span className="flex items-center gap-1"><kbd>L</kbd> LIVE</span>
-            <span className="flex items-center gap-1"><kbd>S</kbd> Sonido</span>
-            <span className="flex items-center gap-1"><kbd>C</kbd> CSV</span>
-            <span className="flex items-center gap-1"><kbd>/</kbd> Buscar</span>
-            <span className="flex items-center gap-1"><kbd>Esc</kbd> Limpiar</span>
-          </div>
-        )}
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/* SUMMARY BAR — V5.0 Enhanced with Action Score counts          */}
+      {/* SUMMARY BAR — Simplificado                                     */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="nexus-banner glass px-4 py-3 animate-fadeInUp overflow-x-auto scrollbar-hide" style={{ borderLeft: '3px solid rgba(46,235,200,0.2)' }}>
         <div className="flex items-center gap-3 min-w-max text-xs">
-          {/* Total instruments */}
+          {/* Activos */}
           <div className="flex items-center gap-1.5">
-            <span className="text-app-text4 uppercase tracking-wider text-[10px]">Instrumentos</span>
-            <span className="font-mono font-bold text-app-text">{localSummary.within_horizon}</span>
-            {localSummary.total !== localSummary.within_horizon && (
-              <span className="text-app-text4 text-[9px]">/{localSummary.total}</span>
-            )}
+            <span className="text-app-text4 uppercase tracking-wider text-[10px]">Activos</span>
+            <span className="font-mono font-bold text-app-text">{localSummary.activos}</span>
           </div>
           <div className="w-px h-3 bg-app-border/40" />
 
-          {/* V5.4: TAKE PROFIT count — highest priority */}
+          {/* Take Profit */}
           {localSummary.take_profit > 0 && (
             <>
               <div className="flex items-center gap-1.5">
@@ -1165,7 +1013,7 @@ export default function CockpitTab({
             </>
           )}
 
-          {/* V5.0: GATILLAR YA count */}
+          {/* Gatillar */}
           {localSummary.gatillar > 0 && (
             <>
               <div className="flex items-center gap-1.5">
@@ -1176,7 +1024,7 @@ export default function CockpitTab({
             </>
           )}
 
-          {/* V5.0: ATRACTIVO action count */}
+          {/* Atractivo */}
           {localSummary.atractivoAction > 0 && (
             <>
               <div className="flex items-center gap-1.5">
@@ -1187,26 +1035,22 @@ export default function CockpitTab({
             </>
           )}
 
-          {/* SALTO_TACTICO */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-wider" style={{ color: '#f87171' }}>⚡ Salto</span>
-            <span className="font-mono font-bold" style={{ color: '#f87171' }}>{localSummary.salto_tactico}</span>
-          </div>
-          <div className="w-px h-3 bg-app-border/40" />
-
-          {/* PUNTO_CARAMELO */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-wider" style={{ color: '#fbbf24' }}>🍬 Caramelo</span>
-            <span className="font-mono font-bold" style={{ color: '#fbbf24' }}>{localSummary.punto_caramelo}</span>
-          </div>
-          <div className="w-px h-3 bg-app-border/40" />
-
-          {/* V7.0-FASE1: ANESTESIADO count — instruments with ATR% < 0.30% */}
+          {/* Anestesiados count with toggle */}
           {localSummary.anestesiado > 0 && (
             <>
               <div className="flex items-center gap-1.5">
-                <span className="nexus-pill" style={{ color: '#6b7280', background: 'rgba(107,114,128,0.15)' }}>💤 Anestesiados</span>
-                <span className="font-mono font-bold" style={{ color: '#6b7280' }}>{localSummary.anestesiado}</span>
+                <button
+                  onClick={() => setShowAnestesiados(prev => !prev)}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded-lg border transition-all ${
+                    showAnestesiados
+                      ? 'bg-[#6b7280]/15 border-[#6b7280]/30 text-[#94a3b8]'
+                      : 'bg-transparent border-transparent text-[#6b7280] hover:text-[#94a3b8]'
+                  }`}
+                  title={showAnestesiados ? 'Ocultar instrumentos anestesiados' : 'Mostrar instrumentos anestesiados (ATR < 0.30%)'}
+                >
+                  {showAnestesiados ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                  <span className="nexus-pill" style={{ color: '#6b7280', background: 'rgba(107,114,128,0.15)' }}>💤 {localSummary.anestesiado}</span>
+                </button>
               </div>
               <div className="w-px h-3 bg-app-border/40" />
             </>
@@ -1217,16 +1061,10 @@ export default function CockpitTab({
             <>
               <div className="flex items-center gap-1.5">
                 <span className="text-app-text4 uppercase tracking-wider text-[10px]">MEP</span>
-                <span className="font-mono font-bold text-app-accent-text">
-                  {fmtNum(mepValue, 2)}
-                </span>
+                <span className="font-mono font-bold text-app-accent-text">{fmtNum(mepValue, 2)}</span>
                 {mepConfidence && (() => {
                   const cb = confidenceBadge(mepConfidence);
-                  return (
-                    <span className="px-1.5 py-0.5 rounded text-[8px] font-bold" style={{ color: cb.color, background: cb.bg }}>
-                      {mepConfidence}
-                    </span>
-                  );
+                  return <span className="px-1.5 py-0.5 rounded text-[8px] font-bold" style={{ color: cb.color, background: cb.bg }}>{mepConfidence}</span>;
                 })()}
               </div>
               <div className="w-px h-3 bg-app-border/40" />
@@ -1238,17 +1076,7 @@ export default function CockpitTab({
             <>
               <div className="flex items-center gap-1.5">
                 <span className="text-app-text4 uppercase tracking-wider text-[10px]">RP</span>
-                <span className="font-mono font-bold text-app-text2">
-                  {fmtNum(rpValue, 0)}
-                </span>
-                {rpConfidence && (() => {
-                  const cb = confidenceBadge(rpConfidence);
-                  return (
-                    <span className="px-1.5 py-0.5 rounded text-[8px] font-bold" style={{ color: cb.color, background: cb.bg }}>
-                      {rpConfidence}
-                    </span>
-                  );
-                })()}
+                <span className="font-mono font-bold text-app-text2">{fmtNum(rpValue, 0)}</span>
               </div>
               <div className="w-px h-3 bg-app-border/40" />
             </>
@@ -1265,98 +1093,78 @@ export default function CockpitTab({
       </div>
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* V5.2: MARKET HEATMAP MINI-VISUALIZATION                       */}
-      {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="relative">
-        <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#2eebc8]/5 via-transparent to-[#f472b6]/5 pointer-events-none" />
-        <MarketHeatmapStrip scores={displayedScores} onBlockClick={handleHeatmapClick} />
-      </div>
-
-      {/* ═══════════════════════════════════════════════════════════ */}
-      {/* HORIZON FILTER                                                */}
+      {/* HORIZON FILTER + SEARCH + TOOLS                                */}
       {/* ═══════════════════════════════════════════════════════════ */}
       <div className="flex items-center gap-2 animate-fadeInUp overflow-x-auto scrollbar-hide flex-wrap">
         <span className="text-app-text4 text-[10px] uppercase tracking-wider shrink-0">Horizonte</span>
         <div className="flex items-center gap-1">
           {HORIZON_OPTIONS.map(opt => (
-            <button
-              key={opt.value}
-              onClick={() => handleHorizonChange(opt.value)}
+            <button key={opt.value} onClick={() => handleHorizonChange(opt.value)}
               className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-semibold transition-all duration-150 ${
                 horizon === opt.value
                   ? 'bg-[#2eebc8]/15 text-[#2eebc8] border border-[#2eebc8]/30 shadow-[0_0_10px_rgba(46,235,200,0.15)]'
                   : 'bg-app-subtle/40 text-app-text3 border border-transparent hover:bg-app-hover hover:text-app-text2'
               }`}
-              title={opt.desc}
-            >
+              title={opt.desc}>
               {opt.label}
             </button>
           ))}
         </div>
-        <span className="text-app-text4 text-[9px] font-mono shrink-0">
-          {displayedScores.length} instr.
-        </span>
+        <span className="text-app-text4 text-[9px] font-mono shrink-0">{displayedScores.length} instr.</span>
         <div className="w-px h-4 bg-app-border/40 shrink-0" />
-        {/* V5.1: Search input */}
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-app-text4" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Ticker..."
-            className="h-7 w-28 sm:w-36 pl-7 pr-2 rounded-lg bg-app-subtle/40 border border-app-border/40 text-[10px] font-mono text-app-text placeholder:text-app-text4 focus:outline-none focus:ring-1 focus:ring-[#2eebc8]/40 focus:border-[#2eebc8]/30 transition-all"
-          />
+          <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Ticker..."
+            className="h-7 w-28 sm:w-36 pl-7 pr-2 rounded-lg bg-app-subtle/40 border border-app-border/40 text-[10px] font-mono text-app-text placeholder:text-app-text4 focus:outline-none focus:ring-1 focus:ring-[#2eebc8]/40 focus:border-[#2eebc8]/30 transition-all" />
         </div>
-        {/* V5.1: CSV Export button */}
-        <button
-          onClick={handleExportCSV}
-          disabled={displayedScores.length === 0}
+        <button onClick={handleExportCSV} disabled={displayedScores.length === 0}
           className="flex items-center gap-1 px-2 py-1 rounded-lg bg-app-subtle/40 border border-app-border/40 text-[10px] font-medium text-app-text3 hover:text-app-text2 hover:bg-app-hover transition-all disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-          title="Exportar datos a CSV"
-        >
-          <Download className="w-3 h-3" />
-          <span className="hidden sm:inline">CSV</span>
+          title="Exportar CSV">
+          <Download className="w-3 h-3" /><span className="hidden sm:inline">CSV</span>
         </button>
         <div className="w-px h-4 bg-app-border/40 shrink-0" />
-        {/* V5.2: Watchlist filter toggle */}
-        <button
-          onClick={() => setWatchlistFilterActive(prev => !prev)}
+        <button onClick={() => setWatchlistFilterActive(prev => !prev)}
           className={`flex items-center gap-1 px-2 py-1 rounded-lg border transition-all duration-150 shrink-0 ${
-            watchlistFilterActive
-              ? 'bg-[#fbbf24]/10 border-[#fbbf24]/30 text-[#fbbf24]'
-              : 'bg-app-subtle/40 border-app-border/40 text-app-text4 hover:text-app-text3'
+            watchlistFilterActive ? 'bg-[#fbbf24]/10 border-[#fbbf24]/30 text-[#fbbf24]' : 'bg-app-subtle/40 border-app-border/40 text-app-text4 hover:text-app-text3'
           }`}
-          title={watchlistFilterActive ? 'Mostrar todos los instrumentos' : 'Filtrar solo watchlist'}
-        >
+          title={watchlistFilterActive ? 'Mostrar todos' : 'Solo watchlist'}>
           <Star className={`w-3 h-3 ${watchlistFilterActive ? 'fill-[#fbbf24]' : ''}`} />
           <span className="text-[9px] font-medium">Watchlist</span>
-          {watchlist.length > 0 && (
-            <span className={`text-[8px] font-mono font-bold ${watchlistFilterActive ? 'text-[#fbbf24]' : 'text-app-text4'}`}>
-              {watchlist.length}
-            </span>
-          )}
+          {watchlist.length > 0 && <span className={`text-[8px] font-mono font-bold ${watchlistFilterActive ? 'text-[#fbbf24]' : 'text-app-text4'}`}>{watchlist.length}</span>}
+        </button>
+        {/* Shortcuts toggle */}
+        <button onClick={() => setShortcutsExpanded(prev => !prev)}
+          className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-app-subtle/40 border border-app-border/40 text-[10px] font-medium text-app-text3 hover:text-app-text2 hover:bg-app-hover transition-all shrink-0">
+          <Keyboard className="w-3 h-3" />⌨ <span className="text-[8px] text-app-text4">{shortcutsExpanded ? '▲' : '▼'}</span>
         </button>
       </div>
 
+      {/* Shortcuts panel */}
+      {shortcutsExpanded && (
+        <div className="flex items-center gap-3 flex-wrap px-3 py-2 rounded-lg bg-app-subtle/20 border border-app-border/20 text-[9px] text-app-text3 animate-fadeInUp">
+          <span className="flex items-center gap-1"><kbd>1-5</kbd> Tabs</span>
+          <span className="flex items-center gap-1"><kbd>L</kbd> LIVE</span>
+          <span className="flex items-center gap-1"><kbd>S</kbd> Sonido</span>
+          <span className="flex items-center gap-1"><kbd>C</kbd> CSV</span>
+          <span className="flex items-center gap-1"><kbd>/</kbd> Buscar</span>
+          <span className="flex items-center gap-1"><kbd>Esc</kbd> Limpiar</span>
+        </div>
+      )}
+
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* EL GRITO — Capa 1 Alert Card                                  */}
+      {/* EL GRITO — Capa 1 Alert Card (simplified)                     */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {elGritoScores.length > 0 && <ElGritoCard scores={enrichedScores} />}
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* V6.2.0: RECENT SCREAMS LOG CONSOLE — Event Tracker            */}
+      {/* SCREAM LOG                                                     */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {latestScream && (
         <div className="scream-console px-4 py-2 animate-fadeInUp">
           <div className="flex items-center gap-2">
             <span className="text-[9px] font-semibold uppercase tracking-wider text-[#fbbf24] shrink-0">SCREAM LOG</span>
             <span className="w-px h-3 bg-[#fbbf24]/20 shrink-0" />
-            <span
-              key={screamKey}
-              className="scream-text-enter font-mono text-[11px] text-[#fbbf24] truncate"
-              style={{ textShadow: '0 0 6px rgba(251,191,36,0.3)' }}
-            >
+            <span key={screamKey} className="scream-text-enter font-mono text-[11px] text-[#fbbf24] truncate" style={{ textShadow: '0 0 6px rgba(251,191,36,0.3)' }}>
               {latestScream}
             </span>
           </div>
@@ -1364,7 +1172,13 @@ export default function CockpitTab({
       )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* TABLA FUSIONADA — V5.1 with mobile responsive                 */}
+      {/* TABLA MINIMALISTA — EJECUCIÓN PURA                            */}
+      {/*                                                                */}
+      {/* Solo columnas esenciales:                                      */}
+      {/*   #, Instrumento, Precio, TEM, Score, ACCIÓN                   */}
+      {/*                                                                 */}
+      {/* Datos secundarios OCULTOS: S/R, Dist%, Inyección, Spread,     */}
+      {/* micro-bars, context rows                                       */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {displayedScores.length === 0 ? (
         <div className="nexus-banner p-8 text-center animate-fadeInUp">
@@ -1372,41 +1186,35 @@ export default function CockpitTab({
             {cockpitScoresLoading ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="animate-spin inline-block w-5 h-5 border-2 border-[#2eebc8] border-t-transparent rounded-full" style={{ boxShadow: '0 0 10px rgba(46,235,200,0.4)' }} />
-                Cargando señales de cockpit...
+                Cargando señales...
               </span>
             ) : searchQuery.trim() ? (
-              <span>No se encontraron instrumentos que coincidan con "{searchQuery.trim()}"</span>
+              <span>No se encontraron instrumentos que coincidan con &quot;{searchQuery.trim()}&quot;</span>
             ) : (
-              'No hay datos de cockpit disponibles. Verifique la conexión al motor.'
+              'No hay datos de cockpit disponibles.'
             )}
           </div>
         </div>
       ) : (
-        <div className={`nexus-banner animate-fadeInUp`}>
-          {/* Scrollable container with sticky header */}
+        <div className="nexus-banner animate-fadeInUp">
           <div className="cockpit-scroll-container">
-            {/* Desktop table header — sticky */}
-            <div className="hidden md:grid nx-sticky-hdr px-4 py-3.5 grid-cols-[36px_1fr_88px_64px_60px_80px_72px_72px_80px_56px_1fr] gap-2 items-center text-[9px] text-app-text4 uppercase tracking-wider font-medium">
+            {/* Desktop header — minimalista: 6 columnas */}
+            <div className="hidden md:grid nx-sticky-hdr px-4 py-3.5 grid-cols-[36px_1fr_100px_80px_72px_1fr] gap-2 items-center text-[9px] text-app-text4 uppercase tracking-wider font-medium">
               <span>#</span>
               <span>Instrumento</span>
               <span className="text-right">Precio</span>
               <span className="text-right">TEM</span>
-              <span className="text-right">VOL</span>
-              <span className="text-right">S/R Cercano</span>
-              <span className="text-right">Dist %</span>
-              <span className="text-right">Inyección</span>
-              <span className="text-right">Spread</span>
               <span className="text-center">Score</span>
               <span className="text-right">ACCIÓN</span>
             </div>
 
-            {/* Mobile header row */}
+            {/* Mobile header */}
             <div className="md:hidden nx-sticky-hdr px-3 py-2 text-[8px] text-app-text4 uppercase tracking-wider font-medium flex items-center justify-between">
               <span>Instrumentos</span>
-              <span>Señales</span>
+              <span>Acción</span>
             </div>
 
-            {/* Rows container — mobile cards, desktop table rows */}
+            {/* Rows */}
             <div className="md:divide-y md:divide-app-border/30 space-y-2 md:space-y-0 px-2 md:px-1 pb-4 md:pb-0">
               {displayedScores.map((score, idx) => {
                 const vc = VERDICT_CONFIG[score.verdict];
@@ -1416,126 +1224,66 @@ export default function CockpitTab({
                 const price = liveData?.last_price ?? instData?.price ?? 0;
                 const tem = instData?.tem ?? 0;
 
-                // V5.0: Action Score styling
                 const asc = ACTION_SCORE_CONFIG[score.actionScore.label] ?? ACTION_SCORE_CONFIG['SIN SEÑAL'];
                 const isGatillar = score.actionScore.label === 'GATILLAR YA';
                 const isAtractivoAction = score.actionScore.label === 'ATRACTIVO';
-
-                // V5.0: Volume Injection styling
-                const vic = VOL_INJECTION_CONFIG[score.volumeInjection.label] ?? VOL_INJECTION_CONFIG['NORMAL'];
-
-                // V5.0: Distance to S/R alert
-                const isNearSR = score.distanceToSR < 0.5;
-                const isVeryNearSR = score.distanceToSR < 0.3;
-
-                // Ticker status dot
-                const dotClass = isGatillar ? 'nx-dot nx-dot-fire' : isAtractivoAction ? 'nx-dot nx-dot-teal' : 'nx-dot nx-dot-gray';
-
-                // VOL display (shared between mobile and desktop)
-                const volDisplay = (() => {
-                  const vol = score.iolVolume || score.volume || instData?.iolVolume || liveData?.iol_volume || instData?.data912Volume || liveData?.volume;
-                  if (vol && vol > 0) {
-                    return vol >= 1_000_000
-                      ? `${(vol / 1_000_000).toFixed(1)}M`
-                      : vol >= 1_000
-                        ? `${(vol / 1_000).toFixed(0)}K`
-                        : vol.toString();
-                  }
-                  return '—';
-                })();
+                const isTakeProfit = !!score.isTakeProfit;
+                const dotClass = isTakeProfit ? 'nx-dot nx-dot-fire' : isGatillar ? 'nx-dot nx-dot-fire' : isAtractivoAction ? 'nx-dot nx-dot-teal' : 'nx-dot nx-dot-gray';
 
                 return (
                   <div
                     key={`${score.ticker}-${score.type}`}
                     id={`cockpit-row-${score.ticker}`}
                     className={`
-                      nexus-row ${isGatillar ? 'nexus-row-gatillar' : ''} ${isAtractivoAction ? 'nexus-row-atractivo' : ''} animate-row-in ${getStaggerClass(idx)} ${triggeredAlerts.has(score.ticker) ? 'nx-alert-flash' : ''} ${screamingRows.has(score.ticker) ? 'nx-scream-flash' : ''}
+                      nexus-row ${isTakeProfit ? 'nexus-row-gatillar' : isGatillar ? 'nexus-row-gatillar' : isAtractivoAction ? 'nexus-row-atractivo' : ''} animate-row-in ${getStaggerClass(idx)} ${triggeredAlerts.has(score.ticker) ? 'nx-alert-flash' : ''} ${screamingRows.has(score.ticker) ? 'nx-scream-flash' : ''}
                     `}
                     style={{
-                      ...(idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 96px' } : {}),
+                      ...(idx >= 8 ? { contentVisibility: 'auto', containIntrinsicSize: '0 72px' } : {}),
                       '--accent-color': asc.color,
                       '--nx-accent': asc.color,
-                      borderLeftColor: asc.color,
+                      borderLeftColor: isTakeProfit ? '#dc2626' : asc.color,
                     } as React.CSSProperties}
                   >
                     {/* ═══════════════════════════════════════════════════ */}
-                    {/* MOBILE CARD LAYOUT (< md)                           */}
+                    {/* MOBILE CARD LAYOUT — Minimalista                    */}
                     {/* ═══════════════════════════════════════════════════ */}
-                    <div className={`md:hidden nexus-row ${isGatillar ? 'nexus-row-gatillar' : ''} ${isAtractivoAction ? 'nexus-row-atractivo' : ''} p-3 rounded-xl`} style={{ background: isGatillar ? 'linear-gradient(135deg, rgba(248,113,113,0.08), rgba(21,29,46,0.9))' : isAtractivoAction ? 'linear-gradient(135deg, rgba(46,235,200,0.05), rgba(21,29,46,0.9))' : 'linear-gradient(135deg, rgba(21,29,46,0.85), rgba(15,23,38,0.7))' }}>
-                      {/* Top row: Rank + Ticker + Type + Action Score badge */}
+                    <div className={`md:hidden nexus-row ${isTakeProfit ? 'nexus-row-gatillar' : isGatillar ? 'nexus-row-gatillar' : isAtractivoAction ? 'nexus-row-atractivo' : ''} p-3 rounded-xl`}
+                      style={{ background: isTakeProfit ? 'linear-gradient(135deg, rgba(220,38,38,0.1), rgba(21,29,46,0.9))' : isGatillar ? 'linear-gradient(135deg, rgba(248,113,113,0.08), rgba(21,29,46,0.9))' : isAtractivoAction ? 'linear-gradient(135deg, rgba(46,235,200,0.05), rgba(21,29,46,0.9))' : 'linear-gradient(135deg, rgba(21,29,46,0.85), rgba(15,23,38,0.7))' }}>
+                      {/* Row 1: Rank + Ticker + Type + Action badge + watchlist */}
                       <div className="flex items-center gap-2 mb-2">
-                        <div className={`rank-badge ${getRankClass(rank)} text-[9px]`} style={{ width: 22, height: 22, fontSize: 9 }}>
-                          {rank}
-                        </div>
+                        <div className={`rank-badge ${getRankClass(rank)} text-[9px]`} style={{ width: 22, height: 22, fontSize: 9 }}>{rank}</div>
                         <div className="flex items-center gap-1.5 min-w-0 flex-1">
                           <span className={dotClass} />
-                          <span className="font-mono font-bold text-sm text-app-text truncate">
-                            {score.ticker}
-                          </span>
-                          {/* V7.0-FASE1: ANESTESIADO badge — ATR% < 0.30% */}
-                          {score.anestesiado && (
-                            <span
-                              className="shrink-0 rounded px-1 text-[9px] font-bold text-white"
-                              style={{ background: '#6b7280' }}
-                              title="Instrumento anestesiado: ATR histórico < 0.30% diario — movimiento insuficiente para scalping"
-                            >
-                              ZZZ
-                            </span>
-                          )}
-                          <span className={`shrink-0 px-1 py-0.5 rounded text-[7px] font-bold ${
-                            score.type === 'LECAP'
-                              ? 'bg-app-accent-dim text-[#2eebc8]'
-                              : 'bg-[#f472b6]/10 text-[#f472b6]'
-                          }`}>
+                          <span className="font-mono font-bold text-sm text-app-text truncate">{score.ticker}</span>
+                          <span className={`shrink-0 px-1 py-0.5 rounded text-[7px] font-bold ${score.type === 'LECAP' ? 'bg-app-accent-dim text-[#2eebc8]' : 'bg-[#f472b6]/10 text-[#f472b6]'}`}>
                             {score.type}
                           </span>
                           <span className="text-[8px] text-app-text4 font-mono">{score.days}d</span>
                         </div>
                         <span
-                          className={`action-score-badge px-1.5 py-0.5 rounded-lg text-[8px] font-bold whitespace-nowrap ${isGatillar ? 'animate-pulse nexus-badge-fire nx-shimmer' : ''} ${isAtractivoAction ? 'nexus-badge-teal' : ''}`}
+                          className={`action-score-badge px-1.5 py-0.5 rounded-lg text-[8px] font-bold whitespace-nowrap ${isTakeProfit || isGatillar ? 'animate-pulse nexus-badge-fire nx-shimmer' : ''} ${isAtractivoAction ? 'nexus-badge-teal' : ''}`}
                           style={{
-                            color: asc.color,
-                            background: asc.bg,
-                            boxShadow: isGatillar ? asc.glow : 'none',
-                            border: isGatillar ? `1px solid ${asc.color}40` : '1px solid transparent',
+                            color: isTakeProfit ? '#dc2626' : asc.color,
+                            background: isTakeProfit ? 'rgba(220,38,38,0.18)' : asc.bg,
+                            boxShadow: isTakeProfit ? '0 0 16px rgba(220,38,38,0.4)' : isGatillar ? asc.glow : 'none',
+                            border: isTakeProfit ? '1px solid rgba(220,38,38,0.4)' : isGatillar ? `1px solid ${asc.color}40` : '1px solid transparent',
                           }}
                         >
-                          {isGatillar ? '🔥 ' : isAtractivoAction ? '✓ ' : ''}
-                          {score.actionScore.label}
+                          {isTakeProfit ? '🚨 VENDER' : isGatillar ? '🔥 GATILLAR' : isAtractivoAction ? '✓ ATRACTIVO' : score.actionScore.label}
                         </span>
-                        {/* V5.2: Score ring next to badge */}
-                        {score.actionScore.label !== 'SIN SEÑAL' && (
-                          <div className="nexus-score-gauge">
-                            <ScoreRing score={score.actionScore.score} color={asc.color} size={18} />
-                          </div>
-                        )}
-                        {/* V5.2: Watchlist star + Price alert bell */}
                         <div className="flex items-center gap-0.5 shrink-0">
-                          <button
-                            onClick={() => toggleWatchlist(score.ticker)}
-                            className={`flex items-center justify-center w-5 h-5 rounded transition-all duration-150 ${
-                              isWatched(score.ticker)
-                                ? 'text-[#fbbf24] hover:text-[#fbbf24]/70'
-                                : 'text-app-text4 hover:text-app-text3'
-                            }`}
-                            title={isWatched(score.ticker) ? 'Quitar de watchlist' : 'Agregar a watchlist'}
-                          >
+                          <button onClick={() => toggleWatchlist(score.ticker)}
+                            className={`flex items-center justify-center w-5 h-5 rounded transition-all duration-150 ${isWatched(score.ticker) ? 'text-[#fbbf24] hover:text-[#fbbf24]/70' : 'text-app-text4 hover:text-app-text3'}`}
+                            title={isWatched(score.ticker) ? 'Quitar de watchlist' : 'Agregar a watchlist'}>
                             <Star className={`w-3 h-3 ${isWatched(score.ticker) ? 'fill-[#fbbf24]' : ''}`} />
                           </button>
-                          <PriceAlertPopover
-                            ticker={score.ticker}
-                            currentPrice={price}
-                            alert={getAlert(score.ticker)}
-                            onSetAlert={setAlert}
-                            onRemoveAlert={removeAlert}
-                            onClearAll={clearAllAlerts}
-                            alertCount={alertCount}
-                          />
+                          <PriceAlertPopover ticker={score.ticker} currentPrice={price} alert={getAlert(score.ticker)}
+                            onSetAlert={setAlert} onRemoveAlert={removeAlert} onClearAll={clearAllAlerts} alertCount={alertCount} />
                         </div>
                       </div>
 
-                      {/* Middle row: Price + TEM + VOL */}
-                      <div className="flex items-center gap-3 text-xs mb-1.5">
+                      {/* Row 2: Precio + TEM + Score ring */}
+                      <div className="flex items-center gap-3 text-xs">
                         <div>
                           <span className="text-app-text4">Precio </span>
                           <span className="font-mono text-app-text2" style={{ textShadow: '0 0 6px rgba(46,235,200,0.3)' }}>{price > 0 ? fmtNum(price, 4) : '—'}</span>
@@ -1544,404 +1292,74 @@ export default function CockpitTab({
                           <span className="text-app-text4">TEM </span>
                           <span className="font-mono text-app-text2">{fmtNum(tem, 2)}%</span>
                         </div>
-                        <div>
-                          <span className="text-app-text4">VOL </span>
-                          <span className="font-mono text-app-text2">{volDisplay}</span>
-                        </div>
-                      </div>
-
-                      {/* Bottom row: S/R + Distancia + Inyeccion + Spread */}
-                      <div className="flex items-center gap-2 text-[10px] flex-wrap">
-                        <div>
-                          <span className="text-app-text4">S/R </span>
-                          {score.nearestSR ? (
-                            <span className={`font-mono ${score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
-                              {score.nearestSR.type}:{score.nearestSR.level.toFixed(4)}
-                              {/* V6.1.0: Polarity reversal indicator */}
-                              {score.polarity === 'BULLISH_BREAKOUT' && (
-                                <span className="text-[8px] text-[#fbbf24] ml-0.5" title="Ruptura alcista: la resistencia se transformó en soporte">⬆</span>
-                              )}
-                              {score.polarity === 'BEARISH_BREAKDOWN' && (
-                                <span className="text-[8px] text-[#f87171] ml-0.5" title="Ruptura bajista: el soporte se transformó en resistencia">⬇</span>
-                              )}
-                              {/* V6.0: Indicador de fuente S/R histórica */}
-                              {score.srSource === 'historical_ohlc' && (
-                                <span className="text-[8px] text-[#2eebc8] opacity-60 ml-0.5" title="S/R estructural desde cierres OHLC de 30 días">●</span>
-                              )}
-                              {/* V6.2.0: Indicador ATR — muestra Rango Verdadero Promedio para contexto de volatilidad */}
-                              {score.atr != null && score.atr > 0 && (
-                                <span className="text-[7px] text-[#a78bfa] opacity-70 ml-0.5" title={`ATR: ${(score.atr * 100).toFixed(2)}pb — Rango Verdadero Promedio (ajustado por gaps)`}>◆</span>
-                              )}
-                              {/* V7.0-FASE1: ATR% display — strikethrough if anestesiado */}
-                              {score.atrPct != null && (
-                                <span
-                                  className={`text-[7px] ml-0.5 ${score.anestesiado ? 'text-[#6b7280] line-through opacity-60' : 'text-[#a78bfa] opacity-70'}`}
-                                  title={score.anestesiado ? `ATR%: ${score.atrPct.toFixed(2)}% — Instrumento anestesiado` : `ATR%: ${score.atrPct.toFixed(2)}% del precio`}
-                                >
-                                  {score.atrPct.toFixed(2)}%
-                                </span>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="font-mono text-app-text4">—</span>
+                        <div className="ml-auto flex items-center gap-1">
+                          {score.actionScore.label !== 'SIN SEÑAL' && (
+                            <div className="nexus-score-gauge"><ScoreRing score={score.unifiedScore} color={vc.color} size={22} /></div>
                           )}
-                        </div>
-                        <div>
-                          <span className="text-app-text4">Dist </span>
-                          <span className={`font-mono font-bold ${
-                            isVeryNearSR ? 'text-[#f87171] animate-pulse' :
-                            isNearSR ? 'text-[#fbbf24]' :
-                            score.distanceToSR < 1.0 ? 'text-app-accent-text' :
-                            'text-app-text3'
-                          }`}>
-                            {score.distanceToSR < 99 ? `${score.distanceToSR.toFixed(2)}%` : '—'}
-                          </span>
-                        </div>
-                        <span
-                          className={`nexus-vol-badge inline-block px-1.5 py-0.5 rounded-md text-[8px] font-bold ${vic.pulse ? 'animate-pulse' : ''}`}
-                          style={{ color: vic.color, background: vic.bg }}
-                        >
-                          {score.volumeInjection.label}
-                        </span>
-                        <div>
-                          <span className="text-app-text4">Sp </span>
-                          <span className={`font-mono font-semibold ${score.spreadNeto >= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'}`}>
-                            {fmtPct(score.spreadNeto, 2)}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Context row: micro-score bars + reason */}
-                      <div className="mt-2 pt-1.5 nx-ctx-sep">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[10px] text-app-text4">
-                            ΔTIR{' '}
-                            <span className={`font-mono ${score.deltaTIR !== null ? (score.deltaTIR > 0 ? 'text-[#2eebc8]' : score.deltaTIR < -0.02 ? 'text-[#f87171]' : 'text-app-text3') : 'text-app-text4'}`}>
-                              {score.deltaTIR !== null ? fmtPct(score.deltaTIR, 2) : '—'}
-                            </span>
-                          </span>
-                          <span className="text-[10px] text-app-text4">
-                            Presión{' '}
-                            <span className={`font-mono ${
-                              score.presionPuntas !== null
-                                ? score.presionPuntas > 20 ? 'text-[#2eebc8]'
-                                  : score.presionPuntas < -20 ? 'text-[#f87171]'
-                                  : 'text-app-text3'
-                                : 'text-app-text4'
-                            }`}>
-                              {score.presionPuntas !== null ? `${score.presionPuntas >= 0 ? '+' : ''}${score.presionPuntas.toFixed(2)}%` : '—'}
-                            </span>
-                            {/* V7.0-FASE1: Top-5 book imbalance label */}
-                            {score.bookImbalanceLabel === 'DESBALANCE EXTREMO' && (
-                              <span className="font-mono text-[9px] font-bold ml-0.5" style={{ color: '#f87171' }}>⚡ DESBALANCE EXTREMO</span>
-                            )}
-                            {score.bookImbalanceLabel === 'DESBALANCE COMPRA' && (
-                              <span className="font-mono text-[9px] font-bold ml-0.5" style={{ color: '#2eebc8' }}>📈 DESBALANCE COMPRA</span>
-                            )}
-                            {score.bookImbalanceLabel === 'DESBALANCE VENTA' && (
-                              <span className="font-mono text-[9px] font-bold ml-0.5" style={{ color: '#f87171' }}>📉 DESBALANCE VENTA</span>
-                            )}
-                          </span>
-                          <span className="text-[10px] text-app-text4">
-                            Upside{' '}
-                            <span className={`font-mono ${score.upsideCapital > 1 ? 'text-[#2eebc8]' : score.upsideCapital > 0.3 ? 'text-[#fbbf24]' : 'text-app-text3'}`}>
-                              +{fmtNum(score.upsideCapital, 2)}%
-                            </span>
-                          </span>
-                          {/* Micro-score bars */}
-                          <div className="flex items-center gap-1.5 ml-1">
-                            <div className="flex flex-col gap-[2px]">
-                              <MicroScoreBar value={score.spreadNetoScore} color={MICRO_BAR_COLORS.spreadNeto} />
-                              <MicroScoreBar value={score.deltaTIRScore} color={MICRO_BAR_COLORS.deltaTIR} />
-                              <MicroScoreBar value={score.presionPuntasScore} color={MICRO_BAR_COLORS.presion} />
-                              <MicroScoreBar value={score.upsideCapitalScore} color={MICRO_BAR_COLORS.upside} />
-                              <MicroScoreBar value={score.velocidadScore} color={MICRO_BAR_COLORS.velocidad} />
-                            </div>
-                            <div className="flex flex-col gap-[2px] text-[6px] text-app-text4 leading-none">
-                              <span>Sp</span>
-                              <span>ΔT</span>
-                              <span>Pr</span>
-                              <span>Up</span>
-                              <span>Ve</span>
-                            </div>
-                          </div>
-                          {score.actionScore.label !== 'SIN SEÑAL' && score.actionScore.reason && (
-                            <span className="text-[9px] truncate max-w-[160px]" style={{ color: asc.color + 'bb' }} title={score.actionScore.reason}>
-                              {score.actionScore.reason}
-                            </span>
-                          )}
+                          <span className="font-mono font-bold text-sm" style={{ color: vc.color }}>{score.unifiedScore.toFixed(0)}</span>
                         </div>
                       </div>
                     </div>
 
                     {/* ═══════════════════════════════════════════════════ */}
-                    {/* DESKTOP GRID LAYOUT (>= md) — QUANT X CARD         */}
+                    {/* DESKTOP GRID — Minimalista 6 columnas               */}
                     {/* ═══════════════════════════════════════════════════ */}
                     <div className="hidden md:block cockpit-row-card">
-                      {/* Main row: All 11 columns */}
-                      <div className="grid grid-cols-[36px_1fr_88px_64px_60px_80px_72px_72px_80px_56px_1fr] gap-2 items-center py-3.5">
+                      <div className="grid grid-cols-[36px_1fr_100px_80px_72px_1fr] gap-2 items-center py-3.5">
                         {/* Rank */}
-                        <div className={`rank-badge ${getRankClass(rank)} text-[10px]`} style={{ width: 30, height: 30, fontSize: 10 }}>
-                          {rank}
-                        </div>
+                        <div className={`rank-badge ${getRankClass(rank)} text-[10px]`} style={{ width: 30, height: 30, fontSize: 10 }}>{rank}</div>
 
-                        {/* Ticker + Type + Status dot + V5.2: Star + Bell */}
+                        {/* Ticker + Type + Star + Bell */}
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className={dotClass} />
-                          <span className="font-mono font-bold text-sm text-app-text truncate">
-                            {score.ticker}
-                          </span>
-                          {/* V7.0-FASE1: ANESTESIADO badge — ATR% < 0.30% */}
-                          {score.anestesiado && (
-                            <span
-                              className="shrink-0 rounded px-1 text-[9px] font-bold text-white"
-                              style={{ background: '#6b7280' }}
-                              title="Instrumento anestesiado: ATR histórico < 0.30% diario — movimiento insuficiente para scalping"
-                            >
-                              ZZZ
-                            </span>
-                          )}
-                          <span className={`shrink-0 px-1 py-0.5 rounded text-[7px] font-bold ${
-                            score.type === 'LECAP'
-                              ? 'bg-app-accent-dim text-[#2eebc8]'
-                              : 'bg-[#f472b6]/10 text-[#f472b6]'
-                          }`}>
+                          <span className="font-mono font-bold text-sm text-app-text truncate">{score.ticker}</span>
+                          <span className={`shrink-0 px-1 py-0.5 rounded text-[7px] font-bold ${score.type === 'LECAP' ? 'bg-app-accent-dim text-[#2eebc8]' : 'bg-[#f472b6]/10 text-[#f472b6]'}`}>
                             {score.type}
                           </span>
                           <span className="text-[8px] text-app-text4 font-mono">{score.days}d</span>
-                          {/* V5.2: Watchlist star */}
-                          <button
-                            onClick={() => toggleWatchlist(score.ticker)}
-                            className={`flex items-center justify-center w-4 h-4 rounded transition-all duration-150 shrink-0 ${
-                              isWatched(score.ticker)
-                                ? 'text-[#fbbf24] hover:text-[#fbbf24]/70'
-                                : 'text-app-text4 hover:text-app-text3'
-                            }`}
-                            title={isWatched(score.ticker) ? 'Quitar de watchlist' : 'Agregar a watchlist'}
-                          >
+                          <button onClick={() => toggleWatchlist(score.ticker)}
+                            className={`flex items-center justify-center w-4 h-4 rounded transition-all duration-150 shrink-0 ${isWatched(score.ticker) ? 'text-[#fbbf24] hover:text-[#fbbf24]/70' : 'text-app-text4 hover:text-app-text3'}`}
+                            title={isWatched(score.ticker) ? 'Quitar de watchlist' : 'Agregar a watchlist'}>
                             <Star className={`w-2.5 h-2.5 ${isWatched(score.ticker) ? 'fill-[#fbbf24]' : ''}`} />
                           </button>
-                          {/* V5.2: Price alert bell */}
-                          <PriceAlertPopover
-                            ticker={score.ticker}
-                            currentPrice={price}
-                            alert={getAlert(score.ticker)}
-                            onSetAlert={setAlert}
-                            onRemoveAlert={removeAlert}
-                            onClearAll={clearAllAlerts}
-                            alertCount={alertCount}
-                          />
+                          <PriceAlertPopover ticker={score.ticker} currentPrice={price} alert={getAlert(score.ticker)}
+                            onSetAlert={setAlert} onRemoveAlert={removeAlert} onClearAll={clearAllAlerts} alertCount={alertCount} />
                         </div>
 
                         {/* Price */}
-                        <div className="text-right font-mono text-base font-bold text-app-text neon-price" style={{ textShadow: '0 0 8px rgba(46,235,200,0.5), 0 0 20px rgba(46,235,200,0.2)' }}>
+                        <div className="text-right font-mono text-base font-bold text-app-text neon-price"
+                          style={{ textShadow: '0 0 8px rgba(46,235,200,0.5), 0 0 20px rgba(46,235,200,0.2)' }}>
                           {price > 0 ? fmtNum(price, 4) : '—'}
                         </div>
 
                         {/* TEM */}
-                        <div className="text-right font-mono text-sm font-semibold text-app-text2">
-                          {fmtNum(tem, 2)}%
-                        </div>
+                        <div className="text-right font-mono text-sm font-semibold text-app-text2">{fmtNum(tem, 2)}%</div>
 
-                        {/* VOL */}
-                        <div className="text-right font-mono text-sm font-semibold text-app-text2">
-                          {volDisplay}
-                        </div>
-
-                        {/* V6.1.0: S/R MAS CERCANO (polarity-aware structural) */}
-                        <div className="text-right font-mono text-sm">
-                          {score.nearestSR ? (
-                            <span className={score.nearestSR.type === 'S' ? 'text-[#2eebc8]' : 'text-[#f87171]'}>
-                              <span className="text-[10px] font-bold opacity-70">{score.nearestSR.type}: </span>
-                              {score.nearestSR.level.toFixed(4)}
-                              {/* V6.1.0: Polarity reversal indicators */}
-                              {score.polarity === 'BULLISH_BREAKOUT' && (
-                                <span className="text-[8px] text-[#fbbf24] ml-0.5" title="Ruptura alcista: la resistencia se transformó en soporte">⬆</span>
-                              )}
-                              {score.polarity === 'BEARISH_BREAKDOWN' && (
-                                <span className="text-[8px] text-[#f87171] ml-0.5" title="Ruptura bajista: el soporte se transformó en resistencia">⬇</span>
-                              )}
-                              {/* V6.0: Punto verde = S/R estructural histórico, sin punto = fallback intradía */}
-                              {score.srSource === 'historical_ohlc' && (
-                                <span className="text-[7px] text-[#2eebc8] opacity-70 ml-0.5" title="S/R estructural desde cierres OHLC de 30 días">⬤</span>
-                              )}
-                              {/* V6.2.0: Diamante ATR — Rango Verdadero Promedio (volatilidad ajustada por gaps) */}
-                              {score.atr != null && score.atr > 0 && (
-                                <span className="text-[7px] text-[#a78bfa] opacity-70 ml-0.5" title={`ATR: ${(score.atr * 100).toFixed(2)}pb — Rango Verdadero Promedio (ajustado por gaps)`}>◆</span>
-                              )}
-                              {/* V7.0-FASE1: ATR% display — strikethrough if anestesiado */}
-                              {score.atrPct != null && (
-                                <span
-                                  className={`text-[7px] ml-0.5 ${score.anestesiado ? 'text-[#6b7280] line-through opacity-60' : 'text-[#a78bfa] opacity-70'}`}
-                                  title={score.anestesiado ? `ATR%: ${score.atrPct.toFixed(2)}% — Instrumento anestesiado` : `ATR%: ${score.atrPct.toFixed(2)}% del precio`}
-                                >
-                                  {score.atrPct.toFixed(2)}%
-                                </span>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="text-app-text4">—</span>
-                          )}
-                        </div>
-
-                        {/* V5.0: DISTANCIA A S/R (%) — NEXUS Proximity Gauge */}
-                        <div className={`nexus-prox text-right font-mono text-base font-bold relative ${
-                          isVeryNearSR ? 'bg-[#f87171]/15 border border-[#f87171]/30' :
-                          isNearSR ? 'bg-[#fbbf24]/10 border border-[#fbbf24]/25' :
-                          ''
-                        }`}>
-                          <span
-                            className={`${
-                              isVeryNearSR ? 'text-[#f87171]' :
-                              isNearSR ? 'text-[#fbbf24]' :
-                              score.distanceToSR < 1.0 ? 'text-app-accent-text font-bold' :
-                              'text-app-text3'
-                            }`}
-                          >
-                            {score.distanceToSR < 99 ? `${score.distanceToSR.toFixed(2)}%` : '—'}
-                          </span>
-                          {score.distanceToSR < 99 && (
-                            <div className="w-full h-[4px] rounded-full bg-app-subtle/40 mt-1 overflow-hidden">
-                              <div
-                                className="gauge-fill"
-                                style={{
-                                  width: `${Math.max(0, Math.min(100, (1 - score.distanceToSR / 5) * 100))}%`,
-                                  backgroundColor: isVeryNearSR ? '#f87171' : isNearSR ? '#fbbf24' : score.distanceToSR < 1.0 ? '#2eebc8' : '#6b7280',
-                                  boxShadow: isVeryNearSR ? '0 0 6px rgba(248,113,113,0.5)' : isNearSR ? '0 0 4px rgba(251,191,36,0.3)' : 'none',
-                                }}
-                              />
-                            </div>
-                          )}
-                        </div>
-
-                        {/* V5.0: INYECCION DE VOLUMEN */}
-                        <div className="text-right">
-                          <span
-                            className={`nx-vol inline-block px-2.5 py-1 rounded-lg text-[11px] font-bold ${vic.pulse ? 'animate-pulse' : ''}`}
-                            style={{ color: vic.color, background: vic.bg, boxShadow: vic.pulse ? `0 0 8px ${vic.color}40` : 'none' }}
-                          >
-                            {score.volumeInjection.label}
-                          </span>
-                        </div>
-
-                        {/* Spread Neto */}
-                        <div className={`text-right font-mono text-sm font-semibold ${
-                          score.spreadNeto >= 0 ? 'text-[#2eebc8]' : 'text-[#f87171]'
-                        }`}>
-                          {fmtPct(score.spreadNeto, 2)}
-                        </div>
-
-                        {/* V5.4: UnifiedScore — base-100 hero gauge (SINGLE SOURCE OF TRUTH) */}
+                        {/* Score Ring + number */}
                         <div className="flex justify-center items-center">
                           <div className="nexus-score-gauge relative">
                             <ScoreRing score={score.unifiedScore} color={vc.color} size={40} />
-                            <span
-                              className="absolute inset-0 flex items-center justify-center font-mono font-black text-sm"
-                              style={{ color: vc.color }}
-                            >
+                            <span className="absolute inset-0 flex items-center justify-center font-mono font-black text-sm" style={{ color: vc.color }}>
                               {score.unifiedScore.toFixed(0)}
                             </span>
                           </div>
                         </div>
 
-                        {/* V5.0: SCORE — EL GATILLADOR */}
+                        {/* ACCIÓN — El Gatillador badge */}
                         <div className="flex justify-end items-center gap-1.5">
                           <span
-                            className={`action-score-badge px-3 py-2 rounded-xl text-[11px] font-bold whitespace-nowrap ${isGatillar ? 'nexus-badge-fire nx-shimmer' : ''} ${isAtractivoAction ? 'nexus-badge-teal' : ''}`}
+                            className={`action-score-badge px-3 py-2 rounded-xl text-[11px] font-bold whitespace-nowrap ${isTakeProfit || isGatillar ? 'nexus-badge-fire nx-shimmer' : ''} ${isAtractivoAction ? 'nexus-badge-teal' : ''}`}
                             style={{
-                              color: asc.color,
-                              background: asc.bg,
-                              boxShadow: isGatillar ? '0 0 16px rgba(248,113,113,0.4), 0 0 30px rgba(248,113,113,0.15)' : isAtractivoAction ? '0 0 10px rgba(46,235,200,0.25)' : 'none',
-                              border: isGatillar ? `1px solid ${asc.color}40` : '1px solid transparent',
+                              color: isTakeProfit ? '#dc2626' : asc.color,
+                              background: isTakeProfit ? 'rgba(220,38,38,0.18)' : asc.bg,
+                              boxShadow: isTakeProfit ? '0 0 16px rgba(220,38,38,0.4), 0 0 30px rgba(220,38,38,0.15)' : isGatillar ? '0 0 16px rgba(248,113,113,0.4), 0 0 30px rgba(248,113,113,0.15)' : isAtractivoAction ? '0 0 10px rgba(46,235,200,0.25)' : 'none',
+                              border: isTakeProfit ? '1px solid rgba(220,38,38,0.4)' : isGatillar ? `1px solid ${asc.color}40` : '1px solid transparent',
                             }}
                           >
-                            {isGatillar ? '🔥 ' : isAtractivoAction ? '✓ ' : ''}
-                            {score.actionScore.label}
+                            {isTakeProfit ? '🚨 VENDER' : isGatillar ? '🔥 GATILLAR YA' : isAtractivoAction ? '✓ ATRACTIVO' : score.actionScore.label}
                           </span>
-                          {/* V5.2: Score ring next to badge */}
                           {score.actionScore.label !== 'SIN SEÑAL' && (
-                            <div className="nexus-score-gauge">
-                              <ScoreRing score={score.actionScore.score} color={asc.color} size={32} />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Context row with separator */}
-                      <div className="mt-1.5 pt-1.5 nx-ctx-sep grid grid-cols-[36px_1fr] gap-2 items-start">
-                        <div /> {/* spacer for rank column */}
-
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {/* ΔTIR */}
-                          <span className="text-[10px] text-app-text4">
-                            ΔTIR{' '}
-                            <span className={`font-mono ${score.deltaTIR !== null ? (score.deltaTIR > 0 ? 'text-[#2eebc8]' : score.deltaTIR < -0.02 ? 'text-[#f87171]' : 'text-app-text3') : 'text-app-text4'}`}>
-                              {score.deltaTIR !== null ? fmtPct(score.deltaTIR, 2) : '—'}
-                            </span>
-                          </span>
-
-                          {/* Presion Punta */}
-                          <span className="text-[10px] text-app-text4">
-                            Presión{' '}
-                            <span className={`font-mono ${
-                              score.presionPuntas !== null
-                                ? score.presionPuntas > 20 ? 'text-[#2eebc8]'
-                                  : score.presionPuntas < -20 ? 'text-[#f87171]'
-                                  : 'text-app-text3'
-                                : 'text-app-text4'
-                            }`}>
-                              {score.presionPuntas !== null ? `${score.presionPuntas >= 0 ? '+' : ''}${score.presionPuntas.toFixed(2)}%` : '—'}
-                            </span>
-                            {/* V7.0-FASE1: Top-5 book imbalance label */}
-                            {score.bookImbalanceLabel === 'DESBALANCE EXTREMO' && (
-                              <span className="font-mono text-[9px] font-bold ml-0.5" style={{ color: '#f87171' }}>⚡ DESBALANCE EXTREMO</span>
-                            )}
-                            {score.bookImbalanceLabel === 'DESBALANCE COMPRA' && (
-                              <span className="font-mono text-[9px] font-bold ml-0.5" style={{ color: '#2eebc8' }}>📈 DESBALANCE COMPRA</span>
-                            )}
-                            {score.bookImbalanceLabel === 'DESBALANCE VENTA' && (
-                              <span className="font-mono text-[9px] font-bold ml-0.5" style={{ color: '#f87171' }}>📉 DESBALANCE VENTA</span>
-                            )}
-                          </span>
-
-                          {/* Upside */}
-                          <span className="text-[10px] text-app-text4">
-                            Upside{' '}
-                            <span className={`font-mono ${score.upsideCapital > 1 ? 'text-[#2eebc8]' : score.upsideCapital > 0.3 ? 'text-[#fbbf24]' : 'text-app-text3'}`}>
-                              +{fmtNum(score.upsideCapital, 2)}%
-                            </span>
-                          </span>
-
-                          {/* Micro-score bars */}
-                          <div className="flex items-center gap-1.5 ml-1">
-                            <div className="flex flex-col gap-[2px]">
-                              <MicroScoreBar value={score.spreadNetoScore} color={MICRO_BAR_COLORS.spreadNeto} />
-                              <MicroScoreBar value={score.deltaTIRScore} color={MICRO_BAR_COLORS.deltaTIR} />
-                              <MicroScoreBar value={score.presionPuntasScore} color={MICRO_BAR_COLORS.presion} />
-                              <MicroScoreBar value={score.upsideCapitalScore} color={MICRO_BAR_COLORS.upside} />
-                              <MicroScoreBar value={score.velocidadScore} color={MICRO_BAR_COLORS.velocidad} />
-                            </div>
-                            <div className="flex flex-col gap-[2px] text-[6px] text-app-text4 leading-none">
-                              <span>Sp</span>
-                              <span>ΔT</span>
-                              <span>Pr</span>
-                              <span>Up</span>
-                              <span>Ve</span>
-                            </div>
-                          </div>
-
-                          {/* Action Score reason */}
-                          {score.actionScore.label !== 'SIN SEÑAL' && score.actionScore.reason && (
-                            <span className="text-[9px] truncate max-w-[200px] hidden sm:inline-block" style={{ color: asc.color + 'bb' }} title={score.actionScore.reason}>
-                              {score.actionScore.reason}
-                            </span>
-                          )}
-
-                          {/* Verdict reason */}
-                          {score.verdictReason && score.actionScore.label === 'SIN SEÑAL' && (
-                            <span className="text-[9px] text-app-text4 truncate max-w-[180px] hidden sm:inline-block" title={score.verdictReason}>
-                              {score.verdictReason}
-                            </span>
+                            <div className="nexus-score-gauge"><ScoreRing score={score.actionScore.score} color={asc.color} size={28} /></div>
                           )}
                         </div>
                       </div>
@@ -1955,86 +1373,20 @@ export default function CockpitTab({
       )}
 
       {/* ═══════════════════════════════════════════════════════════ */}
-      {/* V5.0: WEIGHT LEGEND + ACTION SCORE METHODOLOGY                */}
+      {/* FOOTER: Engine info only (methodology removed for minimalism)  */}
       {/* ═══════════════════════════════════════════════════════════ */}
       {displayedScores.length > 0 && (
-        <div className="space-y-3 animate-fadeInUp">
-          {/* Cockpit Score Weights */}
-          <div className="flex items-center gap-4 flex-wrap text-[9px] text-app-text4">
-            <span className="uppercase tracking-wider font-medium">Pesos Cockpit:</span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.spreadNeto }} />
-              Spread 25%
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.deltaTIR }} />
-              ΔTIR 25%
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.presion }} />
-              Presión 20%
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.upside }} />
-              Upside 20%
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-sm" style={{ background: MICRO_BAR_COLORS.velocidad }} />
-              Vel. 10%
-            </span>
-          </div>
-
-          {/* V6.1.0: Action Score Methodology + Polarity Reversal */}
-          <div className="nexus-method px-4 py-3">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-[10px] font-semibold text-app-text3 uppercase tracking-wider">El Gatillador — Metodología V6.1</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-[9px]">
-              <div className="bg-app-subtle/30 rounded-lg p-2.5">
-                <div className="font-semibold text-[#fbbf24] mb-1">📍 Distancia S/R (0-40 pts)</div>
-                <div className="text-app-text3">
-                  &lt;0.3% → 38pts · &lt;0.5% → 32pts · &lt;1% → 20pts · &lt;2% → 10pts
-                  <br />
-                  <span className="text-[#f87171]">Alerta visual &lt;0.5%: &quot;a tiro de gatillo&quot;</span>
-                  <br />
-                  <span className="text-[#fbbf24]">⬆ Breakout: R→S flip · ⬇ Breakdown: S→R flip</span>
-                </div>
-              </div>
-              <div className="bg-app-subtle/30 rounded-lg p-2.5">
-                <div className="font-semibold text-[#a78bfa] mb-1">📊 Inyección Volumen (0-35 pts)</div>
-                <div className="text-app-text3">
-                  EXPLOSIVO → 35pts · X5 → 30pts · X3 → 25pts · X2 → 15pts · NORMAL → 5pts
-                  <br />
-                  <span className="text-app-text4">Volumen actual vs media · Multiplicadores de aceleración</span>
-                </div>
-              </div>
-              <div className="bg-app-subtle/30 rounded-lg p-2.5">
-                <div className="font-semibold text-[#2eebc8] mb-1">📈 Presión Book (0-25 pts)</div>
-                <div className="text-app-text3">
-                  Desbalance de profundidad: primeras 5 líneas BID vs ASK del order book
-                  <br />
-                  Compradora en soporte → 25pts · Rompiendo resistencia → 22pts
-                  <br />
-                  <span className="text-app-text4">+5 carry positivo · +5 momentum alcista</span>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 mt-2 flex-wrap text-[8px]">
-              <span className="text-app-text4">UMBRALES:</span>
-              <span className="px-2 py-0.5 rounded font-bold" style={{ color: '#f87171', background: 'rgba(248,113,113,0.18)', boxShadow: '0 0 8px rgba(248,113,113,0.3)' }}>
-                🔥 GATILLAR YA ≥70 + S/R&lt;0.5% + Vol≥X3 + Presión
-              </span>
-              <span className="px-2 py-0.5 rounded font-bold" style={{ color: '#2eebc8', background: 'rgba(46,235,200,0.12)' }}>
-                ✓ ATRACTIVO ≥50
-              </span>
-              <span className="px-2 py-0.5 rounded font-bold" style={{ color: '#94a3b8', background: 'rgba(148,163,184,0.06)' }}>
-                NEUTRAL ≥25
-              </span>
-              <span className="px-2 py-0.5 rounded font-bold" style={{ color: '#6b7280', background: 'rgba(107,114,128,0.04)' }}>
-                SIN SEÑAL &lt;25
-              </span>
-            </div>
-          </div>
+        <div className="flex items-center gap-4 flex-wrap text-[9px] text-app-text4 animate-fadeInUp">
+          <span className="uppercase tracking-wider font-medium">Pesos:</span>
+          <span>Spread 25%</span>
+          <span>ΔTIR 25%</span>
+          <span>Presión 20%</span>
+          <span>Upside 20%</span>
+          <span>Vel. 10%</span>
+          <div className="w-px h-3 bg-app-border/30" />
+          <span>Trigger Salida: +1.00% ganancia / BID cede</span>
+          <div className="w-px h-3 bg-app-border/30" />
+          <span>Anestesiado: ATR% &lt; 0.30%</span>
         </div>
       )}
     </div>

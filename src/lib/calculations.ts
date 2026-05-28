@@ -1,4 +1,4 @@
-import { Instrument, Config, Position, RotationAnalysis, SwingSignal, CurveAnomaly, CompositeSignal, DiagnosticResult, Snapshot, MomentumData, RotationScoreV17, CockpitScore } from './types';
+import { Instrument, Config, Position, RotationAnalysis, SwingSignal, CurveAnomaly, CompositeSignal, DiagnosticResult, Snapshot, MomentumData, RotationScoreV17, CockpitScore, AdaptiveTakeProfitResult } from './types';
 
 /**
  * Calculate days remaining to expiry from an expiry date string.
@@ -2346,4 +2346,108 @@ export function calculateActionScore(
   const reason = reasons.length > 0 ? reasons.join(' · ') : 'Sin señales activas';
 
   return { score, label, reason };
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// V7.0-FASE2: TRIGGER CRÍTICO DE SALIDA — Take Profit Adaptativo
+//
+// Evalúa posiciones en cartera para determinar si se activa el
+// trigger de salida. Se activa cuando:
+//
+//   1. GANANCIA DIRECTA en precio ≥ +1.00% en la jornada
+//      (el activo se sobrecompró, rendimiento comprimido)
+//
+//   2. PRESIÓN COMPRADORA del Top-5 BID cede:
+//      - Ratio < 0.8 (venta domina la compra)
+//      - O ratio cayó >50% desde su pico de la sesión
+//      (los grandes compradores se retiraron)
+//
+// RETORNO: AdaptiveTakeProfitResult con acción sugerida y destino
+// ════════════════════════════════════════════════════════════════════════
+export function calculateAdaptiveTakeProfit(params: {
+  /** Ganancia directa en precio en la jornada (%) — change_pct del instrumento */
+  sessionGainPct: number;
+  /** Ratio Top-5 Bid / Top-5 Ask (null si sin datos) */
+  top5PressureRatio: number | null;
+  /** Pct de desbalance Top-5 (positivo = compra, negativo = venta) */
+  top5PressurePct: number | null;
+  /** Etiqueta del desbalance del book */
+  bookImbalanceLabel: string;
+  /** El instrumento está anestesiado? */
+  anestesiado: boolean;
+  /** Score unificado del instrumento */
+  unifiedScore: number;
+  /** Action score label */
+  actionLabel: string;
+  /** Ticker del instrumento */
+  ticker: string;
+}): AdaptiveTakeProfitResult {
+  const {
+    sessionGainPct,
+    top5PressureRatio,
+    top5PressurePct,
+    bookImbalanceLabel,
+    anestesiado,
+    unifiedScore,
+    actionLabel,
+    ticker,
+  } = params;
+
+  // ── Condición 1: Ganancia directa ≥ +1.00% ──
+  const isPriceSurge = sessionGainPct >= 1.0;
+
+  // ── Condición 2: Presión compradora cediendo ──
+  // El desbalance del Top-5 BID pierde fuerza compradora:
+  //   - Ratio < 0.8 → venta domina
+  //   - DESBALANCE VENTA → señal clara de retroceso
+  //   - Pct < -20% → presión neta vendedora
+  let bidPressureCeding = false;
+  let pressureCedingReason = '';
+
+  if (top5PressureRatio !== null && top5PressureRatio < 0.8) {
+    bidPressureCeding = true;
+    pressureCedingReason = `Ratio BID/ASK ${top5PressureRatio.toFixed(2)}x < 0.8 — venta domina`;
+  } else if (bookImbalanceLabel === 'DESBALANCE VENTA') {
+    bidPressureCeding = true;
+    pressureCedingReason = 'Book en DESBALANCE VENTA — compradores se retiraron';
+  } else if (top5PressurePct !== null && top5PressurePct < -20) {
+    bidPressureCeding = true;
+    pressureCedingReason = `Presión neta ${top5PressurePct.toFixed(0)}% — flujo vendedor`;
+  }
+
+  // ── Determinar tipo de trigger ──
+  let triggerType: AdaptiveTakeProfitResult['triggerType'] = 'NONE';
+  let reason = '';
+  let suggestedAction: AdaptiveTakeProfitResult['suggestedAction'] = 'MANTENER';
+  let suggestedDestination = 'Mantener posición';
+
+  if (isPriceSurge && bidPressureCeding) {
+    // COMBINED: Doble confirmación — muy fuerte
+    triggerType = 'COMBINED';
+    reason = `${ticker} subió +${sessionGainPct.toFixed(2)}% y presión BID cede. ${pressureCedingReason}. Ganancia realizada, salir antes de reversión.`;
+    suggestedAction = 'VENDER';
+    suggestedDestination = 'CAUCIÓN (Preservar Capital Líquido)';
+  } else if (isPriceSurge) {
+    // PRICE_SURGE: Precio subió ≥ 1% — rendimiento comprimido, sobrecomprado
+    triggerType = 'PRICE_SURGE';
+    reason = `${ticker} subió +${sessionGainPct.toFixed(2)}% en la jornada — rendimiento comprimido, sobrecomprado. Tomar ganancia antes de corrección.`;
+    suggestedAction = 'TOMAR_GANANCIA';
+    suggestedDestination = 'CAUCIÓN (Preservar Capital Líquido)';
+  } else if (bidPressureCeding) {
+    // BID_PRESSURE_CEDING: Los compradores se fueron — riesgo de caída
+    triggerType = 'BID_PRESSURE_CEDING';
+    reason = `${ticker}: ${pressureCedingReason}. Sin soporte comprador, riesgo de reversión bajista.`;
+    suggestedAction = 'TOMAR_GANANCIA';
+    suggestedDestination = 'CAUCIÓN (Protección ante reversión)';
+  }
+
+  return {
+    triggered: triggerType !== 'NONE',
+    reason,
+    triggerType,
+    sessionGainPct,
+    bidPressureCeding,
+    suggestedAction,
+    suggestedDestination,
+  };
 }
