@@ -1546,6 +1546,10 @@ export default function CockpitTab({
                               {score.srSource === 'historical_ohlc' && (
                                 <span className="text-[8px] text-[#2eebc8] opacity-60 ml-0.5" title="Structural S/R from 30-day OHLC closes">●</span>
                               )}
+                              {/* V6.2.0: ATR indicator — shows Average True Range for volatility context */}
+                              {score.atr != null && score.atr > 0 && (
+                                <span className="text-[7px] text-[#a78bfa] opacity-70 ml-0.5" title={`ATR: ${(score.atr * 100).toFixed(2)}pb — True Range avg (gap-aware)`}>◆</span>
+                              )}
                             </span>
                           ) : (
                             <span className="font-mono text-app-text4">—</span>
@@ -1709,6 +1713,10 @@ export default function CockpitTab({
                               {/* V6.0: Green dot = historical structural S/R, no dot = intraday fallback */}
                               {score.srSource === 'historical_ohlc' && (
                                 <span className="text-[7px] text-[#2eebc8] opacity-70 ml-0.5" title="Structural S/R from 30-day OHLC closes">⬤</span>
+                              )}
+                              {/* V6.2.0: ATR diamond — Average True Range (gap-aware volatility) */}
+                              {score.atr != null && score.atr > 0 && (
+                                <span className="text-[7px] text-[#a78bfa] opacity-70 ml-0.5" title={`ATR: ${(score.atr * 100).toFixed(2)}pb — True Range avg (gap-aware)`}>◆</span>
                               )}
                             </span>
                           ) : (

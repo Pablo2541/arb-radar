@@ -1092,3 +1092,42 @@ Stage Summary:
 - Score Unification: Merge cockpitScore and actionScore into unified Base-100 scale
 - Portfolio sell alerts: Auto-notify when held position triggers TAKE_PROFIT
 - Timezone enforcement: All server-side timestamps in America/Argentina/Buenos_Aires
+
+---
+Task ID: ATR-1
+Agent: Main Agent
+Task: Implement True Range / Average True Range (ATR) — upgrade from ADR
+
+Work Log:
+- Read uploaded document "Explain to me what you would do to include the future improvement using True Range.docx" with full ATR upgrade plan
+- Read all 4 target files: calculations.ts, types.ts, cockpit-score/route.ts, CockpitTab.tsx
+- Identified current ADR implementation in calculateHistoricalSR() (lines 1837-1884): simple mean of (high - low)
+- Implemented True Range calculation replacing ADR loop:
+  - TR = max(High - Low, |High - prevClose|, |Low - prevClose|)
+  - First day fallback: TR = High - Low (no previous close available)
+  - Added prevClose tracking variable across iteration
+  - ATR = mean of True Ranges (same formula as ADR, but with gap-aware inputs)
+- Added `atr` field to HistoricalSRResult interface in calculations.ts
+- Updated all 3 return paths in calculateHistoricalSR() to include atr field
+- Removed duplicate SCALE_THRESHOLD declaration (would cause TS error)
+- avgDailyRange field now contains ATR value (backward compatible — same field name, upgraded value)
+- Added `atr?: number` field to CockpitScore interface in types.ts
+- Wired `atr` field in cockpit-score API route: `atr: histSR.isHistorical ? histSR.atr : undefined`
+- Added ATR visual indicator (◆ diamond) in CockpitTab.tsx — both mobile card and desktop table views
+  - Purple (#a78bfa) diamond with tooltip showing "ATR: XXpb — True Range avg (gap-aware)"
+  - Positioned after the green dot (historical_ohlc indicator) in S/R column
+- Verified compilation: ESLint passes clean, dev server compiles successfully
+- Verified API output: curl /api/cockpit-score returns atr field with valid values
+- Confirmed ATR = ADR on current data (no gap days — expected behavior: transparent on calm days)
+- Polarity reversal engine untouched and working (T30J7, T31Y7 showing BULLISH_BREAKOUT)
+
+Stage Summary:
+- True Range / ATR successfully implemented as upgrade from ADR
+- 4 files modified: calculations.ts (core TR loop), types.ts (CockpitScore.atr), cockpit-score/route.ts (wire field), CockpitTab.tsx (◆ indicator)
+- Key design decisions:
+  - avgDailyRange field KEPT for backward compatibility (now ATR-powered)
+  - Separate atr field added for explicit access
+  - SMA-ATR used (not EMA) — matches existing 30-day lookback, simpler to debug
+  - On normal days: ATR = ADR (transparent upgrade)
+  - On gap days (BCRA rate changes, long weekends): ATR > ADR (captures full volatility)
+- No existing functionality broken — polarity reversal, S/R engine, action scores all preserved

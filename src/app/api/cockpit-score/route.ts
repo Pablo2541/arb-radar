@@ -369,6 +369,7 @@ export async function GET(request: NextRequest) {
         historicalResistance: histSR.isHistorical ? histSR.resistance : undefined,
         polarity: histSR.isHistorical ? histSR.polarity : undefined,
         avgDailyRange: histSR.isHistorical ? histSR.avgDailyRange : undefined,
+        atr: histSR.isHistorical ? histSR.atr : undefined,
         rawSupport: histSR.isHistorical ? histSR.rawSupport : undefined,
         rawResistance: histSR.isHistorical ? histSR.rawResistance : undefined,
       };

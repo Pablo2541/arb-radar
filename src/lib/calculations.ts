@@ -1733,8 +1733,10 @@ export interface HistoricalSRResult {
   // ── V6.1.0: Dynamic Price Action & Polarity Reversal ──
   /** Price-action polarity state */
   polarity: 'INSIDE_CHANNEL' | 'BULLISH_BREAKOUT' | 'BEARISH_BREAKDOWN';
-  /** Average Daily Range from OHLC data (for volatility projections) */
+  /** Average Daily Range from OHLC data (ATR-powered since V6.2.0) */
   avgDailyRange: number;
+  /** V6.2.0: Average True Range — accounts for gap openings (more accurate than ADR) */
+  atr: number;
   /** Raw historical minimum close BEFORE polarity adjustment */
   rawSupport: number;
   /** Raw historical maximum close BEFORE polarity adjustment */
@@ -1826,6 +1828,7 @@ export function calculateHistoricalSR(
       isHistorical: false,
       polarity: 'INSIDE_CHANNEL',
       avgDailyRange: 0,
+      atr: 0,
       rawSupport: 0,
       rawResistance: 0,
     };
@@ -1834,25 +1837,60 @@ export function calculateHistoricalSR(
   // ── Step 1: Find structural extremes from past closes ──
   let minClose = Infinity;
   let maxClose = -Infinity;
-  let adrSum = 0;
-  let adrCount = 0;
 
-  for (const day of relevantData) {
+  // ── V6.2.0: True Range (TR) / Average True Range (ATR) ──
+  // Replaces simple ADR (high - low) with True Range, which also
+  // accounts for gap openings: TR = max(H-L, |H-prevC|, |L-prevC|)
+  // On gap days (BCRA rate decisions, long weekends), ATR captures
+  // the full move while ADR would underestimate volatility.
+  // On normal days (no gap), TR = H - L, so ATR = ADR (transparent).
+  let trSum = 0;
+  let trCount = 0;
+  let prevClose: number | null = null; // Track previous day's close for TR calc
+
+  // Shared scale normalizer — OHLC may be in 100-scale or 1.XXXX scale
+  const SCALE_THRESHOLD = 10;
+
+  for (let i = 0; i < relevantData.length; i++) {
+    const day = relevantData[i];
+
+    // Accumulate min/max closes for structural S/R levels
     if (day.close > 0 && isFinite(day.close)) {
       minClose = Math.min(minClose, day.close);
       maxClose = Math.max(maxClose, day.close);
     }
-    // Compute Average Daily Range from high-low of each day
+
+    // ── True Range Calculation ──
+    // Requires valid high and low for the intraday component
     if (day.high > 0 && day.low > 0 && isFinite(day.high) && isFinite(day.low)) {
-      // Normalize scale: OHLC may be in 100-scale or 1.XXXX scale
-      const SCALE_THRESHOLD = 10;
+      // Normalize scale
       const dayHigh = day.high > SCALE_THRESHOLD ? day.high / 100 : day.high;
-      const dayLow = day.low > SCALE_THRESHOLD ? day.low / 100 : day.low;
-      const dailyRange = dayHigh - dayLow;
-      if (dailyRange > 0 && isFinite(dailyRange)) {
-        adrSum += dailyRange;
-        adrCount++;
+      const dayLow  = day.low  > SCALE_THRESHOLD ? day.low  / 100 : day.low;
+
+      // Intraday range (same component as old ADR)
+      const intradayRange = dayHigh - dayLow;
+
+      let trueRange: number;
+      if (prevClose !== null && isFinite(prevClose)) {
+        // Full True Range: max of (H-L, |H-prevClose|, |L-prevClose|)
+        const gapUp   = Math.abs(dayHigh - prevClose);
+        const gapDown = Math.abs(dayLow  - prevClose);
+        trueRange = Math.max(intradayRange, gapUp, gapDown);
+      } else {
+        // First day in lookback: no previous close available, use simple range
+        trueRange = intradayRange;
       }
+
+      if (trueRange > 0 && isFinite(trueRange)) {
+        trSum += trueRange;
+        trCount++;
+      }
+    }
+
+    // Track this day's close as "previous" for the next iteration
+    if (day.close > 0 && isFinite(day.close)) {
+      const normalizedClose = day.close > SCALE_THRESHOLD ? day.close / 100 : day.close;
+      prevClose = normalizedClose;
     }
   }
 
@@ -1869,19 +1907,23 @@ export function calculateHistoricalSR(
       isHistorical: false,
       polarity: 'INSIDE_CHANNEL',
       avgDailyRange: 0,
+      atr: 0,
       rawSupport: 0,
       rawResistance: 0,
     };
   }
 
   // ── Step 2: Normalize scale ──
-  const SCALE_THRESHOLD = 10;
   if (minClose > SCALE_THRESHOLD) minClose = minClose / 100;
   if (maxClose > SCALE_THRESHOLD) maxClose = maxClose / 100;
 
-  // Average Daily Range (ADR) — typical daily volatility of the instrument
-  const adr = adrCount > 0 ? adrSum / adrCount : (maxClose - minClose) * 0.3;
-  const adrSafe = isFinite(adr) && adr > 0 ? adr : currentPrice * 0.005; // Fallback: 0.5% of price
+  // ATR (Average True Range) — V6.2.0 upgrade of ADR
+  // On gap days, ATR > ADR; on normal days, ATR = ADR. Transparent upgrade.
+  const atr = trCount > 0 ? trSum / trCount : (maxClose - minClose) * 0.3;
+  const atrSafe = isFinite(atr) && atr > 0 ? atr : currentPrice * 0.005; // Fallback: 0.5% of price
+
+  // avgDailyRange now contains ATR (backward compat — same field name, upgraded value)
+  const adrSafe = atrSafe;
 
   // ── Step 3: DYNAMIC POLARITY REVERSAL ──
   // Store raw values before polarity adjustment (for display metadata)
@@ -1959,6 +2001,7 @@ export function calculateHistoricalSR(
     isHistorical: true,
     polarity,
     avgDailyRange: isFinite(adrSafe) ? adrSafe : 0,
+    atr: isFinite(atrSafe) ? atrSafe : 0,
     rawSupport,
     rawResistance,
   };

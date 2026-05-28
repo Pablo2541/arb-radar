@@ -285,7 +285,8 @@ export interface CockpitScore {
 
   // ── V6.1.0: Dynamic Price Action & Polarity Reversal ──
   polarity?: 'INSIDE_CHANNEL' | 'BULLISH_BREAKOUT' | 'BEARISH_BREAKDOWN'; // Price-action polarity state
-  avgDailyRange?: number;       // ADR from historical OHLC (for projected targets)
+  avgDailyRange?: number;       // ADR from historical OHLC (ATR-powered since V6.2.0)
+  atr?: number;                 // V6.2.0: Average True Range — accounts for gap openings
   rawSupport?: number;          // Raw historical min close (before polarity adjustment)
   rawResistance?: number;       // Raw historical max close (before polarity adjustment)
 
