@@ -232,32 +232,67 @@ export async function GET(request: NextRequest) {
       const iolMarketPressure = instrument.iolMarketPressure ?? null;
       const spreadNetoPct = (inst.spread_neto as number) * 100;
 
-      // V6.2.0: Level 1 Punta-Based Pressure Fallback
-      // If IOL multi-level depth is null/0, use data912 q_bid/q_ask for punta pressure
+      // ═══════════════════════════════════════════════════════════════════
+      // V7.0-FASE1: Desbalance del Order Book (Top-5)
+      //
+      // Reemplaza la presión basada en depth total por un análisis
+      // de las primeras 5 líneas de compra (BID) y venta (ASK).
+      // El trigger se activa si la compra duplica (ratio ≥ 2) o
+      // triplica (ratio ≥ 3) a la oferta.
+      //
+      // Cascada:
+      //   1. IOL Top-5 (si hay datos de puntas_detalle)
+      //   2. IOL Depth Total (fallback clásico)
+      //   3. data912 q_bid/q_ask (Level 1 fallback)
+      // ═══════════════════════════════════════════════════════════════════
+      const top5BidVol = (inst.iol_top5_bid_vol as number) || 0;
+      const top5AskVol = (inst.iol_top5_ask_vol as number) || 0;
       const qBid = (inst.q_bid as number) || 0;
       const qAsk = (inst.q_ask as number) || 0;
-      let puntaPressurePct: number | null = null;
 
-      if (iolMarketPressure !== null && iolMarketPressure > 0) {
-        // IOL Level 2 data available — convert ratio to percentage
-        // ratio > 1 = buying pressure, < 1 = selling pressure
-        // Map: ratio 0.5 → -33%, 1.0 → 0%, 1.5 → +20%, 2.0 → +33%
+      let puntaPressurePct: number | null = null;
+      let top5PressurePct: number | null = null;
+      let top5PressureRatio: number | null = null;
+      let bookImbalanceLabel: CockpitScore['bookImbalanceLabel'] = 'SIN DATOS';
+
+      // V7.0-FASE1: Calcular desbalance Top-5 desde IOL
+      if (top5BidVol > 0 || top5AskVol > 0) {
+        const top5Total = top5BidVol + top5AskVol;
+        top5PressurePct = top5Total > 0 ? ((top5BidVol - top5AskVol) / top5Total) * 100 : null;
+        top5PressureRatio = top5AskVol > 0 ? top5BidVol / top5AskVol : (top5BidVol > 0 ? 99 : 0);
+
+        // Etiquetas de desbalance según la consigna
+        if (top5PressureRatio >= 3) {
+          bookImbalanceLabel = 'DESBALANCE EXTREMO'; // Compra triplica la oferta
+        } else if (top5PressureRatio >= 2) {
+          bookImbalanceLabel = 'DESBALANCE COMPRA'; // Compra duplica la oferta
+        } else if (top5PressureRatio >= 0.5) {
+          bookImbalanceLabel = 'BALANCEADO'; // Relación relativamente equilibrada
+        } else {
+          bookImbalanceLabel = 'DESBALANCE VENTA'; // Venta domina
+        }
+
+        // Usar top-5 como presión principal (reemplaza depth total)
+        puntaPressurePct = top5PressurePct;
+      } else if (iolMarketPressure !== null && iolMarketPressure > 0) {
+        // Fallback clásico: IOL depth total
         puntaPressurePct = ((iolMarketPressure - 1) / (iolMarketPressure + 1)) * 100;
+        bookImbalanceLabel = 'SIN DATOS';
       } else if (qBid > 0 || qAsk > 0) {
-        // FALLBACK: Level 1 punta pressure from data912 bid/ask volumes
-        // Pressure % = ((Bid_Volume - Ask_Volume) / (Bid_Volume + Ask_Volume)) * 100
+        // Fallback Level 1: data912 q_bid/q_ask
         const totalVol = qBid + qAsk;
         puntaPressurePct = totalVol > 0 ? ((qBid - qAsk) / totalVol) * 100 : null;
+        bookImbalanceLabel = 'SIN DATOS';
       }
 
-      // V6.2.0: Unified pressure for Action Score (ratio format for backward compat)
-      // If puntaPressurePct is available, convert back to ratio for calculateActionScore
-      // ratio = (100 + puntaPressurePct) / (100 - puntaPressurePct)
-      const pressureForActionScore: number | null = iolMarketPressure !== null && iolMarketPressure > 0
-        ? iolMarketPressure
-        : puntaPressurePct !== null
-          ? (100 + puntaPressurePct) / (100 - puntaPressurePct)
-          : null;
+      // Presión para Action Score (formato ratio para retrocompatibilidad)
+      const pressureForActionScore: number | null = top5PressureRatio !== null
+        ? top5PressureRatio
+        : iolMarketPressure !== null && iolMarketPressure > 0
+          ? iolMarketPressure
+          : puntaPressurePct !== null
+            ? (100 + puntaPressurePct) / (100 - puntaPressurePct)
+            : null;
 
       // ═══════════════════════════════════════════════════════════════
       // V6.1.0: Historical S/R with DYNAMIC POLARITY REVERSAL
@@ -372,39 +407,65 @@ export async function GET(request: NextRequest) {
         atr: histSR.isHistorical ? histSR.atr : undefined,
         rawSupport: histSR.isHistorical ? histSR.rawSupport : undefined,
         rawResistance: histSR.isHistorical ? histSR.rawResistance : undefined,
+        // V7.0-FASE1: Volatilidad Mínima
+        atrPct: histSR.isHistorical && histSR.atr > 0 && instrument.price > 0
+          ? Math.round((histSR.atr / instrument.price) * 100 * 100) / 100 // ATR como % del precio, 2 decimales
+          : undefined,
+        anestesiado: histSR.isHistorical && histSR.atr > 0 && instrument.price > 0
+          ? ((histSR.atr / instrument.price) * 100) < 0.30 // ATR% < 0.30% = instrumento "muerto"
+          : false, // Sin datos históricos, no penalizar
+        // V7.0-FASE1: Desbalance del Order Book (Top-5)
+        top5PressurePct,
+        top5PressureRatio,
+        bookImbalanceLabel,
       };
     });
 
     // V5.4: Sort by unifiedScore (base-100) descending — single source of truth
     allScores.sort((a: CockpitScore, b: CockpitScore) => b.unifiedScore - a.unifiedScore);
 
-    // Filter by horizon
-    const scores = allScores.filter((s: CockpitScore) => s.days <= horizon);
+    // ═══════════════════════════════════════════════════════════════════
+    // V7.0-FASE1: Demover instrumentos anestesiados en el ranking
+    //
+    // Un instrumento con ATR < 0.30% se considera "muerto" y NO debe
+    // aparecer en los primeros puestos ni en El Grito. Se los empuja
+    // al final del ranking preservando el orden relativo entre ellos.
+    // ═══════════════════════════════════════════════════════════════════
+    const activeScores = allScores.filter((s: CockpitScore) => !s.anestesiado);
+    const anestesiadoScores = allScores.filter((s: CockpitScore) => s.anestesiado);
+    const demotedAllScores = [...activeScores, ...anestesiadoScores];
+
+    if (anestesiadoScores.length > 0) {
+      console.log(`[cockpit-score] V7.0-FASE1: ${anestesiadoScores.length} instrumentos anestesiados demovidos al final del ranking`);
+    }
+
+    // Filter by horizon (usar demotedAllScores para respetar saneamiento)
+    const scores = demotedAllScores.filter((s: CockpitScore) => s.days <= horizon);
 
     // Summary
     const summary = {
-      total: allScores.length,
+      total: demotedAllScores.length,
       within_horizon: scores.length,
-      salto_tactico: allScores.filter((s: CockpitScore) => s.verdict === 'SALTO_TACTICO').length,
-      punto_caramelo: allScores.filter((s: CockpitScore) => s.verdict === 'PUNTO_CARAMELO').length,
-      atractivo: allScores.filter((s: CockpitScore) => s.verdict === 'ATRACTIVO').length,
-      neutral: allScores.filter((s: CockpitScore) => s.verdict === 'NEUTRAL').length,
-      evitar: allScores.filter((s: CockpitScore) => s.verdict === 'EVITAR').length,
+      salto_tactico: demotedAllScores.filter((s: CockpitScore) => s.verdict === 'SALTO_TACTICO').length,
+      punto_caramelo: demotedAllScores.filter((s: CockpitScore) => s.verdict === 'PUNTO_CARAMELO').length,
+      atractivo: demotedAllScores.filter((s: CockpitScore) => s.verdict === 'ATRACTIVO').length,
+      neutral: demotedAllScores.filter((s: CockpitScore) => s.verdict === 'NEUTRAL').length,
+      evitar: demotedAllScores.filter((s: CockpitScore) => s.verdict === 'EVITAR').length,
     };
 
     const response: CockpitScoreResponse = {
       scores,
-      all_scores: allScores,
+      all_scores: demotedAllScores,
       horizon_days: horizon,
       summary,
       timestamp: new Date(now).toISOString(),
-      engine_version: 'V6.2.0-FINAL',
+      engine_version: 'V7.0-FASE1',
       stale: false,
       sr_source: srSource,
     };
 
-    // Cache it (store ALL scores, not filtered)
-    cachedCockpit = { allScores, data: response, timestamp: now };
+    // Cache it (store ALL scores demoted, not filtered)
+    cachedCockpit = { allScores: demotedAllScores, data: response, timestamp: now };
 
     return NextResponse.json(response);
   } catch (error) {

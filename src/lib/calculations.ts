@@ -2262,9 +2262,12 @@ export function calculateActionScore(
   }
 
   // ── Factor 3: Pressure Direction (0-25 points) ──
+  // V7.0-FASE1: Ahora usa el ratio de desbalance Top-5 del order book.
   // Pressure must AGREE with the trade direction:
   // - Near SUPPORT → buying pressure is good (bounce confirmation)
   // - Near RESISTANCE → selling pressure is bad (but break through = good)
+  // - DESBALANCE COMPRA (ratio ≥ 2x) = trigger especial
+  // - DESBALANCE EXTREMO (ratio ≥ 3x) = trigger máximo
   if (presionPuntas !== null) {
     if (srType === 'S' && presionPuntas > 1.2) {
       // Near support + buying pressure = good entry
@@ -2287,6 +2290,17 @@ export function calculateActionScore(
       reasons.push('Presión compradora');
     } else {
       score += 5;
+    }
+
+    // V7.0-FASE1: Bonus por desbalance de book significativo
+    if (presionPuntas >= 3) {
+      // Desbalance EXTREMO: compra triplica la oferta → máximo urgency
+      score += 10;
+      reasons.push('DESBALANCE EXTREMO (3x compra)');
+    } else if (presionPuntas >= 2) {
+      // Desbalance COMPRA: compra duplica la oferta → high urgency
+      score += 6;
+      reasons.push('DESBALANCE COMPRA (2x)');
     }
   } else {
     // No pressure data — neutral

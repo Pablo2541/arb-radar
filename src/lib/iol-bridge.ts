@@ -78,6 +78,10 @@ export interface IOLLevel2Data {
     compra: IOLPunta[];
     venta: IOLPunta[];
   };
+  /** V7.0-FASE1: Suma de cantidad en las primeras 5 líneas de compra (BID). */
+  iol_top5_bid_vol: number;
+  /** V7.0-FASE1: Suma de cantidad en las primeras 5 líneas de venta (ASK). */
+  iol_top5_ask_vol: number;
 }
 
 /** Diagnostic info for the IOL status endpoint. */
@@ -155,6 +159,18 @@ function tradingHoursElapsed(): number {
 function calcDepth(levels: IOLPunta[]): number {
   if (!levels || levels.length === 0) return 0;
   return levels.reduce((sum, p) => sum + (p.cantidad || 0), 0);
+}
+
+/**
+ * V7.0-FASE1: Calcular volumen de las primeras N líneas del order book.
+ * En lugar de usar el depth total, auditar las primeras 5 líneas de
+ * compra (BID) y venta (ASK) para detectar desbalance de liquidez
+ * cercano al precio de mercado — más sensible que el depth total.
+ */
+function calcTop5Depth(levels: IOLPunta[]): number {
+  if (!levels || levels.length === 0) return 0;
+  const top5 = levels.slice(0, 5);
+  return top5.reduce((sum, p) => sum + (p.cantidad || 0), 0);
 }
 
 function calcMarketPressure(bidDepth: number, askDepth: number): number {
@@ -316,6 +332,8 @@ export async function getIOLCotizacion(
           iol_ask_depth: 0,
           iol_market_pressure: 0,
           puntas_detalle: { compra: [], venta: [] },
+          iol_top5_bid_vol: 0,
+          iol_top5_ask_vol: 0,
         };
       }
       return null;
@@ -359,6 +377,10 @@ export async function getIOLCotizacion(
     const askDepth = calcDepth(puntasDetalle.venta);
     const marketPressure = calcMarketPressure(bidDepth, askDepth);
 
+    // V7.0-FASE1: Top-5 depth para desbalance de liquidez cercano al precio
+    const top5BidVol = calcTop5Depth(puntasDetalle.compra);
+    const top5AskVol = calcTop5Depth(puntasDetalle.venta);
+
     return {
       iol_volume: cantidadOperada,
       iol_bid: iolBid,
@@ -370,6 +392,8 @@ export async function getIOLCotizacion(
       iol_ask_depth: askDepth,
       iol_market_pressure: marketPressure,
       puntas_detalle: puntasDetalle,
+      iol_top5_bid_vol: top5BidVol,
+      iol_top5_ask_vol: top5AskVol,
     };
   } catch {
     return null;

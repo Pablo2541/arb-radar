@@ -104,6 +104,8 @@ interface LiveInstrument {
   iol_status?: 'online' | 'offline' | 'no_data';
   q_bid?: number;              // V6.2.0: Bid volume from data912 (Level 1 punta quantity)
   q_ask?: number;              // V6.2.0: Ask volume from data912 (Level 1 punta quantity)
+  iol_top5_bid_vol?: number;   // V7.0-FASE1: Top-5 BID volume from IOL puntas
+  iol_top5_ask_vol?: number;   // V7.0-FASE1: Top-5 ASK volume from IOL puntas
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -423,6 +425,9 @@ async function enrichIOLInBackground(instruments: LiveInstrument[]): Promise<voi
           inst.iol_ask_depth = l2.iol_ask_depth;
           inst.iol_market_pressure = l2.iol_market_pressure;
           inst.iol_status = l2.iol_status;
+          // V7.0-FASE1: Top-5 order book volumes para desbalance
+          inst.iol_top5_bid_vol = l2.iol_top5_bid_vol;
+          inst.iol_top5_ask_vol = l2.iol_top5_ask_vol;
           iolEnrichedCount++;
         }
       } catch {

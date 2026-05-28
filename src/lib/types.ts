@@ -290,6 +290,15 @@ export interface CockpitScore {
   rawSupport?: number;          // Raw historical min close (before polarity adjustment)
   rawResistance?: number;       // Raw historical max close (before polarity adjustment)
 
+  // ── V7.0-FASE1: Volatilidad Mínima (Saneamiento) ──
+  atrPct?: number;              // ATR como % del precio (atr / price * 100)
+  anestesiado?: boolean;        // True si ATR% < 0.30% → instrumento sin movimiento suficiente
+
+  // ── V7.0-FASE1: Desbalance del Order Book (Top-5) ──
+  top5PressurePct?: number | null;   // Desbalance top-5 como % (null si sin datos)
+  top5PressureRatio?: number | null; // Ratio top5 bid / top5 ask
+  bookImbalanceLabel?: 'DESBALANCE EXTREMO' | 'DESBALANCE COMPRA' | 'BALANCEADO' | 'DESBALANCE VENTA' | 'SIN DATOS'; // Etiqueta legible del desbalance
+
   withinHorizon: boolean;      // Within horizon filter (default 45 days — Scalping Extendido)
 
   // ── V5.4: Portfolio-Aware Take Profit ──
@@ -377,6 +386,10 @@ export interface LiveInstrument {
   iol_status?: 'online' | 'offline' | 'no_data'; // IOL data availability
   q_bid?: number;              // V6.2.0: Bid volume from data912 (Level 1 punta quantity)
   q_ask?: number;              // V6.2.0: Ask volume from data912 (Level 1 punta quantity)
+
+  // ── V7.0-FASE1: Desbalance del Order Book (Top-5) ──
+  iol_top5_bid_vol?: number;   // Suma de cantidad en primeras 5 líneas de compra (BID)
+  iol_top5_ask_vol?: number;   // Suma de cantidad en primeras 5 líneas de venta (ASK)
 }
 
 /** Full /api/letras response (V2.0.1 with multi-source) */

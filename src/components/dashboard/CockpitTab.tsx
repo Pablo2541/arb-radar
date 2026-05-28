@@ -986,7 +986,7 @@ export default function CockpitTab({
   // ─── Computed: El Grito instruments ────────────────────────────────
   const elGritoScores = useMemo(() => {
     return enrichedScores.filter(
-      s => s.verdict === 'SALTO_TACTICO' || s.verdict === 'PUNTO_CARAMELO' || s.actionScore.label === 'GATILLAR YA' || s.isTakeProfit
+      s => !s.anestesiado && (s.verdict === 'SALTO_TACTICO' || s.verdict === 'PUNTO_CARAMELO' || s.actionScore.label === 'GATILLAR YA' || s.isTakeProfit)
     );
   }, [enrichedScores]);
 
@@ -1011,6 +1011,7 @@ export default function CockpitTab({
       gatillar: enrichedScores.filter(s => s.actionScore.label === 'GATILLAR YA').length,
       atractivoAction: enrichedScores.filter(s => s.actionScore.label === 'ATRACTIVO').length,
       take_profit: enrichedScores.filter(s => s.isTakeProfit).length,
+      anestesiado: enrichedScores.filter(s => s.anestesiado).length,
     };
   }, [allScores, filteredScores, enrichedScores]);
 
@@ -1199,6 +1200,17 @@ export default function CockpitTab({
             <span className="font-mono font-bold" style={{ color: '#fbbf24' }}>{localSummary.punto_caramelo}</span>
           </div>
           <div className="w-px h-3 bg-app-border/40" />
+
+          {/* V7.0-FASE1: ANESTESIADO count — instruments with ATR% < 0.30% */}
+          {localSummary.anestesiado > 0 && (
+            <>
+              <div className="flex items-center gap-1.5">
+                <span className="nexus-pill" style={{ color: '#6b7280', background: 'rgba(107,114,128,0.15)' }}>💤 Anestesiados</span>
+                <span className="font-mono font-bold" style={{ color: '#6b7280' }}>{localSummary.anestesiado}</span>
+              </div>
+              <div className="w-px h-3 bg-app-border/40" />
+            </>
+          )}
 
           {/* MEP */}
           {mepValue !== null && (
@@ -1460,6 +1472,16 @@ export default function CockpitTab({
                           <span className="font-mono font-bold text-sm text-app-text truncate">
                             {score.ticker}
                           </span>
+                          {/* V7.0-FASE1: ANESTESIADO badge — ATR% < 0.30% */}
+                          {score.anestesiado && (
+                            <span
+                              className="shrink-0 rounded px-1 text-[9px] font-bold text-white"
+                              style={{ background: '#6b7280' }}
+                              title="Instrumento anestesiado: ATR histórico < 0.30% diario — movimiento insuficiente para scalping"
+                            >
+                              ZZZ
+                            </span>
+                          )}
                           <span className={`shrink-0 px-1 py-0.5 rounded text-[7px] font-bold ${
                             score.type === 'LECAP'
                               ? 'bg-app-accent-dim text-[#2eebc8]'
@@ -1550,6 +1572,15 @@ export default function CockpitTab({
                               {score.atr != null && score.atr > 0 && (
                                 <span className="text-[7px] text-[#a78bfa] opacity-70 ml-0.5" title={`ATR: ${(score.atr * 100).toFixed(2)}pb — Rango Verdadero Promedio (ajustado por gaps)`}>◆</span>
                               )}
+                              {/* V7.0-FASE1: ATR% display — strikethrough if anestesiado */}
+                              {score.atrPct != null && (
+                                <span
+                                  className={`text-[7px] ml-0.5 ${score.anestesiado ? 'text-[#6b7280] line-through opacity-60' : 'text-[#a78bfa] opacity-70'}`}
+                                  title={score.anestesiado ? `ATR%: ${score.atrPct.toFixed(2)}% — Instrumento anestesiado` : `ATR%: ${score.atrPct.toFixed(2)}% del precio`}
+                                >
+                                  {score.atrPct.toFixed(2)}%
+                                </span>
+                              )}
                             </span>
                           ) : (
                             <span className="font-mono text-app-text4">—</span>
@@ -1600,6 +1631,16 @@ export default function CockpitTab({
                             }`}>
                               {score.presionPuntas !== null ? `${score.presionPuntas >= 0 ? '+' : ''}${score.presionPuntas.toFixed(2)}%` : '—'}
                             </span>
+                            {/* V7.0-FASE1: Top-5 book imbalance label */}
+                            {score.bookImbalanceLabel === 'DESBALANCE EXTREMO' && (
+                              <span className="font-mono text-[9px] font-bold ml-0.5" style={{ color: '#f87171' }}>⚡ DESBALANCE EXTREMO</span>
+                            )}
+                            {score.bookImbalanceLabel === 'DESBALANCE COMPRA' && (
+                              <span className="font-mono text-[9px] font-bold ml-0.5" style={{ color: '#2eebc8' }}>📈 DESBALANCE COMPRA</span>
+                            )}
+                            {score.bookImbalanceLabel === 'DESBALANCE VENTA' && (
+                              <span className="font-mono text-[9px] font-bold ml-0.5" style={{ color: '#f87171' }}>📉 DESBALANCE VENTA</span>
+                            )}
                           </span>
                           <span className="text-[10px] text-app-text4">
                             Upside{' '}
@@ -1650,6 +1691,16 @@ export default function CockpitTab({
                           <span className="font-mono font-bold text-sm text-app-text truncate">
                             {score.ticker}
                           </span>
+                          {/* V7.0-FASE1: ANESTESIADO badge — ATR% < 0.30% */}
+                          {score.anestesiado && (
+                            <span
+                              className="shrink-0 rounded px-1 text-[9px] font-bold text-white"
+                              style={{ background: '#6b7280' }}
+                              title="Instrumento anestesiado: ATR histórico < 0.30% diario — movimiento insuficiente para scalping"
+                            >
+                              ZZZ
+                            </span>
+                          )}
                           <span className={`shrink-0 px-1 py-0.5 rounded text-[7px] font-bold ${
                             score.type === 'LECAP'
                               ? 'bg-app-accent-dim text-[#2eebc8]'
@@ -1717,6 +1768,15 @@ export default function CockpitTab({
                               {/* V6.2.0: Diamante ATR — Rango Verdadero Promedio (volatilidad ajustada por gaps) */}
                               {score.atr != null && score.atr > 0 && (
                                 <span className="text-[7px] text-[#a78bfa] opacity-70 ml-0.5" title={`ATR: ${(score.atr * 100).toFixed(2)}pb — Rango Verdadero Promedio (ajustado por gaps)`}>◆</span>
+                              )}
+                              {/* V7.0-FASE1: ATR% display — strikethrough if anestesiado */}
+                              {score.atrPct != null && (
+                                <span
+                                  className={`text-[7px] ml-0.5 ${score.anestesiado ? 'text-[#6b7280] line-through opacity-60' : 'text-[#a78bfa] opacity-70'}`}
+                                  title={score.anestesiado ? `ATR%: ${score.atrPct.toFixed(2)}% — Instrumento anestesiado` : `ATR%: ${score.atrPct.toFixed(2)}% del precio`}
+                                >
+                                  {score.atrPct.toFixed(2)}%
+                                </span>
                               )}
                             </span>
                           ) : (
@@ -1832,6 +1892,16 @@ export default function CockpitTab({
                             }`}>
                               {score.presionPuntas !== null ? `${score.presionPuntas >= 0 ? '+' : ''}${score.presionPuntas.toFixed(2)}%` : '—'}
                             </span>
+                            {/* V7.0-FASE1: Top-5 book imbalance label */}
+                            {score.bookImbalanceLabel === 'DESBALANCE EXTREMO' && (
+                              <span className="font-mono text-[9px] font-bold ml-0.5" style={{ color: '#f87171' }}>⚡ DESBALANCE EXTREMO</span>
+                            )}
+                            {score.bookImbalanceLabel === 'DESBALANCE COMPRA' && (
+                              <span className="font-mono text-[9px] font-bold ml-0.5" style={{ color: '#2eebc8' }}>📈 DESBALANCE COMPRA</span>
+                            )}
+                            {score.bookImbalanceLabel === 'DESBALANCE VENTA' && (
+                              <span className="font-mono text-[9px] font-bold ml-0.5" style={{ color: '#f87171' }}>📉 DESBALANCE VENTA</span>
+                            )}
                           </span>
 
                           {/* Upside */}
@@ -1941,6 +2011,8 @@ export default function CockpitTab({
               <div className="bg-app-subtle/30 rounded-lg p-2.5">
                 <div className="font-semibold text-[#2eebc8] mb-1">📈 Presión Book (0-25 pts)</div>
                 <div className="text-app-text3">
+                  Desbalance de profundidad: primeras 5 líneas BID vs ASK del order book
+                  <br />
                   Compradora en soporte → 25pts · Rompiendo resistencia → 22pts
                   <br />
                   <span className="text-app-text4">+5 carry positivo · +5 momentum alcista</span>

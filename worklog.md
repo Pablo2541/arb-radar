@@ -1131,3 +1131,50 @@ Stage Summary:
   - On normal days: ATR = ADR (transparent upgrade)
   - On gap days (BCRA rate changes, long weekends): ATR > ADR (captures full volatility)
 - No existing functionality broken — polarity reversal, S/R engine, action scores all preserved
+
+---
+Task ID: V7.0-FASE1
+Agent: Main Agent
+Task: Reingeniería FASE 1 — Filtro de Volatilidad Mínima + Desbalance del Order Book (Top-5)
+
+Work Log:
+- Leído documento de consigna: "CONSIGNA DE REINGENIERÍA EN FASES" (3 fases, FASE 1 = saneamiento)
+- Analizado backend completo: calculations.ts, cockpit-score/route.ts, iol-bridge.ts, letras/route.ts, types.ts, CockpitTab.tsx
+- FASE 1.1 — Filtro de Volatilidad Mínima:
+  - Agregados campos `atrPct` y `anestesiado` a CockpitScore en types.ts
+  - En cockpit-score/route.ts: calcula `atrPct = (atr / price) * 100`, marca `anestesiado = atrPct < 0.30%`
+  - Democión de instrumentos anestesiados al final del ranking (activeScores + anestesiadoScores)
+  - Instrumentos anestesiados EXCLUÍDOS de El Grito en CockpitTab.tsx
+  - Badge "ZZZ" gris con tooltip en nombre del instrumento
+  - Contador "💤 N anestesiados" en summary bar
+  - ATR% display con strikethrough cuando anestesiado
+- FASE 1.2 — Desbalance del Order Book (Top-5):
+  - Agregados campos `iol_top5_bid_vol` e `iol_top5_ask_vol` a LiveInstrument en types.ts
+  - En iol-bridge.ts: nueva función `calcTop5Depth()` que suma las primeras 5 líneas de puntas
+  - IOLLevel2Data interface actualizada con `iol_top5_bid_vol` e `iol_top5_ask_vol`
+  - getIOLCotizacion() retorna top5 volumes desde las puntas_detalle
+  - En letras/route.ts: top5 volumes pasados del IOL Level2Data al LiveInstrument
+  - En cockpit-score/route.ts: nueva cascada de presión:
+    1. Top-5 IOL (si hay datos) → calcula top5PressurePct, top5PressureRatio
+    2. IOL Depth Total (fallback clásico)
+    3. data912 q_bid/q_ask (Level 1 fallback)
+  - Labels de desbalance: DESBALANCE EXTREMO (≥3x), DESBALANCE COMPRA (≥2x), BALANCEADO, DESBALANCE VENTA, SIN DATOS
+  - Agregados campos `top5PressurePct`, `top5PressureRatio`, `bookImbalanceLabel` a CockpitScore
+  - En calculations.ts: calculateActionScore() actualizado con bonus por desbalance:
+    - DESBALANCE EXTREMO (≥3x): +10 pts + razón
+    - DESBALANCE COMPRA (≥2x): +6 pts + razón
+  - En CockpitTab.tsx: Presión display muestra labels de desbalance con emojis (⚡📈📉)
+  - Tooltip Presión actualizado: "Desbalance de profundidad: primeras 5 líneas BID vs ASK del order book"
+- Engine version actualizado: V6.2.0-FINAL → V7.0-FASE1
+- Lint pasa limpio (0 errores)
+- Dev server compila sin errores
+- API response verificada: anestesiado flag, atrPct, top5 fields todos presentes
+- Testing visual: ZZZ badges, 💤 counter, desbalance labels, ATR% display todos funcionando
+
+Stage Summary:
+- FASE 1 de reingeniería completada exitosamente
+- 6 archivos modificados: types.ts, iol-bridge.ts, letras/route.ts, cockpit-score/route.ts, calculations.ts, CockpitTab.tsx
+- Filtro de Volatilidad Mínima: instrumentos con ATR < 0.30% excluidos de El Grito y demovidos al final del ranking
+- Desbalance Order Book Top-5: presión basada en primeras 5 líneas BID vs ASK con labels de desbalance
+- En el mercado actual, 12/13 instrumentos son anestesiados (ATR < 0.30%) — señal real del mercado
+- PENDIENTE: FASE 2 (Métricas de Velocidad y Flujo) + FASE 3 (Correlación de Curvas)
