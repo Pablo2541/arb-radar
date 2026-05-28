@@ -1537,18 +1537,18 @@ export default function CockpitTab({
                               {score.nearestSR.type}:{score.nearestSR.level.toFixed(4)}
                               {/* V6.1.0: Polarity reversal indicator */}
                               {score.polarity === 'BULLISH_BREAKOUT' && (
-                                <span className="text-[8px] text-[#fbbf24] ml-0.5" title="Bullish Breakout: resistance flipped to support">⬆</span>
+                                <span className="text-[8px] text-[#fbbf24] ml-0.5" title="Ruptura alcista: la resistencia se transformó en soporte">⬆</span>
                               )}
                               {score.polarity === 'BEARISH_BREAKDOWN' && (
-                                <span className="text-[8px] text-[#f87171] ml-0.5" title="Bearish Breakdown: support flipped to resistance">⬇</span>
+                                <span className="text-[8px] text-[#f87171] ml-0.5" title="Ruptura bajista: el soporte se transformó en resistencia">⬇</span>
                               )}
-                              {/* V6.0: Show historical S/R source indicator */}
+                              {/* V6.0: Indicador de fuente S/R histórica */}
                               {score.srSource === 'historical_ohlc' && (
-                                <span className="text-[8px] text-[#2eebc8] opacity-60 ml-0.5" title="Structural S/R from 30-day OHLC closes">●</span>
+                                <span className="text-[8px] text-[#2eebc8] opacity-60 ml-0.5" title="S/R estructural desde cierres OHLC de 30 días">●</span>
                               )}
-                              {/* V6.2.0: ATR indicator — shows Average True Range for volatility context */}
+                              {/* V6.2.0: Indicador ATR — muestra Rango Verdadero Promedio para contexto de volatilidad */}
                               {score.atr != null && score.atr > 0 && (
-                                <span className="text-[7px] text-[#a78bfa] opacity-70 ml-0.5" title={`ATR: ${(score.atr * 100).toFixed(2)}pb — True Range avg (gap-aware)`}>◆</span>
+                                <span className="text-[7px] text-[#a78bfa] opacity-70 ml-0.5" title={`ATR: ${(score.atr * 100).toFixed(2)}pb — Rango Verdadero Promedio (ajustado por gaps)`}>◆</span>
                               )}
                             </span>
                           ) : (
@@ -1705,18 +1705,18 @@ export default function CockpitTab({
                               {score.nearestSR.level.toFixed(4)}
                               {/* V6.1.0: Polarity reversal indicators */}
                               {score.polarity === 'BULLISH_BREAKOUT' && (
-                                <span className="text-[8px] text-[#fbbf24] ml-0.5" title="Bullish Breakout: resistance flipped to support">⬆</span>
+                                <span className="text-[8px] text-[#fbbf24] ml-0.5" title="Ruptura alcista: la resistencia se transformó en soporte">⬆</span>
                               )}
                               {score.polarity === 'BEARISH_BREAKDOWN' && (
-                                <span className="text-[8px] text-[#f87171] ml-0.5" title="Bearish Breakdown: support flipped to resistance">⬇</span>
+                                <span className="text-[8px] text-[#f87171] ml-0.5" title="Ruptura bajista: el soporte se transformó en resistencia">⬇</span>
                               )}
-                              {/* V6.0: Green dot = historical structural S/R, no dot = intraday fallback */}
+                              {/* V6.0: Punto verde = S/R estructural histórico, sin punto = fallback intradía */}
                               {score.srSource === 'historical_ohlc' && (
-                                <span className="text-[7px] text-[#2eebc8] opacity-70 ml-0.5" title="Structural S/R from 30-day OHLC closes">⬤</span>
+                                <span className="text-[7px] text-[#2eebc8] opacity-70 ml-0.5" title="S/R estructural desde cierres OHLC de 30 días">⬤</span>
                               )}
-                              {/* V6.2.0: ATR diamond — Average True Range (gap-aware volatility) */}
+                              {/* V6.2.0: Diamante ATR — Rango Verdadero Promedio (volatilidad ajustada por gaps) */}
                               {score.atr != null && score.atr > 0 && (
-                                <span className="text-[7px] text-[#a78bfa] opacity-70 ml-0.5" title={`ATR: ${(score.atr * 100).toFixed(2)}pb — True Range avg (gap-aware)`}>◆</span>
+                                <span className="text-[7px] text-[#a78bfa] opacity-70 ml-0.5" title={`ATR: ${(score.atr * 100).toFixed(2)}pb — Rango Verdadero Promedio (ajustado por gaps)`}>◆</span>
                               )}
                             </span>
                           ) : (
