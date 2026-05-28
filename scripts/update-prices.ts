@@ -218,6 +218,32 @@ function isMarketHours(): boolean {
   return isWeekday && hour >= 10 && hour < 18;
 }
 
+// ── V7.0-FASE2: Argentina Time Helper for IntradayVolumeBlock ──────────
+// Returns current Argentina (UTC-3) date, time, and 5-minute block index
+// for the 10:00–16:30 trading session (blockIndex 0-77).
+
+function getArgentinaTime(): { date: string; hours: number; minutes: number; blockIndex: number; blockStart: string } {
+  const now = new Date();
+  const bsasOffset = -3 * 60;
+  const localOffset = now.getTimezoneOffset();
+  const diffMs = (localOffset - bsasOffset) * 60 * 1000;
+  const bsasNow = new Date(now.getTime() + diffMs);
+
+  const hours = bsasNow.getHours();
+  const minutes = bsasNow.getMinutes();
+  const date = bsasNow.toISOString().split('T')[0];
+
+  // Session: 10:00-16:30 → blockIndex 0-77
+  const totalMinutes = hours * 60 + minutes;
+  const sessionStart = 10 * 60; // 10:00 in minutes
+  const blockIndex = Math.max(0, Math.min(77, Math.floor((totalMinutes - sessionStart) / 5)));
+
+  const blockStartMinutes = sessionStart + blockIndex * 5;
+  const blockStart = `${String(Math.floor(blockStartMinutes / 60)).padStart(2, '0')}:${String(blockStartMinutes % 60).padStart(2, '0')}`;
+
+  return { date, hours, minutes, blockIndex, blockStart };
+}
+
 /** Fetch with timeout and error handling */
 async function safeFetch<T>(url: string, timeoutMs = 8000, headers?: Record<string, string>): Promise<{ ok: boolean; data: T | null; latency_ms: number }> {
   const start = Date.now();
@@ -973,6 +999,81 @@ async function writeHistoricalData(
 }
 
 // ════════════════════════════════════════════════════════════════════════
+// V7.0-FASE2 — INTRADAY VOLUME BLOCKS
+// Populate IntradayVolumeBlock table with 5-min resolution volume data.
+// Only runs during market hours (10:00-16:30 Argentina time).
+// Wrapped in try/catch so it never breaks the existing daemon flow.
+// ════════════════════════════════════════════════════════════════════════
+
+async function updateIntradayVolumeBlock(
+  prisma: PrismaClient,
+  instruments: LiveInstrument[],
+): Promise<void> {
+  try {
+    const arTime = getArgentinaTime();
+
+    // Only update during market hours: 10:00–16:30 Argentina time
+    // blockIndex < 0 means before 10:00, blockIndex > 77 means after 16:30
+    const totalMinutes = arTime.hours * 60 + arTime.minutes;
+    const sessionStart = 10 * 60;
+    const sessionEnd = 16 * 60 + 30; // 16:30
+    if (totalMinutes < sessionStart || totalMinutes >= sessionEnd) {
+      return; // Outside trading session — skip
+    }
+
+    if (arTime.blockIndex < 0 || arTime.blockIndex > 77) {
+      return; // Invalid block — skip
+    }
+
+    let blockCount = 0;
+    for (const inst of instruments) {
+      // Only process instruments that have volume data
+      if (inst.volume <= 0 && (inst.iol_volume ?? 0) <= 0) continue;
+
+      try {
+        // Use (prisma as any) since IntradayVolumeBlock may not be in generated types yet
+        const intradayPrisma = (prisma as any).intradayVolumeBlock;
+        if (!intradayPrisma) continue;
+
+        await intradayPrisma.upsert({
+          where: {
+            date_ticker_blockIndex: {
+              date: arTime.date,
+              ticker: inst.ticker,
+              blockIndex: arTime.blockIndex,
+            },
+          },
+          update: {
+            volume: inst.volume,              // Last-Value-Wins (cumulative intraday)
+            iolVolume: inst.iol_volume ?? 0,  // Last-Value-Wins
+            tradeCount: { increment: 1 },     // Increment on each daemon tick
+          },
+          create: {
+            date: arTime.date,
+            ticker: inst.ticker,
+            blockIndex: arTime.blockIndex,
+            blockStart: arTime.blockStart,
+            volume: inst.volume,
+            iolVolume: inst.iol_volume ?? 0,
+            tradeCount: 1,
+          },
+        });
+        blockCount++;
+      } catch {
+        // Skip individual block write failures (non-critical)
+      }
+    }
+
+    if (blockCount > 0) {
+      log('OK', `📊 VolumeBlocks: ${blockCount} instrumentos | bloque ${arTime.blockStart} (#${arTime.blockIndex}) | ${arTime.date}`);
+    }
+  } catch (error) {
+    // Never break the existing daemon flow
+    log('WARN', `VolumeBlock update failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════
 // V4.0.4 — AUTO-MIGRATION: Ensure DB schema exists before writing
 // If tables don't exist (fresh DB), automatically runs prisma db push.
 // This prevents "table does not exist" crashes on first run.
@@ -1159,6 +1260,9 @@ async function writeToNeon(
 
     // V3.2: Write historical accumulation data (snapshots + OHLC)
     await writeHistoricalData(prisma, instruments, caucionProxy);
+
+    // V7.0-FASE2: Update intraday volume blocks (5-min resolution)
+    await updateIntradayVolumeBlock(prisma, instruments);
 
     // V3.2.4-FIX: Fetch and persist Riesgo País every cycle (using /ultimo endpoint)
     const riesgoPaisResult = await fetchRiesgoPais();

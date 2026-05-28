@@ -1223,3 +1223,282 @@ Stage Summary:
 - Adaptive Take Profit with +1.00% threshold and BID pressure ceding detection
 - EjecuciónPuraCard shows clean action directives when no alternatives exist
 - Minimalist 6-column table replacing 11-column data-heavy view
+
+---
+Task ID: 3-calculations
+Agent: Calculations Agent
+Task: Add 3 FASE 2 Volume Velocity & Flow Metrics calculation functions to calculations.ts
+
+Work Log:
+- Read worklog.md for full project context (Tasks 1-8b, V7.0 NEXUS complete)
+- Read existing calculations.ts end (lines 2360-2453) to find calculateAdaptiveTakeProfit function — last function before append point
+- Verified CockpitScore type in types.ts already has volumeVelocity, icebergDetected, and marketSweep fields defined (lines 307-325)
+- Appended 3 new exported functions + 1 exported interface after calculateAdaptiveTakeProfit (line 2453):
+
+  1. `calculateVolumeVelocity()` (lines 2480-2533)
+     - Compares current 5-min block volume vs historical same-slot average
+     - Calculates VROC (Volume Rate of Change) as percentage
+     - Labels: NORMAL (≤150%), ACELERACIÓN (>150%), ANOMALÍA X3 (>300%), ANOMALÍA X5+ (>500%)
+     - momentumTrigger = true for X3 and X5+ anomalies
+     - Edge case: currentBlockVolume ≤ 0 returns zeros/NORMAL
+
+  2. `detectIcebergOrder()` (lines 2573-2655)
+     - Detects hidden iceberg orders via order book ASK depth regeneration pattern
+     - Pattern: askDepth drops >50% → askPrice doesn't decrease → askDepth recovers
+     - Also checks current state for recovery from minimum depth snapshot
+     - Confidence: ALTA (≥3 pattern matches), MEDIA (1-2 matches), BAJA (no matches)
+     - Returns priceLevel where iceberg is detected
+     - Edge case: <2 snapshots returns BAJA/confidence with "Datos insuficientes"
+
+  3. `detectMarketSweep()` (lines 2679-2727)
+     - Detects market sweep when price jumps 2+ micro-puntas (tick levels)
+     - Derives tickSize from spread if not provided: Math.max(0.0001, (previousAsk - previousPrice) * 0.25)
+     - levelsSkipped = floor(abs(priceChange) / tickSize) - 1
+     - Direction: UP if priceChange > 0, DOWN otherwise
+     - Edge case: invalid prices returns not-detected with 0 levelsSkipped
+
+  4. `PriceSnapshotForDetection` interface (lines 2539-2544) — exported for API route use
+     - Fields: timestamp, askPrice, askDepth, lastPrice
+
+- Used explicit literal union types for label/confidence instead of complex conditional types from CockpitScore
+- No existing code modified — all new code appended after line 2453
+- File grew from 2453 to 2725 lines (+272 lines)
+- ESLint passes with 0 errors
+
+Stage Summary:
+- 3 calculation functions added for FASE 2 Volume Velocity & Flow Metrics
+- 1 exported interface added: PriceSnapshotForDetection
+- Only 1 file modified: src/lib/calculations.ts (appended, no existing code changed)
+- Lint clean, all types match CockpitScore definitions in types.ts
+- Functions ready for integration into cockpit-score API route
+
+---
+Task ID: 9-daemon
+Agent: Daemon Agent
+Task: Update price daemon to populate IntradayVolumeBlock table
+
+Work Log:
+- Read worklog.md for full project context (Tasks 1-8b, V7.0 CSS/JSX, FASE2 calculations)
+- Read full update-prices.ts (~1315 lines) to understand existing daemon architecture
+- Read prisma/schema.prisma — confirmed IntradayVolumeBlock model already defined (added by prior FASE2 agent)
+- Ran `bun run db:push` — database already in sync, Prisma Client regenerated with IntradayVolumeBlock model
+- Added `getArgentinaTime()` helper function (lines 221-245):
+  - Computes current Argentina (UTC-3) date and time using manual UTC offset calculation
+  - Calculates blockIndex: `Math.floor((totalMinutes - 600) / 5)` clamped to 0-77
+  - Calculates blockStart: "HH:MM" format for start of 5-min block
+  - Returns { date, hours, minutes, blockIndex, blockStart }
+- Added `updateIntradayVolumeBlock()` async function (lines 1001-1074):
+  - Only runs during market hours (10:00-16:30 Argentina time)
+  - Checks totalMinutes against session bounds (600-990 minutes)
+  - Validates blockIndex 0-77 range, skips if invalid
+  - Only processes instruments with volume > 0 or iolVolume > 0
+  - Uses `(prisma as any).intradayVolumeBlock.upsert()` for type safety
+  - Upsert key: `date + ticker + blockIndex` (unique constraint)
+  - volume: set to current data912 volume (Last-Value-Wins — cumulative intraday)
+  - iolVolume: set to current IOL volume (Last-Value-Wins)
+  - tradeCount: increment by 1 on each update (daemon tick proxy for trades)
+  - create: sets initial volume, iolVolume, blockStart, tradeCount=1
+  - Entire function wrapped in try/catch — never breaks existing daemon flow
+  - Individual instrument failures also caught — non-critical
+  - Logs count of blocks updated per cycle
+- Called `updateIntradayVolumeBlock()` from `writeToNeon()` after `writeHistoricalData()` (line 1265):
+  - Inserted after DailyOHLC update, before Riesgo País fetch
+  - Passes same `prisma` instance and `instruments` array
+- Preserved ALL existing daemon functionality — only ADDitive changes
+- ESLint passes with 0 errors
+- Dev server compiles and serves correctly
+
+Stage Summary:
+- 1 file modified: scripts/update-prices.ts
+- 2 new functions: getArgentinaTime(), updateIntradayVolumeBlock()
+- 1 new call site: writeToNeon() → updateIntradayVolumeBlock() (after writeHistoricalData)
+- IntradayVolumeBlock table populated every daemon tick during 10:00-16:30 Argentina session
+- Volume blocks store 5-min resolution data per ticker per day for Volume Velocity (VROC) calculations
+- Fully fault-tolerant: try/catch at function and per-instrument level
+- Lint clean, no existing functionality changed
+
+---
+Task ID: 8-api-route
+Agent: API Route Agent
+Task: Wire FASE 2 calculation functions (VROC, Iceberg, Sweep) into cockpit-score API route
+
+Work Log:
+- Read worklog.md for full project context (V7.0-FASE1 complete)
+- Read existing cockpit-score/route.ts (491 lines) — identified all 7 edit locations
+- Read calculations.ts — confirmed function signatures for calculateVolumeVelocity, detectIcebergOrder, detectMarketSweep
+- Read types.ts — confirmed CockpitScore already has volumeVelocity, icebergDetected, marketSweep optional fields
+- Read prisma/schema.prisma — confirmed IntradayVolumeBlock and PriceSnapshot models exist
+
+Step 1: Updated imports
+- Added calculateVolumeVelocity, detectIcebergOrder, detectMarketSweep to function imports
+- Added PriceSnapshotForDetection to type imports
+
+Step 2: Added IntradayVolumeBlock DB query
+- New DB query after OHLC fetch: fetches all volume blocks ordered by ticker/date/blockIndex
+- Uses (db as any).intradayVolumeBlock.findMany() with safeDbOp wrapper
+- Maps rows to typed array with date, ticker, blockIndex, volume, iolVolume
+- Wrapped in try/catch with console.warn on failure (non-fatal)
+
+Step 3: Added PriceSnapshot DB query
+- New DB query: fetches 500 most recent price snapshots ordered by timestamp desc
+- Uses db.priceSnapshot.findMany() with safeDbOp wrapper
+- Maps rows to typed array with ticker, timestamp, price, iolAsk, iolVolume
+- Handles Date→ISO string conversion for timestamp field
+- Wrapped in try/catch with console.warn on failure (non-fatal)
+
+Step 4: Added VROC, Iceberg, Sweep calculations in per-instrument loop
+- VROC: Filters volumeBlocks by ticker, excludes today's date for historical comparison, calls calculateVolumeVelocity()
+- Iceberg: Filters recentSnapshots by ticker (top 5), maps to PriceSnapshotForDetection format with iolVolume as askDepth proxy, calls detectIcebergOrder()
+- Sweep: Uses tickerSnaps[1] as previous snapshot, calls detectMarketSweep() with previous/current price and ask
+
+Step 5: Added new fields to returned object
+- Added volumeVelocity, icebergDetected, marketSweep to the per-instrument return object
+- Placed under comment "V7.0-FASE2: Volume Velocity & Flow Metrics"
+
+Step 6: Updated Action Score with VROC/Iceberg/Sweep bonuses
+- Created adjustedActionScore as a copy of actionScore
+- VROC momentumTrigger: +15 score, append " · VROC Anomalía" to reason
+- Iceberg detected: +10 (ALTA), +5 (MEDIA), +2 (BAJA) score, append " · Iceberg Detectado"
+- Market sweep detected: score = 100 (instant maximum), reason = "⚡ BARRIDO {direction} ({levelsSkipped} niveles)"
+- Used adjustedActionScore instead of actionScore in returned object
+
+Step 7: Updated engine version
+- Changed 'V7.0-FASE1' → 'V7.0-FASE2'
+
+- ESLint passes with 0 errors (bun run lint)
+- Dev server compiles and serves correctly
+
+Stage Summary:
+- 1 file modified: src/app/api/cockpit-score/route.ts
+- 3 new calculation functions wired: calculateVolumeVelocity, detectIcebergOrder, detectMarketSweep
+- 2 new DB queries: IntradayVolumeBlock (VROC), PriceSnapshot (Iceberg)
+- 3 new fields in per-instrument response: volumeVelocity, icebergDetected, marketSweep
+- Action Score adjustment logic: VROC +15, Iceberg +2/5/10, Sweep → 100 (instant max)
+- Engine version bumped: V7.0-FASE1 → V7.0-FASE2
+- All existing Phase 1 logic preserved unchanged
+- Lint clean
+
+---
+Task ID: 10-frontend
+Agent: Frontend Agent
+Task: Add FASE 2 Flow Metric Badges (VROC, Iceberg, Sweep) to CockpitTab
+
+Work Log:
+- Read worklog.md for project context (Tasks 1-9, all V7.0 phases complete)
+- Read CockpitTab.tsx (~1395 lines) to understand current table structure and components
+- Verified CockpitScore type in types.ts includes volumeVelocity, icebergDetected, marketSweep fields (lines 307-325)
+- Addition 1: Flow Metrics Badges in Table Rows
+  - Created `FlowMetricsBadges` helper component with `layout` prop ('desktop' | 'mobile')
+  - VROC badge: Only shows when volumeVelocity.label !== 'NORMAL', with color coding:
+    - ACELERACIÓN = amber, ANOMALÍA X3 = orange, ANOMALÍA X5+ = red
+    - Abbreviated labels: ACEL, X3, X5+
+    - animate-pulse when momentumTrigger is true, with matching glow boxShadow
+  - Iceberg badge: Only shows when icebergDetected.detected === true, with confidence-based colors:
+    - ALTA = purple/15, MEDIA = purple/10, BAJA = purple/5
+    - flow-iceberg-shimmer CSS animation for ALTA confidence
+  - Sweep badge: Only shows when marketSweep.detected === true
+    - Always bg-red-500/20 text-red-300 border-red-500/40 with flow-sweep-pulse animation
+    - Text: ⚡ BARRIDO {direction} ×{levelsSkipped}
+  - Desktop: max 2 visible badges horizontally, max-w-[180px]
+  - Mobile: all badges on separate line with flex-wrap
+- Updated desktop grid from 6 to 7 columns: `grid-cols-[36px_1fr_100px_80px_72px_1fr_auto]`
+- Added FLUJO header column in desktop sticky header
+- Added `<FlowMetricsBadges score={score} layout="desktop" />` after ACCIÓN column in desktop row
+- Added `<FlowMetricsBadges score={score} layout="mobile" />` as Row 3 in mobile card layout
+- Addition 2: Flow Alert in El Grito Card
+  - Added `flowAlertActive` check in ElGritoCard component
+  - Detects instruments with volumeVelocity.momentumTrigger === true or marketSweep.detected === true
+  - When active, shows "🌊 FLOW ALERT" badge with purple glow animation next to GATILLAR YA count
+- Addition 3: Update Header Subtitle
+  - Added `hasFlowMetrics` useMemo in main component
+  - Checks if any enrichedScores have non-NORMAL VROC, detected iceberg, or detected sweep
+  - Header subtitle dynamically shows:
+    - "V7.0-FASE2 — VELOCIDAD & FLUJO" when flow metrics are active
+    - "V7.0-FASE2 — EJECUCIÓN PURA" when no flow metrics
+- CSS additions to globals.css:
+  - @keyframes flowIcebergShimmer: 1.5s opacity+brightness shimmer for ALTA confidence
+  - .flow-iceberg-shimmer: animation class
+  - @keyframes flowSweepPulse: 1s box-shadow pulse (4px→12px→4px) for sweep badges
+  - .flow-sweep-pulse: animation class
+- Updated header comment: "V7.0-FASE2 — VELOCIDAD & FLUJO" + "FASE 2 Flow Metrics: VROC, Iceberg, Sweep badges"
+- ESLint passes with 0 errors
+- Dev server compiles and serves correctly (HTTP 200)
+
+Stage Summary:
+- 3 FASE 2 flow metric badge additions implemented in CockpitTab.tsx
+- 2 files modified: CockpitTab.tsx (new component + grid + mobile + El Grito + subtitle), globals.css (2 animations)
+- New component: FlowMetricsBadges (VROC/Iceberg/Sweep pills with animations)
+- New computed: hasFlowMetrics (checks if any flow metrics active)
+- Desktop grid: 6→7 columns with new FLUJO column
+- Mobile: Row 3 with flow badges below main info
+- El Grito: 🌊 FLOW ALERT badge when VROC anomalies or sweeps detected
+- Header: Dynamic subtitle VELOCIDAD & FLUJO / EJECUCIÓN PURA
+- All existing Phase 1 functionality preserved (anestesiado filter, EjecuciónPuraCard, sound alerts, table structure)
+- Lint clean
+
+---
+Task ID: V7.0-FASE2
+Agent: Main Agent
+Task: FASE 2 — Métricas de Velocidad y Flujo Avanzado (VROC, Iceberg, Sweep)
+
+Work Log:
+- Designed and presented complete code plan for Phase 2 before making changes
+- Added `IntradayVolumeBlock` Prisma model (5-min volume blocks per ticker per day, 78 blocks per session)
+- Extended `CockpitScore` type in types.ts with 3 new optional fields: volumeVelocity, icebergDetected, marketSweep
+- Implemented `calculateVolumeVelocity()` in calculations.ts — VROC comparing current block vs historical same-slot average
+- Implemented `detectIcebergOrder()` in calculations.ts — ASK depth regeneration pattern detection
+- Implemented `detectMarketSweep()` in calculations.ts — price jump of 2+ micro-puntas detection
+- Wired new calculations into cockpit-score API route:
+  - Fetches IntradayVolumeBlock from DB for VROC
+  - Fetches recent PriceSnapshots for Iceberg detection
+  - Computes VROC, Iceberg, Sweep per instrument
+  - Adjusts Action Score with bonuses: +15 VROC, +2/+5/+10 Iceberg, instant 100 for Sweep
+  - Engine version updated to V7.0-FASE2
+- Updated daemon (update-prices.ts) with `updateIntradayVolumeBlock()` function
+  - Computes blockIndex from Argentina time (10:00-16:30 session)
+  - Uses upsert on unique date+ticker+blockIndex
+  - Only runs during market hours
+- Updated CockpitTab.tsx frontend:
+  - New `FlowMetricsBadges` component with VROC, Iceberg, Sweep pill badges
+  - VROC: color-coded (amber/orange/red), pulsing when momentumTrigger
+  - Iceberg: confidence-based opacity, shimmer for ALTA
+  - Sweep: red pulsing glow with direction × levels
+  - Added FLUJO column in desktop grid
+  - Added badges in mobile card layout
+  - El Grito card shows "🌊 FLOW ALERT" badge when flow metrics active
+  - Dynamic subtitle: "VELOCIDAD & FLUJO" when metrics active
+- Added CSS animations in globals.css: flowIcebergShimmer, flowSweepPulse
+- Lint passes cleanly with 0 errors
+- Dev server compiles and serves correctly
+
+Stage Summary:
+- V7.0-FASE2 complete: Volume Velocity (VROC), Iceberg Detection, Market Sweep Detection
+- 6 files modified: prisma/schema.prisma, types.ts, calculations.ts, cockpit-score/route.ts, update-prices.ts, CockpitTab.tsx, globals.css
+- All Phase 1 logic preserved (anestesiado filter, EjecuciónPuraCard, Adaptive Take Profit)
+- New Prisma model: IntradayVolumeBlock (78 blocks per session × ticker × day)
+- Action Score now integrates flow metrics: VROC anomaly → +15, Iceberg → +2-10, Sweep → instant 100
+- Engine version: V7.0-FASE2
+
+## Current Project Status
+
+### Completed Phases
+- **V7.0-FASE1**: Anestesiado filter, Top-5 pressure, Adaptive Take Profit, EjecuciónPuraCard ✅
+- **V7.0-FASE2**: VROC, Iceberg Detection, Market Sweep Detection ✅
+
+### Architecture
+- Backend: /api/cockpit-score → V7.0-FASE2 engine with VROC + Iceberg + Sweep
+- Daemon: update-prices.ts → populates IntradayVolumeBlock every 5 min during market hours
+- Frontend: CockpitTab → Flow Metrics badges + FLOW ALERT in El Grito
+- Algorithms: calculateVolumeVelocity, detectIcebergOrder, detectMarketSweep in calculations.ts
+
+### Unresolved Issues / Risks
+- IntradayVolumeBlock requires daemon to run during market hours to accumulate data
+- Iceberg detection uses iolVolume as proxy for askDepth (limited by available data)
+- Market Sweep detection limited by polling interval (daemon ticks, not tick-by-tick)
+- L2X/Presión bug (punta-based pressure fallback) still pending
+
+### Priority Recommendations for Next Phase
+- Fix L2X/Presión bug (punta-based pressure fallback)
+- Add tick-by-tick trade data for more precise Iceberg/Sweep detection
+- Implement volume block visualization (mini chart showing VROC per block)
+- Add historical VROC trends (7-day VROC heatmap per instrument)

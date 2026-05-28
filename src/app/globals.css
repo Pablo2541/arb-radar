@@ -2157,3 +2157,25 @@ kbd {
 :root[data-theme="light"] .neon-price {
   text-shadow: none;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   V7.0-FASE2: FLOW METRICS BADGE ANIMATIONS
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Iceberg ALTA confidence shimmer animation */
+@keyframes flowIcebergShimmer {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; filter: brightness(1.4); }
+}
+.flow-iceberg-shimmer {
+  animation: flowIcebergShimmer 1.5s ease-in-out infinite;
+}
+
+/* Sweep strong pulsing glow animation */
+@keyframes flowSweepPulse {
+  0%, 100% { box-shadow: 0 0 4px rgba(239,68,68,0.3); }
+  50% { box-shadow: 0 0 12px rgba(239,68,68,0.6), 0 0 20px rgba(239,68,68,0.3); }
+}
+.flow-sweep-pulse {
+  animation: flowSweepPulse 1s ease-in-out infinite;
+}

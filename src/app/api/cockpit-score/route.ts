@@ -25,8 +25,11 @@ import {
   calculateNearestSR,
   calculateVolumeInjection,
   calculateActionScore,
+  calculateVolumeVelocity,
+  detectIcebergOrder,
+  detectMarketSweep,
 } from '@/lib/calculations';
-import type { HistoricalOHLC } from '@/lib/calculations';
+import type { HistoricalOHLC, PriceSnapshotForDetection } from '@/lib/calculations';
 import { safeDbOp } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -208,6 +211,65 @@ export async function GET(request: NextRequest) {
       srSource = 'intraday_fallback';
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // V7.0-FASE2: Fetch IntradayVolumeBlock data for VROC calculation
+    // ═══════════════════════════════════════════════════════════════════
+    let volumeBlocks: Array<{ date: string; ticker: string; blockIndex: number; volume: number; iolVolume: number }> = [];
+    try {
+      const blockRows = await safeDbOp((db) =>
+        db.intradayVolumeBlock.findMany({
+          orderBy: [{ ticker: 'asc' }, { date: 'desc' }, { blockIndex: 'asc' }],
+          select: {
+            date: true,
+            ticker: true,
+            blockIndex: true,
+            volume: true,
+            iolVolume: true,
+          },
+        })
+      );
+      if (blockRows && Array.isArray(blockRows)) {
+        volumeBlocks = blockRows.map((r: Record<string, unknown>) => ({
+          date: r.date as string,
+          ticker: r.ticker as string,
+          blockIndex: r.blockIndex as number,
+          volume: (r.volume as number) || 0,
+          iolVolume: (r.iolVolume as number) || 0,
+        }));
+      }
+    } catch (dbErr) {
+      console.warn('[cockpit-score] V7.0-FASE2: VolumeBlock DB query failed:', dbErr instanceof Error ? dbErr.message : String(dbErr));
+    }
+
+    // V7.0-FASE2: Fetch recent PriceSnapshots for Iceberg detection
+    let recentSnapshots: Array<{ ticker: string; timestamp: string; price: number; iolAsk: number; iolVolume: number }> = [];
+    try {
+      const snapRows = await safeDbOp((db) =>
+        db.priceSnapshot.findMany({
+          orderBy: [{ timestamp: 'desc' }],
+          take: 500,
+          select: {
+            ticker: true,
+            timestamp: true,
+            price: true,
+            iolAsk: true,
+            iolVolume: true,
+          },
+        })
+      );
+      if (snapRows && Array.isArray(snapRows)) {
+        recentSnapshots = snapRows.map((r: Record<string, unknown>) => ({
+          ticker: r.ticker as string,
+          timestamp: r.timestamp instanceof Date ? r.timestamp.toISOString() : String(r.timestamp),
+          price: (r.price as number) || 0,
+          iolAsk: (r.iolAsk as number) || 0,
+          iolVolume: (r.iolVolume as number) || 0,
+        }));
+      }
+    } catch (dbErr) {
+      console.warn('[cockpit-score] V7.0-FASE2: PriceSnapshot DB query failed:', dbErr instanceof Error ? dbErr.message : String(dbErr));
+    }
+
     // ── Compute CockpitScore for each instrument ──
     const allScores: CockpitScore[] = liveInstruments.map((inst: Record<string, unknown>) => {
       const instrument = {
@@ -370,6 +432,66 @@ export async function GET(request: NextRequest) {
         inst.change_pct as number | undefined,
       );
 
+      // ═══════════════════════════════════════════════════════════════════
+      // V7.0-FASE2: Volume Velocity (VROC)
+      //
+      // Calculate Volume Rate of Change by comparing current block flow
+      // against historical average for the same time slot.
+      // Anomaly > 300% triggers Momentum.
+      // ═══════════════════════════════════════════════════════════════════
+      const tickerBlocks = volumeBlocks.filter(b => b.ticker === instrument.ticker);
+      const currentBlockVol = (inst.iol_volume as number) || (inst.volume as number) || 0;
+      const historicalSameSlot = tickerBlocks
+        .filter(b => b.date !== new Date().toISOString().split('T')[0]) // Exclude today
+        .map(b => b.volume || b.iolVolume || 0)
+        .filter(v => v > 0);
+
+      const volumeVelocity = calculateVolumeVelocity({
+        ticker: instrument.ticker,
+        currentBlockVolume: currentBlockVol,
+        historicalSameSlot,
+        currentIolVolume: (inst.iol_volume as number) || undefined,
+      });
+
+      // ═══════════════════════════════════════════════════════════════════
+      // V7.0-FASE2: Iceberg Order Detection
+      //
+      // Detect hidden orders by monitoring ASK depth regeneration:
+      // if ASK depth was consumed but the price didn't drop and depth
+      // recovered, an iceberg order is likely present.
+      // ═══════════════════════════════════════════════════════════════════
+      const tickerSnaps = recentSnapshots
+        .filter(s => s.ticker === instrument.ticker && s.price > 0)
+        .slice(0, 5); // Last 5 snapshots
+
+      const icebergSnaps: PriceSnapshotForDetection[] = tickerSnaps.map(s => ({
+        timestamp: s.timestamp,
+        askPrice: s.iolAsk || s.price * 1.001, // Fallback: estimate ask from price
+        askDepth: s.iolVolume || 0, // Use iolVolume as proxy for depth
+        lastPrice: s.price,
+      }));
+
+      const icebergDetected = detectIcebergOrder({
+        ticker: instrument.ticker,
+        snapshots: icebergSnaps,
+        currentAskPrice: (inst.iol_ask as number) || instrument.price * 1.001,
+        currentAskDepth: (inst.iol_ask_depth as number) || 0,
+      });
+
+      // ═══════════════════════════════════════════════════════════════════
+      // V7.0-FASE2: Market Sweep Detection
+      //
+      // Detect if price jumped 2+ micro-puntas instantaneously.
+      // ═══════════════════════════════════════════════════════════════════
+      const prevSnap = tickerSnaps.length >= 2 ? tickerSnaps[1] : null;
+      const marketSweep = detectMarketSweep({
+        ticker: instrument.ticker,
+        previousPrice: prevSnap?.price ?? 0,
+        currentPrice: instrument.price,
+        previousAsk: prevSnap?.iolAsk ?? 0,
+        currentAsk: (inst.iol_ask as number) || 0,
+      });
+
       // Action Score — now uses historical S/R distance when available
       // V6.2.0: Use unified pressure (iolMarketPressure or puntaPressurePct→ratio)
       const actionScore = calculateActionScore(
@@ -381,6 +503,23 @@ export async function GET(request: NextRequest) {
         spreadNetoPct,
         deltaTIR,
       );
+
+      // ═══════════════════════════════════════════════════════════════════
+      // V7.0-FASE2: Adjust Action Score based on flow metrics
+      // ═══════════════════════════════════════════════════════════════════
+      let adjustedActionScore = { ...actionScore };
+      if (volumeVelocity.momentumTrigger) {
+        adjustedActionScore.score = Math.min(100, adjustedActionScore.score + 15);
+        adjustedActionScore.reason += ' · VROC Anomalía';
+      }
+      if (icebergDetected.detected) {
+        adjustedActionScore.score = Math.min(100, adjustedActionScore.score + (icebergDetected.confidence === 'ALTA' ? 10 : icebergDetected.confidence === 'MEDIA' ? 5 : 2));
+        adjustedActionScore.reason += ' · Iceberg Detectado';
+      }
+      if (marketSweep.detected) {
+        adjustedActionScore.score = 100; // Maximum momentum — instant score
+        adjustedActionScore.reason = `⚡ BARRIDO ${marketSweep.direction} (${marketSweep.levelsSkipped} niveles)`;
+      }
 
       return {
         ...calculateCockpitScore(
@@ -397,7 +536,7 @@ export async function GET(request: NextRequest) {
         nearestSR,
         distanceToSR,
         volumeInjection,
-        actionScore,
+        actionScore: adjustedActionScore,
         // V6.1.0: Historical S/R metadata with polarity reversal
         srSource: histSR.isHistorical ? 'historical_ohlc' : 'intraday_fallback',
         historicalSupport: histSR.isHistorical ? histSR.support : undefined,
@@ -418,6 +557,10 @@ export async function GET(request: NextRequest) {
         top5PressurePct,
         top5PressureRatio,
         bookImbalanceLabel,
+        // V7.0-FASE2: Volume Velocity & Flow Metrics
+        volumeVelocity,
+        icebergDetected,
+        marketSweep,
       };
     });
 
@@ -459,7 +602,7 @@ export async function GET(request: NextRequest) {
       horizon_days: horizon,
       summary,
       timestamp: new Date(now).toISOString(),
-      engine_version: 'V7.0-FASE1',
+      engine_version: 'V7.0-FASE2',
       stale: false,
       sr_source: srSource,
     };

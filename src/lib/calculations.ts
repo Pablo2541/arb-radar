@@ -2451,3 +2451,275 @@ export function calculateAdaptiveTakeProfit(params: {
     suggestedDestination,
   };
 }
+
+// ============================================================
+// FASE 2: Volume Velocity & Flow Metrics
+// ============================================================
+
+/**
+ * Volume Velocity — VROC (Volume Rate of Change)
+ *
+ * Compara el volumen del bloque de 5 minutos actual contra el promedio histórico
+ * del mismo bloque horario (mismo blockIndex) en días anteriores.
+ *
+ * CONCEPTO: Detecta aceleración anómala de volumen intradía que puede indicar:
+ *   - Entrada de un operador grande (institutional flow)
+ *   - News flow que genera interés repentino
+ *   - Acumulación/distribución agresiva
+ *
+ * UMBRALES:
+ *   VROC > 500% → ANOMALÍA X5+ (evento extremo, momentum trigger)
+ *   VROC > 300% → ANOMALÍA X3 (anomalía fuerte, momentum trigger)
+ *   VROC > 150% → ACELERACIÓN (volumen elevado, sin trigger)
+ *   VROC ≤ 150% → NORMAL (volumen en rango esperado)
+ *
+ * EJEMPLO: Bloque actual = 1,200,000 vs promedio histórico = 350,000
+ *   VROC = (1,200,000 / 350,000) * 100 = 342.8%
+ *   → ANOMALÍA X3, momentumTrigger = true
+ */
+export function calculateVolumeVelocity(params: {
+  ticker: string;
+  currentBlockVolume: number;
+  historicalSameSlot: number[];
+  currentIolVolume?: number;
+}): CockpitScore['volumeVelocity'] {
+  const { ticker, currentBlockVolume, historicalSameSlot } = params;
+
+  // Edge case: no volume in current block
+  if (currentBlockVolume <= 0) {
+    return {
+      vroc: 0,
+      momentumTrigger: false,
+      label: 'NORMAL',
+      currentBlockVolume: 0,
+      avgHistoricalVolume: 0,
+    };
+  }
+
+  // Calculate average historical volume for this same time slot
+  const avgHistorical =
+    historicalSameSlot.length > 0
+      ? historicalSameSlot.reduce((a, b) => a + b, 0) / historicalSameSlot.length
+      : currentBlockVolume;
+
+  // Volume Rate of Change (%)
+  const vroc = avgHistorical > 0 ? (currentBlockVolume / avgHistorical) * 100 : 0;
+
+  // Determine label and momentum trigger based on VROC thresholds
+  let label: 'NORMAL' | 'ACELERACIÓN' | 'ANOMALÍA X3' | 'ANOMALÍA X5+';
+  let momentumTrigger: boolean;
+
+  if (vroc > 500) {
+    label = 'ANOMALÍA X5+';
+    momentumTrigger = true;
+  } else if (vroc > 300) {
+    label = 'ANOMALÍA X3';
+    momentumTrigger = true;
+  } else if (vroc > 150) {
+    label = 'ACELERACIÓN';
+    momentumTrigger = false;
+  } else {
+    label = 'NORMAL';
+    momentumTrigger = false;
+  }
+
+  return {
+    vroc,
+    momentumTrigger,
+    label,
+    currentBlockVolume,
+    avgHistoricalVolume: avgHistorical,
+  };
+}
+
+/**
+ * Price snapshot interface for iceberg order detection.
+ * Represents a single reading of the order book at a point in time.
+ */
+export interface PriceSnapshotForDetection {
+  timestamp: string | number;
+  askPrice: number;
+  askDepth: number;      // Total quantity at best ask
+  lastPrice: number;
+}
+
+/**
+ * Iceberg Order Detection
+ *
+ * Detecta la presencia de una orden iceberg (orden oculta de gran tamaño)
+ * analizando el patrón de regeneración en la punta ASK del order book.
+ *
+ * CONCEPTO: Una orden iceberg es una orden límite de gran volumen que solo
+ * muestra una fracción de su tamaño real en el order book. Cuando la porción
+ * visible es ejecutada, una nueva porción aparece automáticamente al mismo
+ * precio, regenerando la profundidad (askDepth) sin que el precio cambie.
+ *
+ * PATRÓN DETECTADO:
+ *   1. askDepth cae significativamente (>50% reducción) — se ejecutó contra la punta
+ *   2. askPrice NO baja (se mantiene o sube) — la oferta no retrocedió
+ *   3. askDepth se regenera — nueva porción de la orden iceberg aparece
+ *
+ * CONFIANZA:
+ *   ≥3 snapshots con patrón → ALTA
+ *   2 snapshots con patrón → MEDIA
+ *   <2 snapshots → BAJA (datos insuficientes)
+ *
+ * EJEMPLO:
+ *   t0: askPrice=1.155, askDepth=50000
+ *   t1: askPrice=1.155, askDepth=15000  (70% reducción, precio igual)
+ *   t2: askPrice=1.155, askDepth=48000  (regeneración, precio igual)
+ *   → Iceberg detectado, confianza ALTA
+ */
+export function detectIcebergOrder(params: {
+  ticker: string;
+  snapshots: PriceSnapshotForDetection[];
+  currentAskPrice: number;
+  currentAskDepth: number;
+}): CockpitScore['icebergDetected'] {
+  const { ticker, snapshots, currentAskPrice, currentAskDepth } = params;
+
+  // Need at least 2 snapshots to detect the pattern
+  if (snapshots.length < 2) {
+    return {
+      detected: false,
+      confidence: 'BAJA',
+      reason: 'Datos insuficientes',
+    };
+  }
+
+  let patternMatches = 0;
+
+  // Compare consecutive snapshots looking for the iceberg pattern:
+  // 1. Depth dropped significantly (>50% reduction) in a previous snapshot
+  // 2. Ask price did NOT decrease (stayed same or increased)
+  // 3. Depth has now recovered (regenerated)
+  for (let i = 0; i < snapshots.length - 1; i++) {
+    const prev = snapshots[i];
+    const next = snapshots[i + 1];
+
+    // Check for significant depth reduction
+    if (prev.askDepth > 0) {
+      const depthReduction = (prev.askDepth - next.askDepth) / prev.askDepth;
+
+      // Pattern: depth dropped >50% AND price did not decrease
+      if (depthReduction > 0.5 && next.askPrice >= prev.askPrice) {
+        patternMatches++;
+      }
+    }
+  }
+
+  // Also check if the current state shows recovery from a previous drop
+  // Look for the minimum depth point and check if current depth has recovered
+  const minDepthSnapshot = snapshots.reduce(
+    (min, snap) => (snap.askDepth < min.askDepth ? snap : min),
+    snapshots[0]
+  );
+
+  // If there was a significant drop and current depth recovered, that's additional evidence
+  if (
+    minDepthSnapshot.askDepth > 0 &&
+    currentAskDepth > minDepthSnapshot.askDepth * 2 &&
+    currentAskPrice >= minDepthSnapshot.askPrice
+  ) {
+    patternMatches++;
+  }
+
+  // Determine detection and confidence
+  const detected = patternMatches >= 1;
+
+  let confidence: 'BAJA' | 'MEDIA' | 'ALTA';
+
+  if (!detected) {
+    confidence = 'BAJA';
+  } else if (patternMatches >= 3) {
+    confidence = 'ALTA';
+  } else {
+    confidence = 'MEDIA';
+  }
+
+  let reason: string;
+  if (!detected) {
+    reason = 'No se detectó patrón de regeneración en order book';
+  } else {
+    reason = `Patrón iceberg detectado en ${ticker}: profundidad ASK cayó y se regeneró ${patternMatches} vez/veces sin retroceso de precio. Orden oculta probable en $${currentAskPrice.toFixed(4)}`;
+  }
+
+  return {
+    detected,
+    confidence,
+    priceLevel: detected ? currentAskPrice : undefined,
+    reason,
+  };
+}
+
+/**
+ * Market Sweep Detection
+ *
+ * Detecta un barrido de mercado (sweep) cuando el precio salta 2+ micro-puntas
+ * (tick levels) en una sola lectura, indicando que una orden de mercado agresiva
+ * barrió múltiples niveles de liquidez.
+ *
+ * CONCEPTO: Un market sweep ocurre cuando un operador envía una orden market
+ * de tamaño suficiente como para ejecutarse contra múltiples niveles del order
+ * book. Esto resulta en un salto de precio que "salta" (skips) niveles
+ * intermedios de precio.
+ *
+ * LÓGICA:
+ *   1. Si tickSize no está disponible, se deriva como fracción del spread
+ *   2. Se calcula cuántos niveles de tick fueron saltados
+ *   3. Si se saltaron ≥2 niveles → market sweep detectado
+ *
+ * EJEMPLO: previousPrice=1.1550, currentPrice=1.1580, tickSize=0.0005
+ *   priceChange = 1.1580 - 1.1550 = 0.0030
+ *   levelsSkipped = floor(0.0030 / 0.0005) - 1 = floor(6) - 1 = 5
+ *   → Sweep detectado, direction=UP, 5 niveles saltados
+ */
+export function detectMarketSweep(params: {
+  ticker: string;
+  previousPrice: number;
+  currentPrice: number;
+  previousAsk: number;
+  currentAsk: number;
+  tickSize?: number;
+  timeDeltaMs?: number;
+}): CockpitScore['marketSweep'] {
+  const { ticker, previousPrice, currentPrice, previousAsk, currentAsk, tickSize } = params;
+
+  // Edge case: invalid prices
+  if (previousPrice <= 0 || currentPrice <= 0) {
+    return {
+      detected: false,
+      levelsSkipped: 0,
+      direction: 'UP',
+      reason: 'Precios inválidos para detección de sweep',
+    };
+  }
+
+  // Derive tickSize if not provided: use a fraction of the spread as micro-level estimate
+  const effectiveTickSize =
+    tickSize ?? Math.max(0.0001, (previousAsk - previousPrice) * 0.25);
+
+  // Calculate price change
+  const priceChange = currentPrice - previousPrice;
+
+  // Calculate levels skipped (subtract 1 because moving 1 tickSize is normal)
+  const levelsSkipped = Math.max(0, Math.floor(Math.abs(priceChange) / effectiveTickSize) - 1);
+
+  // Determine if this is a market sweep (2+ micro-puntas skipped)
+  const detected = levelsSkipped >= 2;
+  const direction: 'UP' | 'DOWN' = priceChange > 0 ? 'UP' : 'DOWN';
+
+  let reason: string;
+  if (!detected) {
+    reason = `Movimiento de precio normal (${levelsSkipped} nivel saltado, umbral: 2)`;
+  } else {
+    reason = `Market sweep en ${ticker}: precio ${direction === 'UP' ? 'subió' : 'bajó'} ${Math.abs(priceChange).toFixed(4)} saltando ${levelsSkipped} micro-puntas (${direction}) en una sola lectura`;
+  }
+
+  return {
+    detected,
+    levelsSkipped,
+    direction,
+    reason,
+  };
+}

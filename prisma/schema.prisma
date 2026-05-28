@@ -119,3 +119,29 @@ model CountryRisk {
   source    String   @default("unknown") // 'argentinadatos' | 'bondterminal' | etc.
   updatedAt DateTime @updatedAt
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// V7.0-FASE2 — IntradayVolumeBlock: Volume per 5-min block
+//
+// Stores the volume traded in each 5-minute block of the session.
+// Used by calculateVolumeVelocity() to compute the Volume Rate of
+// Change (VROC) — comparing current block flow against its own
+// historical average for the same time slot.
+//
+// Session: 10:00–16:30 Argentina = 78 blocks of 5 minutes
+// blockIndex: 0 = 10:00–10:05, 1 = 10:05–10:10, ..., 77 = 16:25–16:30
+// ═══════════════════════════════════════════════════════════════════
+model IntradayVolumeBlock {
+  id         String @id @default(cuid())
+  date       String // YYYY-MM-DD (Argentina trading date)
+  ticker     String // e.g. "T15J7", "S12E5"
+  blockIndex Int    // 0-77 (5-min blocks in 10:00-16:30 session)
+  blockStart String // "HH:MM" start of block (e.g. "10:00", "10:05")
+  volume     Float  @default(0) // Notional ARS volume in this block (data912)
+  iolVolume  Float  @default(0) // IOL cantidadOperada delta in this block
+  tradeCount Int    @default(0) // Number of trades in this block (if available)
+
+  @@unique([date, ticker, blockIndex])
+  @@index([date, ticker])
+  @@index([date])
+}

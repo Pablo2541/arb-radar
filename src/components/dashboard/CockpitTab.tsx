@@ -1,14 +1,15 @@
 'use client';
 
 // ════════════════════════════════════════════════════════════════════════
-// V7.0-FASE2 — EJECUCIÓN PURA: CockpitTab
+// V7.0-FASE2 — VELOCIDAD & FLUJO: CockpitTab
 //
 // Filosofía: "El backend analiza, la pantalla ordena la acción."
 //   - Instrumentos anestesiados OCULTOS de la vista principal
 //   - Columnas secundarias ELIMINADAS (S/R, Dist%, Inyección, Spread)
-//   - Tabla minimalista: #, Instrumento, Precio, TEM, Score, ACCIÓN
+//   - Tabla minimalista: #, Instrumento, Precio, TEM, Score, ACCIÓN, FLUJO
 //   - MÓDULO DE EJECUCIÓN PURA: tarjeta central de alta prioridad
 //   - Trigger Crítico de Salida: Take Profit Adaptativo (+1% / BID cede)
+//   - FASE 2 Flow Metrics: VROC, Iceberg, Sweep badges
 //
 // BLINDAJE: La comisión del 0.15% NO se toca. price x 1.0015 = IMMUTABLE.
 // ════════════════════════════════════════════════════════════════════════
@@ -352,6 +353,64 @@ function EjecucionPuraCard({
   );
 }
 
+// ─── Flow Metrics Badges (VROC / Iceberg / Sweep) ────────────────────
+function FlowMetricsBadges({ score, layout = 'desktop' }: { score: CockpitScore; layout?: 'desktop' | 'mobile' }) {
+  const badges: React.ReactNode[] = [];
+
+  // VROC badge — only if label !== 'NORMAL'
+  if (score.volumeVelocity && score.volumeVelocity.label !== 'NORMAL') {
+    const label = score.volumeVelocity.label;
+    const abbr = label === 'ACELERACIÓN' ? 'ACEL' : label === 'ANOMALÍA X3' ? 'X3' : label === 'ANOMALÍA X5+' ? 'X5+' : label;
+    const colorClass = label === 'ACELERACIÓN'
+      ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+      : label === 'ANOMALÍA X3'
+        ? 'bg-orange-500/15 text-orange-400 border-orange-500/30'
+        : 'bg-red-500/15 text-red-400 border-red-500/30';
+    const pulse = score.volumeVelocity.momentumTrigger ? 'animate-pulse' : '';
+    badges.push(
+      <span key="vroc" className={`inline-flex items-center gap-0.5 border font-bold uppercase tracking-wider rounded ${colorClass} ${pulse} ${layout === 'desktop' ? 'text-[8px] px-1.5 py-0.5' : 'text-[7px] px-1 py-0.5'}`} style={score.volumeVelocity.momentumTrigger ? { boxShadow: label === 'ANOMALÍA X5+' ? '0 0 8px rgba(239,68,68,0.5)' : label === 'ANOMALÍA X3' ? '0 0 6px rgba(249,115,22,0.4)' : '0 0 6px rgba(245,158,11,0.4)' } : {}}>
+        🚀 VROC {abbr}
+      </span>
+    );
+  }
+
+  // Iceberg badge — only if detected
+  if (score.icebergDetected && score.icebergDetected.detected) {
+    const conf = score.icebergDetected.confidence;
+    const colorClass = conf === 'ALTA'
+      ? 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+      : conf === 'MEDIA'
+        ? 'bg-purple-500/10 text-purple-300 border-purple-500/20'
+        : 'bg-purple-500/5 text-purple-200 border-purple-500/10';
+    const shimmer = conf === 'ALTA' ? 'flow-iceberg-shimmer' : '';
+    badges.push(
+      <span key="iceberg" className={`inline-flex items-center gap-0.5 border font-bold uppercase tracking-wider rounded ${colorClass} ${shimmer} ${layout === 'desktop' ? 'text-[8px] px-1.5 py-0.5' : 'text-[7px] px-1 py-0.5'}`}>
+        🧊 ICEBERG {conf}
+      </span>
+    );
+  }
+
+  // Sweep badge — only if detected
+  if (score.marketSweep && score.marketSweep.detected) {
+    const dir = score.marketSweep.direction;
+    const skipped = score.marketSweep.levelsSkipped;
+    badges.push(
+      <span key="sweep" className={`inline-flex items-center gap-0.5 border font-bold uppercase tracking-wider rounded bg-red-500/20 text-red-300 border-red-500/40 flow-sweep-pulse ${layout === 'desktop' ? 'text-[8px] px-1.5 py-0.5' : 'text-[7px] px-1 py-0.5'}`} style={{ boxShadow: '0 0 8px rgba(239,68,68,0.5)' }}>
+        ⚡ BARRIDO {dir} ×{skipped}
+      </span>
+    );
+  }
+
+  if (badges.length === 0) return null;
+
+  if (layout === 'mobile') {
+    return <div className="flex flex-wrap items-center gap-1 mt-1.5">{badges}</div>;
+  }
+
+  // Desktop: horizontal, max 2 visible
+  return <div className="flex flex-wrap items-center gap-1 max-w-[180px]">{badges.slice(0, 2)}</div>;
+}
+
 // ─── El Grito Alert Card (Simplified) ─────────────────────────────────
 function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
   if (scores.length === 0) return null;
@@ -360,6 +419,12 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
   const gatillarScores = scores.filter(s => s.actionScore.label === 'GATILLAR YA');
   const saltoScores = scores.filter(s => s.verdict === 'SALTO_TACTICO');
   const carameloScores = scores.filter(s => s.verdict === 'PUNTO_CARAMELO');
+
+  // FASE 2 Flow Alert: detect instruments with VROC anomalies or sweeps
+  const flowAlertActive = scores.some(s =>
+    (s.volumeVelocity?.momentumTrigger === true) || (s.marketSweep?.detected === true)
+  );
+
   const topScores = [...takeProfitScores, ...gatillarScores, ...saltoScores, ...carameloScores].slice(0, 4);
 
   if (topScores.length === 0) return null;
@@ -386,6 +451,12 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
             <span className="ml-2 px-2 py-0.5 rounded-lg text-[9px] font-bold animate-pulse"
               style={{ color: '#f87171', background: 'rgba(248,113,113,0.2)', boxShadow: '0 0 12px rgba(248,113,113,0.3)' }}>
               🔥 {gatillarScores.length}
+            </span>
+          )}
+          {flowAlertActive && (
+            <span className="ml-2 px-2 py-0.5 rounded-lg text-[9px] font-bold animate-pulse"
+              style={{ color: '#a78bfa', background: 'rgba(167,139,250,0.2)', boxShadow: '0 0 12px rgba(167,139,250,0.4)' }}>
+              🌊 FLOW ALERT
             </span>
           )}
         </div>
@@ -875,6 +946,15 @@ export default function CockpitTab({
     );
   }, [enrichedScores]);
 
+  // ─── FASE 2: Check if any flow metrics are active ──────────────────
+  const hasFlowMetrics = useMemo(() => {
+    return enrichedScores.some(s =>
+      (s.volumeVelocity && s.volumeVelocity.label !== 'NORMAL') ||
+      (s.icebergDetected && s.icebergDetected.detected) ||
+      (s.marketSweep && s.marketSweep.detected)
+    );
+  }, [enrichedScores]);
+
   // ─── Computed: horizon label ───────────────────────────────────────
   const horizonLabel = useMemo(() => {
     const opt = HORIZON_OPTIONS.find(h => h.value === horizon);
@@ -927,7 +1007,7 @@ export default function CockpitTab({
               ◈ EJECUCIÓN PURA — QUANT X
             </h2>
             <p className="text-sm text-app-text3">
-              El backend analiza, la pantalla ordena la acción · Horizonte: {horizonLabel}
+              {hasFlowMetrics ? 'V7.0-FASE2 — VELOCIDAD & FLUJO' : 'V7.0-FASE2 — EJECUCIÓN PURA'} · Horizonte: {horizonLabel}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1198,14 +1278,15 @@ export default function CockpitTab({
       ) : (
         <div className="nexus-banner animate-fadeInUp">
           <div className="cockpit-scroll-container">
-            {/* Desktop header — minimalista: 6 columnas */}
-            <div className="hidden md:grid nx-sticky-hdr px-4 py-3.5 grid-cols-[36px_1fr_100px_80px_72px_1fr] gap-2 items-center text-[9px] text-app-text4 uppercase tracking-wider font-medium">
+            {/* Desktop header — minimalista: 7 columnas */}
+            <div className="hidden md:grid nx-sticky-hdr px-4 py-3.5 grid-cols-[36px_1fr_100px_80px_72px_1fr_auto] gap-2 items-center text-[9px] text-app-text4 uppercase tracking-wider font-medium">
               <span>#</span>
               <span>Instrumento</span>
               <span className="text-right">Precio</span>
               <span className="text-right">TEM</span>
               <span className="text-center">Score</span>
               <span className="text-right">ACCIÓN</span>
+              <span className="text-center">FLUJO</span>
             </div>
 
             {/* Mobile header */}
@@ -1299,13 +1380,16 @@ export default function CockpitTab({
                           <span className="font-mono font-bold text-sm" style={{ color: vc.color }}>{score.unifiedScore.toFixed(0)}</span>
                         </div>
                       </div>
+
+                      {/* Row 3: Flow Metrics Badges (mobile: separate line) */}
+                      <FlowMetricsBadges score={score} layout="mobile" />
                     </div>
 
                     {/* ═══════════════════════════════════════════════════ */}
                     {/* DESKTOP GRID — Minimalista 6 columnas               */}
                     {/* ═══════════════════════════════════════════════════ */}
                     <div className="hidden md:block cockpit-row-card">
-                      <div className="grid grid-cols-[36px_1fr_100px_80px_72px_1fr] gap-2 items-center py-3.5">
+                      <div className="grid grid-cols-[36px_1fr_100px_80px_72px_1fr_auto] gap-2 items-center py-3.5">
                         {/* Rank */}
                         <div className={`rank-badge ${getRankClass(rank)} text-[10px]`} style={{ width: 30, height: 30, fontSize: 10 }}>{rank}</div>
 
@@ -1362,6 +1446,9 @@ export default function CockpitTab({
                             <div className="nexus-score-gauge"><ScoreRing score={score.actionScore.score} color={asc.color} size={28} /></div>
                           )}
                         </div>
+
+                        {/* FLUJO — Flow Metrics Badges */}
+                        <FlowMetricsBadges score={score} layout="desktop" />
                       </div>
                     </div>
                   </div>

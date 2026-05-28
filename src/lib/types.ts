@@ -303,6 +303,27 @@ export interface CockpitScore {
   bidPressureCeding?: boolean;       // True si la presión compradora Top-5 está cediendo
   sessionGainPct?: number;           // Ganancia directa en precio en la jornada (%)
 
+  // ── V7.0-FASE2: Volume Velocity & Flow Metrics ──
+  volumeVelocity?: {
+    vroc: number;                     // Volume Rate of Change (% vs historical same slot)
+    momentumTrigger: boolean;         // True si VROC > 300% (anomalía de aceleración)
+    label: 'NORMAL' | 'ACELERACIÓN' | 'ANOMALÍA X3' | 'ANOMALÍA X5+';
+    currentBlockVolume: number;       // Volumen del bloque actual
+    avgHistoricalVolume: number;      // Promedio histórico del mismo bloque horario
+  };
+  icebergDetected?: {
+    detected: boolean;                // True si se detecta orden oculta
+    confidence: 'BAJA' | 'MEDIA' | 'ALTA';
+    priceLevel?: number;              // Precio donde se regenera la punta ASK
+    reason: string;
+  };
+  marketSweep?: {
+    detected: boolean;                // True si se detecta barrido de mercado
+    levelsSkipped: number;            // Cantidad de micro-puntas saltadas
+    direction: 'UP' | 'DOWN';
+    reason: string;
+  };
+
   withinHorizon: boolean;      // Within horizon filter (default 45 days — Scalping Extendido)
 
   // ── V5.4: Portfolio-Aware Take Profit ──
