@@ -427,7 +427,7 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2">
-          {topScores.map((s, i) => {
+          {topScores.map((s, index) => {
             const isGatillar = s.actionScore.label === 'GATILLAR YA';
             const isTakeProfit = !!s.isTakeProfit;
             // V5.4: TAKE_PROFIT uses crimson, GATILLAR uses red, rest uses VERDICT_CONFIG
@@ -438,8 +438,8 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
                 : VERDICT_CONFIG[s.verdict];
             return (
               <div
-                key={s.ticker}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border animate-fadeInUp ${getStaggerClass(i)} ${isTakeProfit ? 'border-red-600' : ''}`}
+                key={`${s.ticker}-${index}`}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border animate-fadeInUp ${getStaggerClass(index)} ${isTakeProfit ? 'border-red-600' : ''}`}
                 style={{
                   borderColor: isTakeProfit ? 'rgba(220,38,38,0.6)' : `${vc.color}33`,
                   background: vc.bg,
