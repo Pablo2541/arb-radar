@@ -218,9 +218,10 @@ function isMarketHours(): boolean {
   return isWeekday && hour >= 10 && hour < 18;
 }
 
-// ── V7.0-FASE2: Argentina Time Helper for IntradayVolumeBlock ──────────
+// ── V7.0-FASE3-HC: Argentina Time Helper for IntradayVolumeBlock ────────
 // Returns current Argentina (UTC-3) date, time, and 5-minute block index
-// for the 10:00–16:30 trading session (blockIndex 0-77).
+// for the 10:00–18:00 trading session (blockIndex 0-95).
+// Horario Corregido: 8 horas = 96 bloques de 5 minutos.
 
 function getArgentinaTime(): { date: string; hours: number; minutes: number; blockIndex: number; blockStart: string } {
   const now = new Date();
@@ -233,10 +234,12 @@ function getArgentinaTime(): { date: string; hours: number; minutes: number; blo
   const minutes = bsasNow.getMinutes();
   const date = bsasNow.toISOString().split('T')[0];
 
-  // Session: 10:00-16:30 → blockIndex 0-77
+  // Session: 10:00-18:00 → blockIndex 0-95 (96 blocks of 5 min)
   const totalMinutes = hours * 60 + minutes;
   const sessionStart = 10 * 60; // 10:00 in minutes
-  const blockIndex = Math.max(0, Math.min(77, Math.floor((totalMinutes - sessionStart) / 5)));
+  const SESSION_BLOCKS = 96; // 8h × 12 blocks/h = 96 blocks
+  const MAX_BLOCK_INDEX = SESSION_BLOCKS - 1; // 95
+  const blockIndex = Math.max(0, Math.min(MAX_BLOCK_INDEX, Math.floor((totalMinutes - sessionStart) / 5)));
 
   const blockStartMinutes = sessionStart + blockIndex * 5;
   const blockStart = `${String(Math.floor(blockStartMinutes / 60)).padStart(2, '0')}:${String(blockStartMinutes % 60).padStart(2, '0')}`;
@@ -999,9 +1002,9 @@ async function writeHistoricalData(
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// V7.0-FASE2 — INTRADAY VOLUME BLOCKS
+// V7.0-FASE3-HC — INTRADAY VOLUME BLOCKS (Horario Corregido)
 // Populate IntradayVolumeBlock table with 5-min resolution volume data.
-// Only runs during market hours (10:00-16:30 Argentina time).
+// Runs during full market hours (10:00-18:00 Argentina time = 96 blocks).
 // Wrapped in try/catch so it never breaks the existing daemon flow.
 // ════════════════════════════════════════════════════════════════════════
 
@@ -1012,16 +1015,17 @@ async function updateIntradayVolumeBlock(
   try {
     const arTime = getArgentinaTime();
 
-    // Only update during market hours: 10:00–16:30 Argentina time
-    // blockIndex < 0 means before 10:00, blockIndex > 77 means after 16:30
+    // Only update during market hours: 10:00–18:00 Argentina time
+    // blockIndex < 0 means before 10:00, blockIndex > 95 means after 18:00
     const totalMinutes = arTime.hours * 60 + arTime.minutes;
-    const sessionStart = 10 * 60;
-    const sessionEnd = 16 * 60 + 30; // 16:30
+    const sessionStart = 10 * 60;     // 10:00
+    const sessionEnd   = 18 * 60;     // 18:00
     if (totalMinutes < sessionStart || totalMinutes >= sessionEnd) {
       return; // Outside trading session — skip
     }
 
-    if (arTime.blockIndex < 0 || arTime.blockIndex > 77) {
+    const MAX_BLOCK_INDEX = 95; // 96 blocks: 0-95
+    if (arTime.blockIndex < 0 || arTime.blockIndex > MAX_BLOCK_INDEX) {
       return; // Invalid block — skip
     }
 

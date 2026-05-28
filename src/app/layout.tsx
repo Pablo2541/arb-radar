@@ -13,24 +13,24 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Quant-X Dashboard ENGINE V7.0-FASE3",
-  description: "Pressure Fallback + Row Flash + Scream Log · Polarity Reversal · Price Action Scanner · El Gatillador Cuantitativo · Dashboard de scalping de LECAPs y BONCAPs con datos en tiempo real. ENGINE V7.0-FASE3",
+  title: "Quant-X Dashboard ENGINE V7.0-FASE3-HC",
+  description: "Pressure Fallback + Row Flash + Scream Log · Polarity Reversal · Price Action Scanner · El Gatillador Cuantitativo · Dashboard de scalping de LECAPs y BONCAPs con datos en tiempo real. ENGINE V7.0-FASE3-HC",
   keywords: ["arbitraje", "LECAP", "BONCAP", "Argentina", "tasas", "curvas", "dólar MEP", "CCL", "spread caución", "duration modified"],
   authors: [{ name: "ARB Radar" }],
   icons: {
     icon: "/logo.svg",
   },
   openGraph: {
-    title: "Quant-X Dashboard ENGINE V7.0-FASE3",
-    description: "Pressure Fallback + Row Flash + Scream Log · Polarity Reversal · Price Action Scanner · El Gatillador Cuantitativo — Dashboard de scalping argentino — ENGINE V7.0-FASE3",
+    title: "Quant-X Dashboard ENGINE V7.0-FASE3-HC",
+    description: "Pressure Fallback + Row Flash + Scream Log · Polarity Reversal · Price Action Scanner · El Gatillador Cuantitativo — Dashboard de scalping argentino — ENGINE V7.0-FASE3-HC",
     url: "https://arbradar.com",
     siteName: "ARB Radar",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Quant-X Dashboard ENGINE V7.0-FASE3",
-    description: "Pressure Fallback + Row Flash + Scream Log · Polarity Reversal · Price Action Scanner · El Gatillador Cuantitativo — Dashboard de scalping argentino — ENGINE V7.0-FASE3",
+    title: "Quant-X Dashboard ENGINE V7.0-FASE3-HC",
+    description: "Pressure Fallback + Row Flash + Scream Log · Polarity Reversal · Price Action Scanner · El Gatillador Cuantitativo — Dashboard de scalping argentino — ENGINE V7.0-FASE3-HC",
   },
 };
 

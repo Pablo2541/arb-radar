@@ -121,21 +121,21 @@ model CountryRisk {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// V7.0-FASE2 — IntradayVolumeBlock: Volume per 5-min block
+// V7.0-FASE3-HC — IntradayVolumeBlock: Volume per 5-min block (Horario Corregido)
 //
 // Stores the volume traded in each 5-minute block of the session.
 // Used by calculateVolumeVelocity() to compute the Volume Rate of
 // Change (VROC) — comparing current block flow against its own
 // historical average for the same time slot.
 //
-// Session: 10:00–16:30 Argentina = 78 blocks of 5 minutes
-// blockIndex: 0 = 10:00–10:05, 1 = 10:05–10:10, ..., 77 = 16:25–16:30
+// Session: 10:00–18:00 Argentina = 96 blocks of 5 minutes
+// blockIndex: 0 = 10:00–10:05, 1 = 10:05–10:10, ..., 95 = 17:55–18:00
 // ═══════════════════════════════════════════════════════════════════
 model IntradayVolumeBlock {
   id         String @id @default(cuid())
   date       String // YYYY-MM-DD (Argentina trading date)
   ticker     String // e.g. "T15J7", "S12E5"
-  blockIndex Int    // 0-77 (5-min blocks in 10:00-16:30 session)
+  blockIndex Int    // 0-95 (5-min blocks in 10:00-18:00 session, 96 total)
   blockStart String // "HH:MM" start of block (e.g. "10:00", "10:05")
   volume     Float  @default(0) // Notional ARS volume in this block (data912)
   iolVolume  Float  @default(0) // IOL cantidadOperada delta in this block

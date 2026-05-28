@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-// ENGINE V7.0-FASE3 — /api/cockpit-score: Unified Scalping Signal
+// ENGINE V7.0-FASE3-HC — /api/cockpit-score: Unified Scalping Signal
 //
 // Computes the CockpitScore for every live LECAP/BONCAP instrument
 // using 5 weighted scalping factors and assigns a verdict.
@@ -768,7 +768,7 @@ export async function GET(request: NextRequest) {
       horizon_days: horizon,
       summary,
       timestamp: new Date(now).toISOString(),
-      engine_version: 'ENGINE V7.0-FASE3',
+      engine_version: 'ENGINE V7.0-FASE3-HC',
       stale: false,
       sr_source: srSource,
     };

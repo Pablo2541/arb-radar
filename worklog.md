@@ -1679,3 +1679,33 @@ Stage Summary:
 - Propuesta Abierta: Spread Dispersal Velocity (leading indicator for price movement)
 - Version: ENGINE V7.0-FASE3
 - All Phase 1 & Phase 2 logic preserved
+
+---
+Task ID: HC-1
+Agent: Main Agent
+Task: Horario Corregido — Expand trading session from 10:00-16:30 to 10:00-18:00 (78→96 blocks)
+
+Work Log:
+- Searched entire codebase for hardcoded 16:30, 77, 78 block limits
+- Found discrepancy: daemon isMarketHours() ran 10:00-18:00 but volume blocks only wrote 10:00-16:30
+- Key fix locations identified in scripts/update-prices.ts:
+  1. getArgentinaTime() — blockIndex clamp was Math.min(77,...) → Math.min(95,...)
+  2. updateIntradayVolumeBlock() — sessionEnd was 16:30 → 18:00, guard > 77 → > 95
+- Replaced all hardcoded constants with SESSION_BLOCKS=96, MAX_BLOCK_INDEX=95
+- Updated Prisma schema IntradayVolumeBlock comments: 78→96 blocks, 0-77→0-95, 16:30→18:00
+- Updated version strings: ENGINE V7.0-FASE3 → ENGINE V7.0-FASE3-HC across:
+  - src/app/page.tsx (loading, header, footer)
+  - src/app/layout.tsx (title, description ×3, og, twitter)
+  - src/app/api/cockpit-score/route.ts (engine_version, header)
+  - src/app/api/market-truth/route.ts (engine_version ×2)
+- Verified: calculations.ts and cockpit-score route have NO hardcoded 77/78 in executable code
+- Lint: 0 errors
+- DB push: in sync (no schema structure change, only comment update)
+- Dev server: running, APIs returning ENGINE V7.0-FASE3-HC
+
+Stage Summary:
+- Trading window corrected from 10:00-16:30 (6.5h/78 blocks) to 10:00-18:00 (8h/96 blocks)
+- All hardcoded array limits eliminated — replaced with named constants
+- Volume blocks now record for full market hours, capturing institutional unwinds and late placements
+- Version: ENGINE V7.0-FASE3-HC (Horario Corregido)
+- No ZIP created yet — pending user confirmation
