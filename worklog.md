@@ -1502,3 +1502,180 @@ Stage Summary:
 - Add tick-by-tick trade data for more precise Iceberg/Sweep detection
 - Implement volume block visualization (mini chart showing VROC per block)
 - Add historical VROC trends (7-day VROC heatmap per instrument)
+
+---
+Task ID: 1-prisma
+Agent: General Purpose Agent
+Task: Add Phase 3 Prisma schema — CurveSpreadHistory model
+
+Work Log:
+- Read existing prisma/schema.prisma (148 lines, 6 models: AppState, IolVolumeSnapshot, PriceSnapshot, DailyOHLC, CountryRisk, IntradayVolumeBlock)
+- Added CurveSpreadHistory model at end of schema (before closing) with all specified fields:
+  - id (String @id @default(cuid()))
+  - date (String, YYYY-MM-DD)
+  - tickerA (String, menor plazo del par compañero)
+  - tickerB (String, mayor plazo del par compañero)
+  - clusterId (String, companion cluster ID e.g. "LECORTAS")
+  - spreadTEM (Float @default(0), TEM_B - TEM_A en porcentaje)
+  - temA (Float @default(0), TEM del tickerA)
+  - temB (Float @default(0), TEM del tickerB)
+  - @@unique([date, tickerA, tickerB])
+  - @@index([clusterId, date])
+  - @@index([date])
+- Ran `bun run db:push` — database synced successfully, Prisma Client regenerated (v6.19.2)
+- Schema now has 7 models total
+
+Stage Summary:
+- Phase 3 Prisma schema addition complete
+- 1 file modified: prisma/schema.prisma (CurveSpreadHistory model added)
+- Database pushed and synced — new CurveSpreadHistory table created in SQLite
+- Prisma Client regenerated with new model
+- No errors or warnings
+
+---
+Task ID: 1-v7version
+Agent: Version Refactor Agent
+Task: Refactor ALL version string references from "V6.2.0-FINAL" / "v6.2.0-FINAL" / "V6.2.0" to "ENGINE V7.0-FASE3"
+
+Work Log:
+- Read all 4 target files to identify exact version string locations
+- layout.tsx: 6 occurrences of "V6.2.0-FINAL" across metadata title, description, openGraph, twitter sections
+  - title (line 16): "Quant-X Dashboard V6.2.0-FINAL" → "Quant-X Dashboard ENGINE V7.0-FASE3"
+  - description (line 17): trailing "V6.2.0-FINAL" → "ENGINE V7.0-FASE3"
+  - openGraph title (line 24): same as above
+  - openGraph description (line 25): trailing "V6.2.0-FINAL" → "ENGINE V7.0-FASE3"
+  - twitter title (line 32): same as above
+  - twitter description (line 33): trailing "V6.2.0-FINAL" → "ENGINE V7.0-FASE3"
+- page.tsx: 3 user-facing version strings changed
+  - Line 645: "Cargando V6.2.0-FINAL..." → "Cargando ENGINE V7.0-FASE3..."
+  - Line 723: "V6.2.0-FINAL — PRESSURE FALLBACK" → "ENGINE V7.0-FASE3"
+  - Line 1289: "V6.2.0 (Pressure Fallback + Scream Engine + Polarity Reversal + ADR Projection)" → "ENGINE V7.0-FASE3 (Curva Compañera + Spread Velocity + Ejecución Pura)"
+- cockpit-score/route.ts: 2 changes
+  - Line 2 header comment: "V6.2.0-FINAL" → "ENGINE V7.0-FASE3"
+  - Line 605 engine_version: 'V7.0-FASE2' → 'ENGINE V7.0-FASE3'
+- market-truth/route.ts: 2 changes (both with replace_all)
+  - Line 308: engine_version: 'V6.2.0-FINAL' → 'ENGINE V7.0-FASE3'
+  - Line 350: engine_version: 'V6.2.0-FINAL' → 'ENGINE V7.0-FASE3'
+- Preserved all code comments referencing V6.2.0 as historical documentation (e.g., "// V6.2.0: Average True Range", "// V6.1.0: Historical S/R", etc.)
+- Lint check passed with 0 errors (`bun run lint -- --ignore-pattern 'upload/**' --ignore-pattern 'examples/**'`)
+
+Stage Summary:
+- 4 files modified with 13 total version string replacements
+- All user-facing version strings now read "ENGINE V7.0-FASE3"
+- No historical code comments were modified
+- Lint clean, no errors
+
+---
+Task ID: 5-cockpit-ui
+Agent: General Purpose Agent
+Task: Add Phase 3 UI elements to CockpitTab.tsx for Curve Anomaly alerts and Spread Velocity badges
+
+Work Log:
+- Read worklog.md for full project context (Tasks 1-V7.0-FASE3, all phases complete)
+- Read CockpitTab.tsx (~1800+ lines) to identify exact insertion points
+- Verified types.ts already has CurveSpreadAnomaly, SpreadDispersalVelocity, rotationAlert interfaces defined
+- Verified TrendingUp and ArrowRight already imported from lucide-react
+- Edit 1: Added CurveSpreadAnomaly, SpreadDispersalVelocity to the import from '@/lib/types' (line 18)
+- Edit 2: Added Curve Anomaly badge to FlowMetricsBadges component (after Sweep badge section):
+  - Only shown when score.curveSpreadAnomaly.isAnomaly is true
+  - Color: cyan for LAGGING, emerald for LEADING
+  - Shows direction (REZAGADO/LÍDER) + z-score with σ symbol
+- Edit 3: Added Spread Velocity badge to FlowMetricsBadges component (after Curve Anomaly badge):
+  - Only shown when score.spreadVelocity.signal !== 'NEUTRAL'
+  - Color: teal for CONVERGENCIA (with animate-pulse), amber for DIVERGENCIA
+  - Shows 🎯 for CONVERGENCIA, ⚠️ for DIVERGENCIA
+- Edit 4: Created CurveAlertCard component (after EjecucionPuraCard, before ElGritoCard):
+  - Filters scores for rotationAlert entries, returns null if none
+  - ROTATION type: teal accent (#2eebc8), shows sell→buy ticker pair with benefitPb
+  - ENTRY type: purple accent (#a78bfa), shows buy ticker only
+  - Animated gradient background, top accent bar, TrendingUp icon, reason text
+- Edit 5: Rendered CurveAlertCard immediately after EjecucionPuraCard in JSX
+- Edit 6: Added curveAnomalyActive and rotationAlertActive variables to ElGritoCard (after flowAlertActive)
+- Edit 7: Added 📐 CURVA badge and ↻ ROTACIÓN badge to ElGritoCard header (after FLOW ALERT badge)
+- ESLint passes with 0 errors (verified with `bun run lint -- --ignore-pattern 'upload/**' --ignore-pattern 'examples/**'`)
+
+Stage Summary:
+- Phase 3 UI elements added to CockpitTab.tsx: Curve Anomaly alerts + Spread Velocity badges
+- 1 file modified: src/components/dashboard/CockpitTab.tsx
+- New imports: CurveSpreadAnomaly, SpreadDispersalVelocity from '@/lib/types'
+- New component: CurveAlertCard (rotation/entry alerts from curve companion anomalies)
+- Enhanced FlowMetricsBadges: +2 new badge types (📐 CURVA, CONVERGENCIA/DIVERGENCIA)
+- Enhanced ElGritoCard: +2 new alert badges (📐 CURVA, ↻ ROTACIÓN)
+- TrendingUp already imported from lucide-react (no new lucide imports needed)
+- Lint clean, no errors
+
+---
+Task ID: 3-api-route
+Agent: API Wiring Agent
+Task: Wire Phase 3 backend functions to cockpit-score API route
+
+Work Log:
+- Read worklog.md for full project context (all previous tasks)
+- Read current cockpit-score/route.ts (635 lines), calculations.ts (Phase 3 functions), types.ts (Phase 3 types)
+- Verified Prisma schema has CurveSpreadHistory model with date, tickerA, tickerB, clusterId, spreadTEM, temA, temB fields
+- Added 4 new function imports from @/lib/calculations: defineCompanionClusters, calculateCurveSpreadAnomaly, detectCurveRotationTrigger, calculateSpreadDispersalVelocity
+- Added CurveSpreadAnomaly type import from @/lib/types
+- Added Phase 3 computation block after allScores map (lines 572-696):
+  - Build clusterInstruments array from liveInstruments (maps snake_case to Instrument shape)
+  - Define companion clusters via defineCompanionClusters()
+  - Fetch CurveSpreadHistory rows from DB (5-day lookback, 500 rows max)
+  - Build ohlcSpreadMap from DailyOHLC for spread velocity fallback (last 5 days per ticker)
+  - Calculate curve spread anomalies for each pair in each cluster (with fallback to current TEM diff)
+  - Detect rotation triggers via detectCurveRotationTrigger() with position=null
+- Added second pass over allScores (lines 698-731):
+  - Assign curveSpreadAnomaly to each score (matching by ticker or companionTicker)
+  - Assign rotationAlert from rotationAlerts Map
+  - Calculate spreadVelocity via calculateSpreadDispersalVelocity() for instruments with iol_bid/iol_ask data
+  - Apply actionScore adjustments:
+    - curveSpreadAnomaly.isAnomaly → +10 to actionScore
+    - spreadVelocity.signal === 'CONVERGENCIA' → +8 to actionScore
+    - spreadVelocity.signal === 'DIVERGENCIA' → -5 to actionScore
+- Fixed typo from provided code: e.sppread → e.spread in ohlcSpreadMap builder
+- ESLint passes with 0 errors (verified with `bun run lint -- --ignore-pattern 'upload/**' --ignore-pattern 'examples/**'`)
+
+Stage Summary:
+- Phase 3 backend fully wired to cockpit-score API route
+- 1 file modified: src/app/api/cockpit-score/route.ts
+- New imports: defineCompanionClusters, calculateCurveSpreadAnomaly, detectCurveRotationTrigger, calculateSpreadDispersalVelocity from calculations.ts; CurveSpreadAnomaly from types.ts
+- Computation flow: allScores → clusterInstruments → companionClusters → curveSpreadHistoryRows → allCurveAnomalies → rotationAlerts → second pass (add curveSpreadAnomaly, rotationAlert, spreadVelocity, adjust actionScore) → sort → demote → filter
+- Action score adjustments: +10 (curve anomaly), +8 (convergencia), -5 (divergencia)
+- Lint clean, no errors
+
+---
+Task ID: 3-complete
+Agent: Main Agent
+Task: FASE 3 Complete — Arbitraje de Curva Compañera + Propuesta Abierta (Spread Velocity)
+
+Work Log:
+- Analyzed full codebase state (calculations.ts, types.ts, CockpitTab.tsx, cockpit-score route, Prisma schema)
+- Presented detailed code plan BEFORE making any changes (per user directive)
+- Refactored all version strings from V6.2.0-FINAL to ENGINE V7.0-FASE3 across: layout.tsx, page.tsx, cockpit-score/route.ts, market-truth/route.ts
+- Added Prisma model CurveSpreadHistory (date, tickerA, tickerB, clusterId, spreadTEM, temA, temB)
+- Added 3 new interfaces to types.ts: CompanionCluster, CurveSpreadAnomaly, SpreadDispersalVelocity
+- Added 3 new optional fields to CockpitScore: curveSpreadAnomaly, rotationAlert, spreadVelocity
+- Implemented 4 new functions in calculations.ts:
+  1. defineCompanionClusters() — groups instruments by type+duration into CORTAS/MEDIAS/LARGAS
+  2. calculateCurveSpreadAnomaly() — Z-score of spread vs 5d average, 1.5σ threshold
+  3. detectCurveRotationTrigger() — ROTACIÓN (with position) or ENTRADA (no position)
+  4. calculateSpreadDispersalVelocity() — CONVERGENCIA/DIVERGENCIA signal from bid-ask spread
+- Wired Phase 3 functions to cockpit-score API route:
+  - Fetches CurveSpreadHistory from DB
+  - Computes companion clusters and curve anomalies
+  - Calculates spread velocity from IOL bid/ask
+  - Applies action score adjustments: +10 (curve anomaly), +8 (CONVERGENCIA), -5 (DIVERGENCIA)
+- Enhanced CockpitTab.tsx UI:
+  - FlowMetricsBadges: 📐 CURVA badges (LAGGING/LÍDER) + 🎯/⚠️ CONVERGENCIA/DIVERGENCIA
+  - CurveAlertCard: ROTACIÓN DISPONIBLE or ENTRADA POR ARBITRAJE alert cards
+  - ElGritoCard: 📐 CURVA and ↻ ROTACIÓN counters
+- Lint: 0 errors
+- Dev server: running, all APIs responding
+- ZIP created: Quant-X-ENGINE-V7.0-FASE3.zip (7.2MB)
+- Cron job created: 15-minute QA/review cycle
+
+Stage Summary:
+- FASE 3 complete: Curva Compañera + Spread Velocity fully implemented
+- Backend: 4 new calculation functions, 1 new Prisma model, API route enriched
+- Frontend: Curve anomaly badges, rotation/entry alert cards, spread velocity signals
+- Propuesta Abierta: Spread Dispersal Velocity (leading indicator for price movement)
+- Version: ENGINE V7.0-FASE3
+- All Phase 1 & Phase 2 logic preserved

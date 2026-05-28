@@ -15,7 +15,7 @@
 // ════════════════════════════════════════════════════════════════════════
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import type { Instrument, Config, Position, CockpitScore, LiveInstrument, AdaptiveTakeProfitResult } from '@/lib/types';
+import type { Instrument, Config, Position, CockpitScore, LiveInstrument, AdaptiveTakeProfitResult, CurveSpreadAnomaly, SpreadDispersalVelocity } from '@/lib/types';
 import { useRadarStore } from '@/lib/store';
 import { Search, Bell, BellOff, Download, Keyboard, Star, BellRing, X, Eye, EyeOff, TrendingUp, Shield, ArrowRight } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -401,6 +401,34 @@ function FlowMetricsBadges({ score, layout = 'desktop' }: { score: CockpitScore;
     );
   }
 
+  // Curve Anomaly badge — only if isAnomaly
+  if (score.curveSpreadAnomaly && score.curveSpreadAnomaly.isAnomaly) {
+    const dir = score.curveSpreadAnomaly.direction;
+    const z = score.curveSpreadAnomaly.spreadZScore;
+    const colorClass = dir === 'LAGGING'
+      ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30'
+      : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
+    badges.push(
+      <span key="curve" className={`inline-flex items-center gap-0.5 border font-bold uppercase tracking-wider rounded ${colorClass} ${layout === 'desktop' ? 'text-[8px] px-1.5 py-0.5' : 'text-[7px] px-1 py-0.5'}`}>
+        📐 CURVA {dir === 'LAGGING' ? 'REZAGADO' : 'LÍDER'} {z.toFixed(1)}σ
+      </span>
+    );
+  }
+
+  // Spread Velocity badge — only if signal !== NEUTRAL
+  if (score.spreadVelocity && score.spreadVelocity.signal !== 'NEUTRAL') {
+    const sig = score.spreadVelocity.signal;
+    const colorClass = sig === 'CONVERGENCIA'
+      ? 'bg-teal-500/15 text-teal-400 border-teal-500/30'
+      : 'bg-amber-500/15 text-amber-400 border-amber-500/30';
+    const pulse = sig === 'CONVERGENCIA' ? 'animate-pulse' : '';
+    badges.push(
+      <span key="spreadv" className={`inline-flex items-center gap-0.5 border font-bold uppercase tracking-wider rounded ${colorClass} ${pulse} ${layout === 'desktop' ? 'text-[8px] px-1.5 py-0.5' : 'text-[7px] px-1 py-0.5'}`}>
+        {sig === 'CONVERGENCIA' ? '🎯' : '⚠️'} {sig}
+      </span>
+    );
+  }
+
   if (badges.length === 0) return null;
 
   if (layout === 'mobile') {
@@ -409,6 +437,106 @@ function FlowMetricsBadges({ score, layout = 'desktop' }: { score: CockpitScore;
 
   // Desktop: horizontal, max 2 visible
   return <div className="flex flex-wrap items-center gap-1 max-w-[180px]">{badges.slice(0, 2)}</div>;
+}
+
+// ─── Curve Anomaly Alert Card (V7.0-FASE3) ──────────────────────────
+function CurveAlertCard({ scores }: { scores: CockpitScore[] }) {
+  // Find scores with rotation or entry alerts
+  const rotationAlerts = scores.filter(s => s.rotationAlert);
+  if (rotationAlerts.length === 0) return null;
+
+  const alert = rotationAlerts[0].rotationAlert!;
+  const isRotation = alert.type === 'ROTATION';
+  const accentColor = isRotation ? '#2eebc8' : '#a78bfa';
+  const accentBg = isRotation ? 'rgba(46,235,200,0.08)' : 'rgba(167,139,250,0.08)';
+
+  return (
+    <div
+      className="animate-fadeInUp rounded-2xl overflow-hidden"
+      style={{
+        background: `linear-gradient(135deg, ${accentBg} 0%, rgba(21,29,46,0.95) 50%, rgba(167,139,250,0.03) 100%)`,
+        border: `2px solid ${accentColor}50`,
+        boxShadow: `0 0 40px ${accentColor}20, 0 0 80px ${accentColor}10, inset 0 1px 0 rgba(255,255,255,0.05)`,
+      }}
+    >
+      {/* Top accent bar */}
+      <div className="h-1" style={{ background: `linear-gradient(90deg, ${accentColor}, transparent, ${accentColor})` }} />
+
+      <div className="px-6 py-5 sm:px-8 sm:py-6">
+        {/* Header row */}
+        <div className="flex items-center gap-3 mb-4">
+          <div
+            className="flex items-center justify-center w-10 h-10 rounded-xl animate-pulse"
+            style={{ background: `${accentColor}20`, boxShadow: `0 0 20px ${accentColor}30` }}
+          >
+            <TrendingUp className="w-5 h-5" style={{ color: accentColor }} />
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-widest" style={{ color: accentColor }}>
+              Anomalía de Curva Compañera
+            </div>
+            <div className="text-[9px] text-app-text4">
+              {isRotation ? 'Rotación Disponible' : 'Entrada por Arbitraje'}
+            </div>
+          </div>
+        </div>
+
+        {/* Main action line */}
+        <div
+          className="rounded-xl px-5 py-4 mb-4"
+          style={{
+            background: `linear-gradient(135deg, ${accentBg}, rgba(21,29,46,0.6))`,
+            border: `1px solid ${accentColor}30`,
+          }}
+        >
+          <div className="flex items-center gap-3 flex-wrap">
+            <span
+              className="text-xl sm:text-2xl font-black uppercase tracking-tight"
+              style={{ color: accentColor, textShadow: `0 0 20px ${accentColor}40` }}
+            >
+              {isRotation ? 'ROTACIÓN DISPONIBLE' : 'ENTRADA POR ARBITRAJE'}
+            </span>
+            {alert.benefitPb > 0 && (
+              <span
+                className="font-mono text-lg font-bold px-2 py-0.5 rounded-lg"
+                style={{ color: accentColor, background: `${accentColor}15` }}
+              >
+                +{alert.benefitPb.toFixed(1)}pb TEM
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Tickers */}
+        {isRotation ? (
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm">
+              <span className="text-app-text4">Vender: </span>
+              <span className="font-bold text-[#f87171]">{alert.sellTicker}</span>
+            </span>
+            <ArrowRight className="w-4 h-4 text-app-text4 shrink-0" />
+            <span className="text-sm">
+              <span className="text-app-text4">Comprar: </span>
+              <span className="font-bold" style={{ color: accentColor }}>{alert.buyTicker}</span>
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 mb-3">
+            <ArrowRight className="w-4 h-4 shrink-0" style={{ color: accentColor }} />
+            <span className="text-sm">
+              <span className="text-app-text4">Comprar: </span>
+              <span className="font-bold" style={{ color: accentColor }}>{alert.buyTicker}</span>
+            </span>
+          </div>
+        )}
+
+        {/* Reason */}
+        <div className="text-[11px] text-app-text3 leading-relaxed">
+          {alert.reason}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── El Grito Alert Card (Simplified) ─────────────────────────────────
@@ -424,6 +552,8 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
   const flowAlertActive = scores.some(s =>
     (s.volumeVelocity?.momentumTrigger === true) || (s.marketSweep?.detected === true)
   );
+  const curveAnomalyActive = scores.some(s => s.curveSpreadAnomaly?.isAnomaly);
+  const rotationAlertActive = scores.some(s => s.rotationAlert);
 
   const topScores = [...takeProfitScores, ...gatillarScores, ...saltoScores, ...carameloScores].slice(0, 4);
 
@@ -457,6 +587,18 @@ function ElGritoCard({ scores }: { scores: CockpitScore[] }) {
             <span className="ml-2 px-2 py-0.5 rounded-lg text-[9px] font-bold animate-pulse"
               style={{ color: '#a78bfa', background: 'rgba(167,139,250,0.2)', boxShadow: '0 0 12px rgba(167,139,250,0.4)' }}>
               🌊 FLOW ALERT
+            </span>
+          )}
+          {curveAnomalyActive && (
+            <span className="ml-2 px-2 py-0.5 rounded-lg text-[9px] font-bold animate-pulse"
+              style={{ color: '#2eebc8', background: 'rgba(46,235,200,0.2)', boxShadow: '0 0 12px rgba(46,235,200,0.4)' }}>
+              📐 CURVA
+            </span>
+          )}
+          {rotationAlertActive && (
+            <span className="ml-2 px-2 py-0.5 rounded-lg text-[9px] font-bold animate-pulse"
+              style={{ color: '#a78bfa', background: 'rgba(167,139,250,0.2)', boxShadow: '0 0 12px rgba(167,139,250,0.4)' }}>
+              ↻ ROTACIÓN
             </span>
           )}
         </div>
@@ -1051,6 +1193,8 @@ export default function CockpitTab({
           noAlternativeBuyImbalance={noAlternativeBuyImbalance}
         />
       )}
+
+      <CurveAlertCard scores={enrichedScores} />
 
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* STALE / MARKET CLOSED WARNINGS                                */}

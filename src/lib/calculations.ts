@@ -1,4 +1,4 @@
-import { Instrument, Config, Position, RotationAnalysis, SwingSignal, CurveAnomaly, CompositeSignal, DiagnosticResult, Snapshot, MomentumData, RotationScoreV17, CockpitScore, AdaptiveTakeProfitResult } from './types';
+import { Instrument, Config, Position, RotationAnalysis, SwingSignal, CurveAnomaly, CompositeSignal, DiagnosticResult, Snapshot, MomentumData, RotationScoreV17, CockpitScore, AdaptiveTakeProfitResult, CompanionCluster, CurveSpreadAnomaly, SpreadDispersalVelocity } from './types';
 
 /**
  * Calculate days remaining to expiry from an expiry date string.
@@ -2721,5 +2721,420 @@ export function detectMarketSweep(params: {
     levelsSkipped,
     direction,
     reason,
+  };
+}
+
+// ============================================================
+// FASE 3: Companion Curve & Arbitraje de Curva Compañera
+// ============================================================
+
+/**
+ * Define Companion Clusters — Agrupa instrumentos por tipo y vencimiento
+ *
+ * CONCEPTO: Los instrumentos "compañeros" son aquellos que comparten
+ * perfil de vencimiento y duration similar, formando tramos naturales
+ * de la curva de tasas. Un desvío de spread entre compañeros indica
+ * una oportunidad de arbitraje intra-curva.
+ *
+ * CLUSTERS:
+ *   CORTAS:  days ≤ 60   (letras/bonos cortos — alta liquidez)
+ *   MEDIAS:  60 < days ≤ 180  (letras/bonos medios — carry principal)
+ *   LARGAS:  days > 180  (letras/bonos largos — sensibilidad máxima)
+ *
+ * FILTRO: Se eliminan clusters con < 2 miembros (sin par mínimo).
+ *
+ * EJEMPLO: LECAPs disponibles →
+ *   LECORTAS: [T15J7 (42d), T30J7 (57d)]
+ *   LEMEDIAS: [S30O6 (196d), S12E5 (135d)]
+ *   LELARGAS: (solo 1 instrumento → eliminado)
+ */
+export function defineCompanionClusters(instruments: Instrument[]): CompanionCluster[] {
+  const clusters: CompanionCluster[] = [];
+
+  // Group by type first
+  const lecaps = instruments.filter(i => i.type === 'LECAP' && i.days > 0);
+  const boncaps = instruments.filter(i => i.type === 'BONCAP' && i.days > 0);
+
+  // Helper: create sub-clusters by maturity band
+  const createSubClusters = (type: 'LECAP' | 'BONCAP', items: Instrument[]) => {
+    const shortItems = items.filter(i => i.days <= 60).sort((a, b) => a.days - b.days);
+    const midItems = items.filter(i => i.days > 60 && i.days <= 180).sort((a, b) => a.days - b.days);
+    const longItems = items.filter(i => i.days > 180).sort((a, b) => a.days - b.days);
+
+    const prefix = type === 'LECAP' ? 'LE' : 'BONCAP';
+
+    if (shortItems.length >= 2) {
+      const avgDur = shortItems.reduce((s, i) => s + Math.abs(durationMod(i.days, i.tem)), 0) / shortItems.length;
+      const avgTEM = shortItems.reduce((s, i) => s + i.tem, 0) / shortItems.length;
+      clusters.push({
+        id: `${prefix}CORTAS`,
+        label: `${type === 'LECAP' ? 'Letras' : 'Bonos'} Cortas (≤60d)`,
+        instrumentType: type,
+        tickers: shortItems.map(i => i.ticker),
+        avgDuration: avgDur,
+        avgTEM,
+      });
+    }
+
+    if (midItems.length >= 2) {
+      const avgDur = midItems.reduce((s, i) => s + Math.abs(durationMod(i.days, i.tem)), 0) / midItems.length;
+      const avgTEM = midItems.reduce((s, i) => s + i.tem, 0) / midItems.length;
+      clusters.push({
+        id: `${prefix}MEDIAS`,
+        label: `${type === 'LECAP' ? 'Letras' : 'Bonos'} Medias (61-180d)`,
+        instrumentType: type,
+        tickers: midItems.map(i => i.ticker),
+        avgDuration: avgDur,
+        avgTEM,
+      });
+    }
+
+    if (longItems.length >= 2) {
+      const avgDur = longItems.reduce((s, i) => s + Math.abs(durationMod(i.days, i.tem)), 0) / longItems.length;
+      const avgTEM = longItems.reduce((s, i) => s + i.tem, 0) / longItems.length;
+      clusters.push({
+        id: `${prefix}LARGAS`,
+        label: `${type === 'LECAP' ? 'Letras' : 'Bonos'} Largas (>180d)`,
+        instrumentType: type,
+        tickers: longItems.map(i => i.ticker),
+        avgDuration: avgDur,
+        avgTEM,
+      });
+    }
+  };
+
+  createSubClusters('LECAP', lecaps);
+  createSubClusters('BONCAP', boncaps);
+
+  return clusters;
+}
+
+/**
+ * Calculate Curve Spread Anomaly — Desvío de spread entre compañeros
+ *
+ * CONCEPTO: Mide cuánto se desvía el spread de TEM actual entre un par
+ * de instrumentos compañeros contra su propio promedio histórico de 5 días.
+ * Un desvío > 1.5σ indica que la curva está "desarbitrada" y presenta
+ * oportunidad de rotación.
+ *
+ * PASO 1: Para cada par dentro del cluster, calcular spread actual
+ *   spreadTEM = TEM_mayor - TEM_menor (siempre positivo en curva normal)
+ *
+ * PASO 2: Calcular promedio móvil y desvío estándar del spread 5d
+ *   Usando CurveSpreadHistory (o derivado de DailyOHLC como fallback)
+ *
+ * PASO 3: Calcular Z-score del spread actual
+ *   zScore = (spread_actual - promedio_5d) / sigma_5d
+ *
+ * PASO 4: Clasificar dirección
+ *   Si el instrumento compressiona tasa (sube precio) → LEADING
+ *   Si el instrumento se rezaga (no sube) → LAGGING
+ *
+ * EJEMPLO: T15J7 y T30J7 en cluster LECORTAS
+ *   Spread actual: 0.12% TEM
+ *   Promedio 5d: 0.05% TEM
+ *   σ = 0.03%
+ *   Z = (0.12 - 0.05) / 0.03 = 2.33σ → ANOMALÍA
+ *   T30J7 se rezaga (LAGGING), beneficio estimado: 7pb de TEM
+ */
+export function calculateCurveSpreadAnomaly(params: {
+  ticker: string;
+  companionTicker: string;
+  clusterId: string;
+  tickerTEM: number;
+  companionTEM: number;
+  tickerDays: number;
+  companionDays: number;
+  tickerChange: number;          // daily change % (positive = price up = rate compression)
+  companionChange: number;
+  historicalSpreads: number[];   // last 5 days of spread values
+}): CurveSpreadAnomaly {
+  const {
+    ticker, companionTicker, clusterId,
+    tickerTEM, companionTEM,
+    tickerDays, companionDays,
+    tickerChange, companionChange,
+    historicalSpreads,
+  } = params;
+
+  // Determine order: shorter maturity first
+  const isShorter = tickerDays <= companionDays;
+  const shorterTEM = isShorter ? tickerTEM : companionTEM;
+  const longerTEM = isShorter ? companionTEM : tickerTEM;
+  const shorterTicker = isShorter ? ticker : companionTicker;
+  const longerTicker = isShorter ? companionTicker : ticker;
+  const shorterChange = isShorter ? tickerChange : companionChange;
+  const longerChange = isShorter ? companionChange : tickerChange;
+
+  // Current spread (positive = normal upward-sloping curve)
+  const spreadTEM = longerTEM - shorterTEM;
+
+  // Historical average and standard deviation
+  const n = historicalSpreads.length;
+  const avgSpread5d = n > 0 ? historicalSpreads.reduce((a, b) => a + b, 0) / n : spreadTEM;
+  const variance = n > 1
+    ? historicalSpreads.reduce((s, v) => s + (v - avgSpread5d) ** 2, 0) / n
+    : 0;
+  const sigma5d = Math.sqrt(variance);
+
+  // Z-score: how many standard deviations from the 5d average
+  const spreadZScore = sigma5d > 0.0001 ? (spreadTEM - avgSpread5d) / sigma5d : 0;
+
+  // Anomaly detection: |Z| > 1.5
+  const isAnomaly = Math.abs(spreadZScore) > 1.5;
+
+  // Direction classification:
+  // If the ticker (not companion) compresses rate (price up, change > 0)
+  // and the companion doesn't follow → ticker is LEADING, companion is LAGGING
+  let direction: 'LEADING' | 'LAGGING';
+
+  if (tickerChange > 0.1 && companionChange < tickerChange * 0.5) {
+    // Ticker is compressing rate faster than companion → ticker LEADS
+    direction = 'LEADING';
+  } else if (companionChange > 0.1 && tickerChange < companionChange * 0.5) {
+    // Companion is compressing faster → ticker LAGS behind
+    direction = 'LAGGING';
+  } else if (spreadZScore > 1.5) {
+    // Spread expanded: the longer-dated instrument is LAGGING (yields more than normal)
+    direction = isShorter ? 'LAGGING' : 'LEADING';
+  } else if (spreadZScore < -1.5) {
+    // Spread compressed: the shorter-dated instrument is LEADING (yields less = price up)
+    direction = isShorter ? 'LEADING' : 'LAGGING';
+  } else {
+    direction = spreadTEM > avgSpread5d ? 'LAGGING' : 'LEADING';
+  }
+
+  // Estimated benefit in basis points of TEM
+  const estimatedBenefitPb = Math.abs(spreadTEM - avgSpread5d) * 100;
+
+  return {
+    ticker,
+    companionTicker,
+    clusterId,
+    spreadTEM,
+    spreadZScore,
+    isAnomaly,
+    direction,
+    estimatedBenefitPb,
+  };
+}
+
+/**
+ * Detect Curve Rotation Trigger — Señal de rotación por anomalía de curva
+ *
+ * CONCEPTO: Evalúa si un instrumento en cartera debe rotarse hacia
+ * un compañero rezagado, o si una entrada directa está justificada
+ * por un desarme desarbitrado en la curva.
+ *
+ * CASO A — Con posición en cartera:
+ *   Si el activo compressiona tasa (Flow metrics F2: VROC > 300% o DESBALANCE COMPRA)
+ *   Y un compañero se rezaga (isAnomaly, direction=LAGGING, Z > 1.5)
+ *   → ROTACIÓN: "Vender [Ticker Cartera] y Comprar [Ticker Rezagado]"
+ *
+ * CASO B — Sin posición en cartera:
+ *   Si se detecta desarme desarbitrado entre dos activos del mismo cluster
+ *   El rezagado tiene direction=LAGGING con Z > 1.5
+ *   → ENTRADA: "Comprar [Ticker Rezagado]"
+ *
+ * RETORNA: rotationAlert para el CockpitScore del instrumento afectado
+ */
+export function detectCurveRotationTrigger(params: {
+  scores: CockpitScore[];
+  position: { ticker: string } | null;
+  curveAnomalies: CurveSpreadAnomaly[];
+}): Map<string, CockpitScore['rotationAlert']> {
+  const { scores, position, curveAnomalies } = params;
+  const alertMap = new Map<string, CockpitScore['rotationAlert']>();
+
+  // Index anomalies by ticker
+  const anomalyByTicker = new Map<string, CurveSpreadAnomaly>();
+  for (const anomaly of curveAnomalies) {
+    anomalyByTicker.set(anomaly.ticker, anomaly);
+    anomalyByTicker.set(anomaly.companionTicker, anomaly);
+  }
+
+  // Score lookup
+  const scoreByTicker = new Map<string, CockpitScore>();
+  for (const s of scores) {
+    scoreByTicker.set(s.ticker, s);
+  }
+
+  // CASO A: Position in portfolio — check if held instrument should rotate
+  if (position) {
+    const heldScore = scoreByTicker.get(position.ticker);
+    const heldAnomaly = anomalyByTicker.get(position.ticker);
+
+    if (heldScore && heldAnomaly && heldAnomaly.isAnomaly) {
+      // Check if held instrument shows Phase 2 compression signals
+      const hasFlowCompression =
+        (heldScore.volumeVelocity?.momentumTrigger === true) ||
+        (heldScore.bookImbalanceLabel === 'DESBALANCE COMPRA') ||
+        (heldScore.bookImbalanceLabel === 'DESBALANCE EXTREMO') ||
+        (heldScore.sessionGainPct !== undefined && heldScore.sessionGainPct > 0.5);
+
+      if (hasFlowCompression && heldAnomaly.direction === 'LEADING') {
+        // Held instrument is LEADING (compressing rate) — look for LAGGING companion to rotate into
+        const companionAnomaly = curveAnomalies.find(
+          a => a.ticker === heldAnomaly.companionTicker || a.companionTicker === heldAnomaly.companionTicker
+        );
+
+        if (companionAnomaly && companionAnomaly.isAnomaly && companionAnomaly.direction === 'LAGGING') {
+          const laggingTicker = companionAnomaly.direction === 'LAGGING'
+            ? companionAnomaly.ticker
+            : companionAnomaly.companionTicker;
+
+          alertMap.set(laggingTicker, {
+            type: 'ROTATION',
+            sellTicker: position.ticker,
+            buyTicker: laggingTicker,
+            benefitPb: companionAnomaly.estimatedBenefitPb,
+            reason: `ACCIÓN: ROTACIÓN DISPONIBLE | Vender ${position.ticker} y Comprar ${laggingTicker} | Beneficio estimado: +${companionAnomaly.estimatedBenefitPb.toFixed(1)}pb de TEM (Razón: Arbitraje por desvío de Curva Compañera)`,
+          });
+        }
+      }
+
+      // Also: if held instrument is LAGGING behind a companion that's leading
+      if (heldAnomaly.direction === 'LAGGING' && heldAnomaly.spreadZScore > 1.5) {
+        const leadingTicker = heldAnomaly.companionTicker;
+        alertMap.set(position.ticker, {
+          type: 'ROTATION',
+          sellTicker: position.ticker,
+          buyTicker: leadingTicker,
+          benefitPb: heldAnomaly.estimatedBenefitPb,
+          reason: `ACCIÓN: ROTACIÓN DISPONIBLE | Vender ${position.ticker} y Comprar ${leadingTicker} | Beneficio estimado: +${heldAnomaly.estimatedBenefitPb.toFixed(1)}pb de TEM (Razón: ${position.ticker} rezagado vs Curva Compañera)`,
+        });
+      }
+    }
+  }
+
+  // CASO B: No position — detect arbitrage entry opportunities
+  for (const anomaly of curveAnomalies) {
+    if (!anomaly.isAnomaly || anomaly.spreadZScore <= 1.5) continue;
+    if (position && (anomaly.ticker === position.ticker || anomaly.companionTicker === position.ticker)) continue;
+
+    // Determine which ticker is LAGGING (the one to buy)
+    if (anomaly.direction === 'LAGGING') {
+      // This ticker is lagging — it's cheap relative to its companion
+      if (!alertMap.has(anomaly.ticker)) {
+        alertMap.set(anomaly.ticker, {
+          type: 'ENTRY',
+          sellTicker: '',
+          buyTicker: anomaly.ticker,
+          benefitPb: anomaly.estimatedBenefitPb,
+          reason: `ACCIÓN: ENTRADA POR ARBITRAJE | Comprar ${anomaly.ticker} (Razón: Curva Compañera desarbitrada vs ${anomaly.companionTicker}, desvío ${anomaly.spreadZScore.toFixed(1)}σ)`,
+        });
+      }
+    }
+  }
+
+  return alertMap;
+}
+
+/**
+ * Calculate Spread Dispersal Velocity — Propuesta Abierta V7.0-FASE3
+ *
+ * CONCEPTO: Mide la velocidad a la que se amplía o comprime el spread
+ * bid-ask de un instrumento. El spread del order book es un leading
+ * indicator de microestructura que anticipa movimientos de precio
+ * 30-60 segundos antes.
+ *
+ * LÓGICA:
+ *   1. Calcula spread actual en basis points: ((ask - bid) / mid) * 10000
+ *   2. Calcula promedio y σ del spread de los últimos 5 días
+ *   3. Calcula Z-score del spread actual
+ *   4. Determina dirección:
+ *      - TIGHTENING: spread < avg * 0.7 (comprimiéndose → liquidez converge)
+ *      - WIDENING: spread > avg * 1.3 (expandiéndose → market makers se retiran)
+ *      - STABLE: dentro del rango esperado
+ *   5. Señal:
+ *      - TIGHTENING + Z < -1.5 → CONVERGENCIA (movimiento inminente)
+ *      - WIDENING + Z > 1.5 → DIVERGENCIA (retirada de liquidez)
+ *
+ * VENTAJA PREDICTIVA: Combinado con F2 triggers:
+ *   - Market Sweep + CONVERGENCIA → Señal de entrada de alta confianza
+ *   - Market Sweep + DIVERGENCIA → Falso barrido, NO entrar
+ *   - VROC Anomalía + CONVERGENCIA → Confirmación de flujo institucional
+ *
+ * EJEMPLO: LECAP S30O6
+ *   Spread actual: 5bp (bid=1.1550, ask=1.1555)
+ *   Promedio 5d: 12bp
+ *   σ = 4bp
+ *   Z = (5 - 12) / 4 = -1.75σ
+ *   → TIGHTENING + CONVERGENCIA: movimiento de precio inminente
+ */
+export function calculateSpreadDispersalVelocity(params: {
+  currentBid: number;
+  currentAsk: number;
+  historicalSpreads5d: number[];  // Daily average spreads in bp for last 5 days
+  timeDeltaMinutes?: number;      // Minutes since last reading (for velocity calc)
+  previousSpreadBps?: number;     // Previous spread reading in bp
+}): SpreadDispersalVelocity {
+  const {
+    currentBid,
+    currentAsk,
+    historicalSpreads5d,
+    timeDeltaMinutes,
+    previousSpreadBps,
+  } = params;
+
+  // Calculate current spread in basis points
+  const midPrice = (currentBid + currentAsk) / 2;
+  if (midPrice <= 0 || currentAsk <= 0 || currentBid <= 0) {
+    return {
+      currentSpreadBps: 0,
+      avgSpread5d: 0,
+      velocity: 0,
+      direction: 'STABLE',
+      zScore: 0,
+      signal: 'NEUTRAL',
+    };
+  }
+
+  const currentSpreadBps = ((currentAsk - currentBid) / midPrice) * 10000;
+
+  // Historical average and standard deviation
+  const n = historicalSpreads5d.length;
+  const avgSpread5d = n > 0 ? historicalSpreads5d.reduce((a, b) => a + b, 0) / n : currentSpreadBps;
+  const variance = n > 1
+    ? historicalSpreads5d.reduce((s, v) => s + (v - avgSpread5d) ** 2, 0) / n
+    : 0;
+  const sigma5d = Math.sqrt(variance);
+
+  // Z-score
+  const zScore = sigma5d > 0.01 ? (currentSpreadBps - avgSpread5d) / sigma5d : 0;
+
+  // Direction
+  let direction: 'TIGHTENING' | 'WIDENING' | 'STABLE';
+  if (avgSpread5d > 0 && currentSpreadBps < avgSpread5d * 0.7) {
+    direction = 'TIGHTENING';
+  } else if (avgSpread5d > 0 && currentSpreadBps > avgSpread5d * 1.3) {
+    direction = 'WIDENING';
+  } else {
+    direction = 'STABLE';
+  }
+
+  // Velocity (bp per minute)
+  let velocity = 0;
+  if (previousSpreadBps !== undefined && timeDeltaMinutes && timeDeltaMinutes > 0) {
+    velocity = (currentSpreadBps - previousSpreadBps) / timeDeltaMinutes;
+  }
+
+  // Signal determination
+  let signal: 'CONVERGENCIA' | 'DIVERGENCIA' | 'NEUTRAL';
+  if (direction === 'TIGHTENING' && zScore < -1.5) {
+    signal = 'CONVERGENCIA';  // Spread comprimido → movimiento inminente
+  } else if (direction === 'WIDENING' && zScore > 1.5) {
+    signal = 'DIVERGENCIA';   // Spread expandido → retirada de liquidez
+  } else {
+    signal = 'NEUTRAL';
+  }
+
+  return {
+    currentSpreadBps,
+    avgSpread5d,
+    velocity,
+    direction,
+    zScore,
+    signal,
   };
 }

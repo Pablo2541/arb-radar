@@ -642,7 +642,7 @@ function HomeContent() {
 
           {/* Shimmer Loading Text */}
           <p className="text-shimmer text-sm font-light tracking-wider motion-reduce:animate-none motion-reduce:text-app-text3">
-            Cargando V6.2.0-FINAL...
+            Cargando ENGINE V7.0-FASE3...
           </p>
         </div>
       </div>
@@ -720,7 +720,7 @@ function HomeContent() {
               <span className="text-app-text4 mx-0.5">{'//'}</span>
               <span className="text-app-pink font-medium">RADAR</span>
             </h1>
-            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">V6.2.0-FINAL — PRESSURE FALLBACK</span>
+            <span className="text-[8px] text-app-text4 uppercase tracking-[0.2em] hidden sm:inline font-light">ENGINE V7.0-FASE3</span>
             {/* V4.0: FILE indicator — replaces DB sync dot */}
             <div className="flex items-center gap-1 hidden sm:flex" title={fileIndicator.title}>
               <div
@@ -1286,7 +1286,7 @@ function HomeContent() {
           <span className="version-pulse-dot" />
           <span className="font-semibold tracking-wide">ARB//RADAR</span>
           <span className="text-app-border/60">·</span>
-          <span>V6.2.0 (Pressure Fallback + Scream Engine + Polarity Reversal + ADR Projection)</span>
+          <span>ENGINE V7.0-FASE3 (Curva Compañera + Spread Velocity + Ejecución Pura)</span>
           <span className="text-app-border/60">·</span>
           <span>{effectiveInstruments.length} inst.</span>
           {dolarLastUpdateTime && (

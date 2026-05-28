@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-// V6.2.0-FINAL — /api/cockpit-score: Unified Scalping Signal
+// ENGINE V7.0-FASE3 — /api/cockpit-score: Unified Scalping Signal
 //
 // Computes the CockpitScore for every live LECAP/BONCAP instrument
 // using 5 weighted scalping factors and assigns a verdict.
@@ -28,8 +28,13 @@ import {
   calculateVolumeVelocity,
   detectIcebergOrder,
   detectMarketSweep,
+  defineCompanionClusters,
+  calculateCurveSpreadAnomaly,
+  detectCurveRotationTrigger,
+  calculateSpreadDispersalVelocity,
 } from '@/lib/calculations';
 import type { HistoricalOHLC, PriceSnapshotForDetection } from '@/lib/calculations';
+import type { CurveSpreadAnomaly } from '@/lib/types';
 import { safeDbOp } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -564,6 +569,167 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    // ═══════════════════════════════════════════════════════════════════
+    // V7.0-FASE3: Curva Compañera & Arbitraje
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Build instruments array for cluster definition
+    const clusterInstruments = liveInstruments.map((inst: Record<string, unknown>) => ({
+      ticker: inst.ticker as string,
+      type: (inst.type as string) === 'BONCAP' ? 'BONCAP' as const : 'LECAP' as const,
+      days: inst.days_to_expiry as number,
+      tem: (inst.tem as number) * 100,
+      change: inst.change_pct as number,
+      price: inst.last_price as number,
+      expiry: inst.fecha_vencimiento as string,
+      tna: (inst.tna as number) * 100,
+      tir: (inst.tir as number) * 100,
+      gananciaDirecta: (inst.ganancia_directa as number) * 100,
+      vsPlazoFijo: '',
+    }));
+
+    // Define companion clusters
+    const companionClusters = defineCompanionClusters(clusterInstruments);
+
+    // Fetch CurveSpreadHistory for 5-day lookback
+    let curveSpreadHistoryRows: Array<{ date: string; tickerA: string; tickerB: string; clusterId: string; spreadTEM: number }> = [];
+    try {
+      const spreadRows = await safeDbOp((db) =>
+        db.curveSpreadHistory.findMany({
+          orderBy: [{ date: 'desc' }],
+          take: 500,
+          select: {
+            date: true,
+            tickerA: true,
+            tickerB: true,
+            clusterId: true,
+            spreadTEM: true,
+          },
+        })
+      );
+      if (spreadRows && Array.isArray(spreadRows)) {
+        curveSpreadHistoryRows = spreadRows.map((r: Record<string, unknown>) => ({
+          date: r.date as string,
+          tickerA: r.tickerA as string,
+          tickerB: r.tickerB as string,
+          clusterId: r.clusterId as string,
+          spreadTEM: (r.spreadTEM as number) || 0,
+        }));
+      }
+    } catch (dbErr) {
+      console.warn('[cockpit-score] V7.0-FASE3: CurveSpreadHistory DB query failed:', dbErr instanceof Error ? dbErr.message : String(dbErr));
+    }
+
+    // Fetch DailyOHLC spread data as fallback for spread velocity
+    let ohlcSpreadMap: Map<string, number[]> = new Map();
+    try {
+      const spreadOHLC = historicalOHLC; // Already fetched above
+      // Build map: ticker -> array of spread values (last 5 days)
+      const tickerDates = new Map<string, Array<{ date: string; spread: number }>>();
+      for (const row of spreadOHLC) {
+        if (!tickerDates.has(row.ticker)) tickerDates.set(row.ticker, []);
+        tickerDates.get(row.ticker)!.push({ date: row.date, spread: row.close > 0 ? ((row.high - row.low) / row.close) * 10000 : 0 });
+      }
+      for (const [ticker, entries] of tickerDates) {
+        const last5 = entries.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map(e => e.spread);
+        ohlcSpreadMap.set(ticker, last5);
+      }
+    } catch { /* silent */ }
+
+    // Calculate Curve Spread Anomalies for each cluster
+    const allCurveAnomalies: CurveSpreadAnomaly[] = [];
+    const instrumentByTicker = new Map<string, { tem: number; days: number; change: number }>();
+    for (const inst of clusterInstruments) {
+      instrumentByTicker.set(inst.ticker, { tem: inst.tem, days: inst.days, change: inst.change });
+    }
+
+    for (const cluster of companionClusters) {
+      const tickers = cluster.tickers;
+      // For each pair in the cluster, calculate spread anomaly
+      for (let i = 0; i < tickers.length - 1; i++) {
+        for (let j = i + 1; j < tickers.length; j++) {
+          const tickerA = tickers[i];
+          const tickerB = tickers[j];
+          const instA = instrumentByTicker.get(tickerA);
+          const instB = instrumentByTicker.get(tickerB);
+          if (!instA || !instB) continue;
+
+          // Get historical spreads for this pair
+          const historicalSpreads = curveSpreadHistoryRows
+            .filter(r => (r.tickerA === tickerA && r.tickerB === tickerB) || (r.tickerA === tickerB && r.tickerB === tickerA))
+            .sort((a, b) => b.date.localeCompare(a.date))
+            .slice(0, 5)
+            .map(r => r.spreadTEM);
+
+          // If no CurveSpreadHistory, derive from current TEM difference as fallback
+          const spreadForCalc = historicalSpreads.length > 0 ? historicalSpreads : [Math.abs(instA.tem - instB.tem)];
+
+          const anomaly = calculateCurveSpreadAnomaly({
+            ticker: tickerA,
+            companionTicker: tickerB,
+            clusterId: cluster.id,
+            tickerTEM: instA.tem,
+            companionTEM: instB.tem,
+            tickerDays: instA.days,
+            companionDays: instB.days,
+            tickerChange: instA.change,
+            companionChange: instB.change,
+            historicalSpreads: spreadForCalc,
+          });
+
+          if (anomaly.isAnomaly) {
+            allCurveAnomalies.push(anomaly);
+          }
+        }
+      }
+    }
+
+    if (allCurveAnomalies.length > 0) {
+      console.log(`[cockpit-score] V7.0-FASE3: ${allCurveAnomalies.length} anomalías de curva compañera detectadas`);
+    }
+
+    // Detect rotation triggers
+    const rotationAlerts = detectCurveRotationTrigger({
+      scores: allScores,
+      position: null, // Position not available in API route; handled client-side
+      curveAnomalies: allCurveAnomalies,
+    });
+
+    // ═══════════════════════════════════════════════════════════════════
+    // V7.0-FASE3: Second pass — add Phase 3 fields to each score
+    // ═══════════════════════════════════════════════════════════════════
+    for (const score of allScores) {
+      // Curva Compañera: anomaly + rotation alert
+      score.curveSpreadAnomaly = allCurveAnomalies.find(a => a.ticker === score.ticker || a.companionTicker === score.ticker);
+      score.rotationAlert = rotationAlerts.get(score.ticker) || undefined;
+
+      // Spread Dispersal Velocity
+      const liveInst = liveInstruments.find((inst: Record<string, unknown>) => (inst.ticker as string) === score.ticker);
+      if (liveInst) {
+        const bid = (liveInst.iol_bid as number) || 0;
+        const ask = (liveInst.iol_ask as number) || 0;
+        if (bid > 0 && ask > 0) {
+          const histSpreads = ohlcSpreadMap.get(score.ticker) || [];
+          score.spreadVelocity = calculateSpreadDispersalVelocity({
+            currentBid: bid,
+            currentAsk: ask,
+            historicalSpreads5d: histSpreads,
+          });
+        }
+      }
+
+      // V7.0-FASE3: Action Score adjustments
+      if (score.curveSpreadAnomaly?.isAnomaly) {
+        score.actionScore = { ...score.actionScore, score: Math.min(100, score.actionScore.score + 10) };
+      }
+      if (score.spreadVelocity?.signal === 'CONVERGENCIA') {
+        score.actionScore = { ...score.actionScore, score: Math.min(100, score.actionScore.score + 8) };
+      }
+      if (score.spreadVelocity?.signal === 'DIVERGENCIA') {
+        score.actionScore = { ...score.actionScore, score: Math.max(0, score.actionScore.score - 5) };
+      }
+    }
+
     // V5.4: Sort by unifiedScore (base-100) descending — single source of truth
     allScores.sort((a: CockpitScore, b: CockpitScore) => b.unifiedScore - a.unifiedScore);
 
@@ -602,7 +768,7 @@ export async function GET(request: NextRequest) {
       horizon_days: horizon,
       summary,
       timestamp: new Date(now).toISOString(),
-      engine_version: 'V7.0-FASE2',
+      engine_version: 'ENGINE V7.0-FASE3',
       stale: false,
       sr_source: srSource,
     };

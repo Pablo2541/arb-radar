@@ -305,7 +305,7 @@ async function refreshCache(): Promise<void> {
       mep: mepConsensus,
       timestamp: new Date().toISOString(),
       next_refresh: new Date(Date.now() + CACHE_TTL_MS).toISOString(),
-      engine_version: 'V6.2.0-FINAL',
+      engine_version: 'ENGINE V7.0-FASE3',
       stale: false,
     };
     cachedAt = Date.now();
@@ -347,7 +347,7 @@ export async function GET() {
     mep: { value: 0, confidence: 'CRITICA', confidence_pct: 0, sources_used: 0, sources_total: 3, agreement: false, best_source: 'none', all_sources: [], spread_between_sources: 0 },
     timestamp: new Date(now).toISOString(),
     next_refresh: new Date(now + CACHE_TTL_MS).toISOString(),
-    engine_version: 'V6.2.0-FINAL',
+    engine_version: 'ENGINE V7.0-FASE3',
     stale: false,
   });
 }

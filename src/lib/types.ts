@@ -231,6 +231,42 @@ export interface RotationScoreV17 {
   shouldRotateForRun: boolean;    // V1.7: even with similar TEM, better upside + score
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// V7.0-FASE3: Companion Curve & Arbitraje Types
+// ═══════════════════════════════════════════════════════════════════
+
+/** Cluster de instrumentos "compañeros" basados en vencimiento y duration */
+export interface CompanionCluster {
+  id: string;                     // e.g. "LECORTAS", "LEMEDIAS", "LELARGAS", "BONCAPCORTOS"
+  label: string;                  // e.g. "Letras Cortas (≤60d)"
+  instrumentType: 'LECAP' | 'BONCAP';
+  tickers: string[];              // Instrumentos en el cluster
+  avgDuration: number;            // Duration modificada promedio del cluster
+  avgTEM: number;                 // TEM promedio del cluster
+}
+
+/** Anomalía de spread entre pares compañeros de la curva */
+export interface CurveSpreadAnomaly {
+  ticker: string;
+  companionTicker: string;
+  clusterId: string;
+  spreadTEM: number;              // Diferencia de TEM entre compañeros (%)
+  spreadZScore: number;           // Desvío estándar del spread actual vs promedio 5d
+  isAnomaly: boolean;             // True si |Z| > 1.5
+  direction: 'LEADING' | 'LAGGING'; // Si compressiona (leading) o se rezaga (lagging)
+  estimatedBenefitPb: number;    // Beneficio estimado en pb de TEM por rotación
+}
+
+/** Velocidad de Dispersión del Spread — Propuesta Abierta V7.0-FASE3 */
+export interface SpreadDispersalVelocity {
+  currentSpreadBps: number;       // Spread actual en basis points
+  avgSpread5d: number;            // Promedio del spread de los últimos 5 días (bp)
+  velocity: number;               // Tasa de cambio del spread (bp/min)
+  direction: 'TIGHTENING' | 'WIDENING' | 'STABLE';
+  zScore: number;                 // Desvío del spread actual vs histórico
+  signal: 'CONVERGENCIA' | 'DIVERGENCIA' | 'NEUTRAL';
+}
+
 // V3.3-PRO Phase 2: Cockpit Score — Unified scalping signal
 export interface CockpitScore {
   ticker: string;
@@ -323,6 +359,19 @@ export interface CockpitScore {
     direction: 'UP' | 'DOWN';
     reason: string;
   };
+
+  // ── V7.0-FASE3: Curva Compañera & Arbitraje ──
+  curveSpreadAnomaly?: CurveSpreadAnomaly;
+  rotationAlert?: {
+    type: 'ROTATION' | 'ENTRY';
+    sellTicker: string;
+    buyTicker: string;
+    benefitPb: number;             // Beneficio en pb de TEM por rotación
+    reason: string;
+  };
+
+  // ── V7.0-FASE3: Propuesta Abierta — Spread Dispersal Velocity ──
+  spreadVelocity?: SpreadDispersalVelocity;
 
   withinHorizon: boolean;      // Within horizon filter (default 45 days — Scalping Extendido)
 

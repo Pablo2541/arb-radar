@@ -145,3 +145,28 @@ model IntradayVolumeBlock {
   @@index([date, ticker])
   @@index([date])
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// V7.0-FASE3 — CurveSpreadHistory: Spread de TEM entre pares compañeros
+//
+// Persiste el spread de TEM entre pares de instrumentos del mismo
+// cluster de curva compañera. Permite calcular el promedio móvil
+// de 5 días y el desvío estándar para detectar anomalías de curva.
+//
+// tickerA = instrumento de menor plazo, tickerB = instrumento de mayor plazo
+// spreadTEM = TEM_B - TEM_A (siempre positivo en curva normal)
+// ═══════════════════════════════════════════════════════════════════
+model CurveSpreadHistory {
+  id        String @id @default(cuid())
+  date      String // YYYY-MM-DD (Argentina trading date)
+  tickerA   String // Menor plazo del par compañero
+  tickerB   String // Mayor plazo del par compañero
+  clusterId String // Companion cluster ID (e.g. "LECORTAS")
+  spreadTEM Float  @default(0) // TEM_B - TEM_A en porcentaje (ej. 0.12 = 12pb)
+  temA      Float  @default(0) // TEM del tickerA ese día
+  temB      Float  @default(0) // TEM del tickerB ese día
+
+  @@unique([date, tickerA, tickerB])
+  @@index([clusterId, date])
+  @@index([date])
+}
